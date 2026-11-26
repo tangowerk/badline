@@ -29,8 +29,7 @@ CiaDebugger::CIA::Chip::PortIO::PortIO(uint8_t chipNr, uint8_t portNr, Debugger*
     portLabel.setFont( GUIKIT::Font::system( "bold" ) );
 
     append( portLabel, {50u, 0u}, 10 );
-    const Emulator::Interface::DebuggerIdent* idents = debugger->isAmiga() ? &LIBAMI::DebuggerSnapshot::CiaPorts[chipNr][portNr][0]
-    : &LIBC64::DebuggerSnapshot::CiaPorts[chipNr][portNr][0];
+    const Emulator::Interface::DebuggerIdent* idents = &LIBC64::DebuggerSnapshot::CiaPorts[chipNr][portNr][0];
 
     for (unsigned i = 0; i < 8; i++) {
         const Emulator::Interface::DebuggerIdent& port = idents[i];
@@ -109,9 +108,9 @@ CiaDebugger::CIA::Chip::Tod24bit::Tod24bit(Debugger* debugger) {
     counterAlarm.setEditable( false );
 
     append(label, {50u, 0u}, 10);
-    append(counter, {getWidth( debugger->isC64() ? 8 : 6, true), 0u}, 10);
+    append(counter, {getWidth( 8, true), 0u}, 10);
     append(labelAlarm, {0u, 0u}, 5);
-    append(counterAlarm, {getWidth(debugger->isC64() ? 8 : 6, true), 0u});
+    append(counterAlarm, {getWidth( 8, true), 0u});
 
     setAlignment( 0.5 );
 }
@@ -319,13 +318,9 @@ auto CiaDebugger::updateTheme() -> void {
     if (emulator != activeEmulator)
         return;
 
-    if (isAmiga()) {
-        LIBAMI::DebuggerSnapshot& snap = *static_cast<LIBAMI::DebuggerSnapshot*>(snapshot);
-        updateCia<LIBAMI::DebuggerSnapshot>( snap);
-    } else {
-        LIBC64::DebuggerSnapshot& snap = *static_cast<LIBC64::DebuggerSnapshot*>(snapshot);
-        updateCia<LIBC64::DebuggerSnapshot>( snap);
-    }
+    LIBC64::DebuggerSnapshot& snap = *static_cast<LIBC64::DebuggerSnapshot*>(snapshot);
+    updateCia<LIBC64::DebuggerSnapshot>( snap);
+
 }
 
 auto CiaDebugger::initTheme() -> void {

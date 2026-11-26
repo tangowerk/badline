@@ -146,8 +146,6 @@ struct VideoManager {
     auto needUpdate() -> bool { return !colorTableUpdated; }
     auto requestUpdate() -> void;
  
-    auto isC64() -> bool;
-	auto isAmiga() -> bool;
     auto generateC64ColorSpectrum() -> void;
     auto getForegroundColor() -> unsigned;
     auto getBackgroundColor() -> unsigned;

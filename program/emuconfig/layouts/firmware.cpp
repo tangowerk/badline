@@ -229,7 +229,6 @@ auto FirmwareLayout::assign(std::string path, FirmwareContainer::Block* block, F
         emuThread->unlock();
     };
 
-    archiveViewer->allowNativeArchive(nullptr);
     archiveViewer->preferSuffixes();
     archiveViewer->setView(file, items);    
 }

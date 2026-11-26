@@ -152,7 +152,6 @@ struct CpuDebugger : Debugger {
     auto updateCpuFlags(const char* flagIdent, unsigned flags) -> void;
     auto updateWatcherSelection() -> void;
 
-    auto update68k(LIBAMI::DebuggerSnapshot& s) -> void;
     auto update6510(LIBC64::DebuggerSnapshot& s) -> void;
     auto update6502(LIBC64::DebuggerSnapshot& s) -> void;
     auto update65816(LIBC64::DebuggerSnapshot& s) -> void;

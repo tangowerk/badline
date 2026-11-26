@@ -65,18 +65,6 @@ auto InputManager::automap( KeyboardLayout::Type type, Emulator::Interface::Key 
         }
     }
 
-    if ((type == KeyboardLayout::Type::De) && dynamic_cast<LIBAMI::Interface*>(emulator)) {
-        if (key == EmuKey::Y) return {{Hid::Key::Z}};
-        if (key == EmuKey::Z) return {{Hid::Key::Y}};
-    } else if ((type == KeyboardLayout::Type::Fr) && dynamic_cast<LIBAMI::Interface*>(emulator)) {
-        if (key == EmuKey::A) return {{Hid::Key::Q}};
-        if (key == EmuKey::Q) return {{Hid::Key::A}};
-        if (key == EmuKey::W) return {{Hid::Key::Z}};
-        if (key == EmuKey::Z) return {{Hid::Key::W}};
-        if (key == EmuKey::M) return {{Hid::Key::Semicolon}};
-        if (key == EmuKey::Shared3) return {{Hid::Key::M}};
-    }
-
     if ( key == EmuKey::A ) return {{Hid::Key::A}};
     if ( key == EmuKey::B ) return {{Hid::Key::B}};
     if ( key == EmuKey::C ) return {{Hid::Key::C}};

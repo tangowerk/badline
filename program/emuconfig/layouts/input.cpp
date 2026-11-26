@@ -422,7 +422,7 @@ auto InputLayout::updateMiscSettings() -> void {
     auto prio = _settings->get<unsigned>("prioritise_mappings", 1, {0,2});
     updatePrio(prio);
 
-    selector.grabMouseLeft.setChecked(_settings->get<bool>("grab_mouse_left", dynamic_cast<LIBAMI::Interface*>(emulator)));
+    selector.grabMouseLeft.setChecked(_settings->get<bool>("grab_mouse_left", false));
 }
 
 auto InputLayout::updatePrio(unsigned prio) -> void {

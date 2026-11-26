@@ -7,7 +7,8 @@ auto WatcherHelper::updateList() -> void {
 
     for (auto& w : watchers) {
         if (w.desc.empty()) {
-            int format = debugger->isC64() ? 4 : 6;
+            int format = 4;
+
 
             std::string _adr = GUIKIT::String::convertToHex(w.addr, format);
 

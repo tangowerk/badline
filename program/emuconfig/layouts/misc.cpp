@@ -84,9 +84,7 @@ AutostartLayout::StartWrapper::Option::Option() {
 }
 
 AutostartLayout::DragnDrop::DragnDrop(Emulator::Interface* emulator) {
-    append(power, {0u, 0u}, 10);
-    if (dynamic_cast<LIBAMI::Interface*>(emulator))
-        append(captureMouse, {0u, 0u});
+    append(power, {0u, 0u});
 }
 
 AutostartLayout::StartWrapper::Option::DiskOptions::DiskOptions() {
@@ -216,10 +214,6 @@ MiscLayout::MiscLayout(TabWindow* tabWindow) : autostartLayout(tabWindow->emulat
 
     autostartLayout.dragnDrop.power.onToggle = [&](bool checked) {
         _settings->set<bool>("autostart_dragndrop", checked);
-    };
-
-    autostartLayout.dragnDrop.captureMouse.onToggle = [&](bool checked) {
-        _settings->set<bool>("dragndrop_capture_mouse", checked);
     };
 
     runAheadLayout.control.slider.onChange = [this](unsigned position) {
@@ -371,7 +365,6 @@ auto MiscLayout::translate() -> void {
     }
 
     autostartLayout.dragnDrop.power.setText(trans->get("dragndrop power"));
-    autostartLayout.dragnDrop.captureMouse.setText(trans->get("dragndrop capture mouse"));
 }
 
 auto MiscLayout::initAutowarp(Emulator::Interface::MediaGroup* forGroup) -> void {
@@ -408,7 +401,7 @@ auto MiscLayout::loadSettings() -> void {
 
     autostartLayout.autoWarp.disableWarpWhenInput.setChecked(_settings->get<bool>("auto_warp_off_input", false));
 
-    autostartLayout.autoWarp.disableWarpWhenInput.setEnabled( dynamic_cast<LIBAMI::Interface*>(emulator) || !autostartLayout.autoWarp.diskFirstFile.checked() );
+    autostartLayout.autoWarp.disableWarpWhenInput.setEnabled( !autostartLayout.autoWarp.diskFirstFile.checked() );
 
     autostartLayout.autoWarp.tapeFirstFile.setChecked(_settings->get<bool>("auto_warp_tape_first_file", false));
 
@@ -421,9 +414,8 @@ auto MiscLayout::loadSettings() -> void {
     }
 
     autostartLayout.dragnDrop.power.setChecked(_settings->get<bool>("autostart_dragndrop", dynamic_cast<LIBC64::Interface*>(emulator)));
-    autostartLayout.dragnDrop.captureMouse.setChecked(_settings->get<bool>("dragndrop_capture_mouse",false));
 
-    setRunAheadPerformance(_settings->get<bool>("runahead_performance", dynamic_cast<LIBAMI::Interface*>(emulator)));
+    setRunAheadPerformance(_settings->get<bool>("runahead_performance", false));
 
     runAheadLayout.options.disableOnPower.setChecked(_settings->get<bool>("runahead_disable", true));
 

@@ -492,17 +492,10 @@ auto StatusHandler::setMessageLevel() -> void {
 }
 
 auto StatusHandler::updateDiskDriveSpace() -> void {
-    if (dynamic_cast<LIBAMI::Interface*>(activeEmulator)) {
-        statusBar->updateDimension( 1, "DF0 00:0" );
-        statusBar->updateDimension( 3, "DF1 00:0" );
-        statusBar->updateDimension( 5, "DF2 00:0" );
-        statusBar->updateDimension( 7, "DF3 00:0" );
-    } else {
-        statusBar->updateDimension( 1, "8 00.0" );
-        statusBar->updateDimension( 3, "9 00.0" );
-        statusBar->updateDimension( 5, "10 00.0" );
-        statusBar->updateDimension( 7, "11 00.0" );
-    }
+    statusBar->updateDimension( 1, "8 00.0" );
+    statusBar->updateDimension( 3, "9 00.0" );
+    statusBar->updateDimension( 5, "10 00.0" );
+    statusBar->updateDimension( 7, "11 00.0" );
 }
 
 auto StatusHandler::update() -> void {
@@ -555,10 +548,7 @@ auto StatusHandler::update() -> void {
                             else
                                 image = &(view->ledRedImage);
                         } else {
-                            if (dynamic_cast<LIBAMI::Interface*>(activeEmulator))
-                                image = (_led & 1) ? &(view->ledYellowImage) : &(view->ledGreen2Image);
-                            else
-                                image = (_led & 1) ? &(view->ledGreenImage) : &(view->ledRed2Image);
+                            image = (_led & 1) ? &(view->ledGreenImage) : &(view->ledRed2Image);
                         }
                     }
 

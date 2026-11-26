@@ -785,9 +785,6 @@ auto CreatorWindow::translate() -> void {
 
     diskCreatorLayout.block.format.label.setText(trans->get("format",{}, true));
     diskCreatorLayout.block.diskLabel.label.setText(trans->get("disk label",{}, true));
-    diskCreatorLayout.options.fastFileSystem.setText(trans->get("ffs"));
-    diskCreatorLayout.options.highDensity.setText(trans->get("high_density"));
-    diskCreatorLayout.options.bootable.setText(trans->get("bootable"));
 
     hdCreatorLayout.setText( trans->get("harddisk_creator") );
 
@@ -881,12 +878,9 @@ auto MediaLayout::createImage( Emulator::Interface::Media* media ) -> GUIKIT::Fi
 
         suffix = diskCreator.block.format.combo.text();
         unsigned typeId = diskCreator.block.format.combo.userData();
-        bool hd = diskCreator.options.highDensity.checked();
-        bool bootable = diskCreator.options.bootable.checked();
-        bool useFFS = diskCreator.options.fastFileSystem.checked();
         std::string diskName = diskCreator.block.diskLabel.edit.text();
         
-        Emulator::Interface::Data _data = emulator->createDiskImage( typeId, diskName, hd, useFFS, bootable );
+        Emulator::Interface::Data _data = emulator->createDiskImage( typeId, diskName );
         data = _data.ptr;
         size = _data.size;
 
@@ -1413,13 +1407,8 @@ auto MediaLayout::colorListing( unsigned foregroundColor, unsigned backgroundCol
             else
                 mediaGroupLayout->listings.resetSelectionColor();
 
-            if (dynamic_cast<LIBAMI::Interface*>(emulator)) {
-                mediaGroupLayout->listings.setRowForegroundColor( backgroundColor, 0 );
-                mediaGroupLayout->listings.setRowBackgroundColor( foregroundColor, 0 );
-            } else {
-                mediaGroupLayout->listings.resetRowForegroundColor( 0 );
-                mediaGroupLayout->listings.resetRowBackgroundColor( 0 );
-            }
+            mediaGroupLayout->listings.resetRowForegroundColor( 0 );
+            mediaGroupLayout->listings.resetRowBackgroundColor( 0 );
         }
     }
 }
@@ -1513,7 +1502,6 @@ auto MediaLayout::drop( std::string filePath, MediaGroupLayout::Block* block ) -
         emuThread->unlock();
     };
     archiveViewer->preferSuffixes({block->media->group});
-    archiveViewer->allowNativeArchive(dynamic_cast<LIBAMI::Interface*>(emulator) ? mediaGroup : nullptr);
     archiveViewer->setView(file, items);
 }
 

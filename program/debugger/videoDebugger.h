@@ -42,16 +42,6 @@ struct VideoDebugger : Debugger {
                 Flags(Debugger* debugger);
             } flags;
 
-            struct Colors : GUIKIT::FramedVerticalLayout {
-                struct Row : GUIKIT::HorizontalLayout {
-                    GUIKIT::Widget spacer;
-                    GUIKIT::SquareCanvas cols[16];
-                    Row();
-                } rows[2];
-
-                Colors();
-            } colors;
-
             struct Intr : GUIKIT::FramedVerticalLayout {
                 struct Row : GUIKIT::HorizontalLayout {
                     GUIKIT::Label label;
@@ -114,8 +104,6 @@ struct VideoDebugger : Debugger {
                     GUIKIT::Label label;
                     GUIKIT::LineEdit val;
                     GUIKIT::CheckBox flag;
-                    GUIKIT::Label labelTo;
-                    GUIKIT::LineEdit valTo;
 
                     GUIKIT::Label labelMemory;
                     GUIKIT::LineEdit memoryVal;
@@ -140,7 +128,6 @@ struct VideoDebugger : Debugger {
     auto initTheme() -> void override;
 
     auto updateView(LIBC64::DebuggerSnapshot& s) -> void;
-    auto updateView(LIBAMI::DebuggerSnapshot& s) -> void;
     auto getSelectedSprite() -> unsigned;
 
     auto getTheme() -> DebuggerTheme override { return DebuggerTheme::Video; }

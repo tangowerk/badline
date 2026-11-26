@@ -67,8 +67,6 @@ Cmd::Cmd(int argc, char** argv) {
         else if ( arg == "-config-c64" )
             configIdent = "C64";
 
-        else if ( arg == "-config-amiga" )
-            configIdent = "Amiga";
         else if ( arg == "-fullscreen" )
             startInFullscreen = true;
         else if ( arg == "-binarymonitor" )
@@ -156,15 +154,9 @@ auto Cmd::prepareOptions() -> void {
     options.push_back({"-attach10", "Attach disk image in Device 10", "<image path>"});
     options.push_back({"-attach11", "Attach disk image in Device 11", "<image path>"});
 
-    options.push_back({"-attachDF0", "Attach disk image in Device DF0", "<image path>"});
-    options.push_back({"-attachDF1", "Attach disk image in Device DF1", "<image path>"});
-    options.push_back({"-attachDF2", "Attach disk image in Device DF2", "<image path>"});
-    options.push_back({"-attachDF3", "Attach disk image in Device DF3", "<image path>"});
-
     options.push_back({"-fullscreen", "Start in Fullscreen", ""});
 
     options.push_back({"-config-c64", "Load C64 config", "<config path>"});
-    options.push_back({"-config-amiga", "Load Amiga config", "<config path>"});
 	options.push_back({"-vic-6569R3", "Select VIC-II 6569R3 and PAL mode", ""});
 	options.push_back({"-vic-8565", "Select VIC-II 8565 and PAL mode", ""});
 	options.push_back({"-vic-6567R8", "Select VIC-II 6567R8 and NTSC mode", ""});
@@ -244,7 +236,6 @@ auto Cmd::parse() -> void {
 	bool fastTestbench = false;
     typedef Emulator::Interface EmuInt;
 	auto emuC64 = program->getEmulator("C64");
-    auto emuAmiga = program->getEmulator("Amiga");
 	auto diskGroup = emuC64->getDiskMediaGroup();
 	unsigned cycles = 0;
     GUIKIT::Settings* settingsC64 = Program::getSettings( emuC64 );
@@ -383,31 +374,12 @@ auto Cmd::parse() -> void {
         } else if (arg == "-attach1") {
             attachMedia = emuC64->getTape(0);
             attachMedia->guid = (uintptr_t)emuC64;
-
-        } else if (arg == "-attachDF0") {
-            attachMedia = emuAmiga->getDisk(0);
-            attachMedia->guid = (uintptr_t)emuAmiga;
-        } else if (arg == "-attachDF1") {
-            attachMedia = emuAmiga->getDisk(1);
-            attachMedia->guid = (uintptr_t)emuAmiga;
-        } else if (arg == "-attachDF2") {
-            attachMedia = emuAmiga->getDisk(2);
-            attachMedia->guid = (uintptr_t)emuAmiga;
-        } else if (arg == "-attachDF3") {
-            attachMedia = emuAmiga->getDisk(3);
-            attachMedia->guid = (uintptr_t)emuAmiga;
         } else {
             std::string temp = arg;
             std::string temp2 = arg;
             GUIKIT::String::toLowerCase( temp );
             GUIKIT::String::trim( arg );
             std::string extension = GUIKIT::String::getExtension(temp, "");
-            if (extension.empty()) {
-                GUIKIT::File file(arg);
-                if (file.exists())
-                    extension = "exe"; // amiga executables have often no file extension
-                file.unload();
-            }
             
             for(auto& suffix : allowedSuffix) {
 

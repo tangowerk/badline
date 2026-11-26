@@ -84,11 +84,6 @@ struct View : GUIKIT::Window {
             GUIKIT::MenuItem* debuggerVideo;
             GUIKIT::MenuItem* debuggerDma;
             GUIKIT::MenuItem* debuggerSid;
-            GUIKIT::MenuItem* debuggerCopper;
-            GUIKIT::MenuItem* debuggerBlitter;
-            GUIKIT::MenuItem* debuggerAgnus;
-            GUIKIT::MenuItem* debuggerPaula;
-            GUIKIT::MenuItem* debuggerSerial;
             struct {
                 GUIKIT::Menu* menu = nullptr;
                     GUIKIT::MenuItem* cpu;
@@ -244,7 +239,6 @@ struct View : GUIKIT::Window {
         GUIKIT::Menu menu;
         GUIKIT::MenuItem power;
         GUIKIT::MenuItem reset;
-        std::vector<GUIKIT::MenuRadioItem*> filters;
     } power;
 		
     GUIKIT::Image powerImage;
@@ -384,7 +378,6 @@ struct View : GUIKIT::Window {
             	
     auto questionToWrite(Emulator::Interface::Media* media) -> bool;
     auto updateSpeedLabels() -> void;
-    auto updatePowerMenu() -> void;
     auto getSpeedBySelectedProfile(float& speed, bool& percent) -> unsigned;
     auto getSpeed(unsigned pos, float& speed, bool& percent) -> void;
     auto isMaximumSpeed() -> bool;

@@ -43,11 +43,6 @@
 #include "debugger/videoDebugger.h"
 #include "debugger/sidDebugger.h"
 #include "debugger/dmaDebugger.h"
-#include "debugger/copperDebugger.h"
-#include "debugger/blitterDebugger.h"
-#include "debugger/agnusDebugger.h"
-#include "debugger/paulaDebugger.h"
-#include "debugger/serialDebugger.h"
 
 Program* program = nullptr;
 DRIVER::Input* inputDriver = new DRIVER::Input;
@@ -194,10 +189,6 @@ auto Program::addEmulators() -> void {
     auto emulatorC64 = new LIBC64::Interface;
     emulatorC64->bind = this;
     emulators.push_back( emulatorC64 );
-
-    auto emulatorAmi = new LIBAMI::Interface;
-    emulatorAmi->bind = this;
-    emulators.push_back( emulatorAmi );
 
     for( auto emulator : emulators ) {
         auto settings = new GUIKIT::Settings;
@@ -422,7 +413,6 @@ auto Program::power( Emulator::Interface* emulator, bool regular ) -> void {
         view->updateSpeedLabels();
 
         view->updateDiskMenu();
-        view->updatePowerMenu();
 	    view->updateMouseGrab();
 	    view->updateFPSMenu();
 	}
@@ -898,12 +888,6 @@ auto Program::getC64ModelValue(LIBC64::Interface::ModelId modelId) -> int {
     return 0;
 }
 
-auto Program::getAMIModelValue(LIBAMI::Interface::ModelId modelId) -> int {
-    if (activeEmulator && dynamic_cast<LIBAMI::Interface*>(activeEmulator))
-        return activeEmulator->getModelValue(modelId);
-    return 0;
-}
-
 auto Program::openDebugger(Emulator::Interface* emulator, DebuggerTheme theme) -> void {
     Debugger* debugger = getDebugger( emulator, theme );
 
@@ -947,11 +931,6 @@ auto Program::createDebugger(Emulator::Interface* emulator, DebuggerTheme theme)
         case DebuggerTheme::Video: debugger = new VideoDebugger(emulator); break;
         case DebuggerTheme::SID: debugger = new SidDebugger(emulator); break;
         case DebuggerTheme::DMA: debugger = new DmaDebugger(emulator); break;
-        case DebuggerTheme::Copper: debugger = new CopperDebugger(emulator); break;
-        case DebuggerTheme::Blitter: debugger = new BlitterDebugger(emulator); break;
-        case DebuggerTheme::Agnus: debugger = new AgnusDebugger(emulator); break;
-        case DebuggerTheme::Paula: debugger = new PaulaDebugger(emulator); break;
-        case DebuggerTheme::Serial: debugger = new SerialDebugger(emulator); break;
         default:
             break;
     }

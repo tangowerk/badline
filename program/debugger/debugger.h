@@ -8,11 +8,6 @@
 typedef Emulator::Interface::DebuggerAction DebuggerAction;
 typedef Emulator::Interface::DebuggerTheme DebuggerTheme;
 
-namespace LIBAMI {
-    struct Interface;
-    struct DebuggerSnapshot;
-}
-
 namespace LIBC64 {
     struct Interface;
     struct DebuggerSnapshot;
@@ -61,7 +56,6 @@ struct Debugger : GUIKIT::Window {
     GUIKIT::Image checkedImg;
     GUIKIT::Image forwardImg;
     GUIKIT::Image systemImg;
-    GUIKIT::Image nextImg;
     GUIKIT::Image arrowLeftImg;
     GUIKIT::Image arrowRightImg;
 
@@ -113,9 +107,6 @@ struct Debugger : GUIKIT::Window {
     static auto Callback() -> void;
     auto updateToolboxVisibility() -> void;
     auto makeVisible() -> void;
-
-    auto isC64() -> bool;
-    auto isAmiga() -> bool;
 
     auto changeMemory(const std::string& addrStr, const std::string& valStr) -> void;
 

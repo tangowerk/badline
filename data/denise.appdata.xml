@@ -3,12 +3,12 @@
   <id>org.piciji.Denise</id>
   <launchable type="desktop-id">denise.desktop</launchable>
   <name>Denise</name>
-  <summary>Commodore 64 and Amiga Emulator</summary>
+  <summary>Commodore 64 Emulator</summary>
   <developer_name>PiCiJi</developer_name>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0+</project_license>
   <description>
-    <p>Denise is a free and cross platform emulator for Commodore 64 and Amiga computers</p>
+    <p>Denise is a free and cross platform emulator for Commodore 64 computers</p>
   </description>
   <screenshots>
     <screenshot type="default">

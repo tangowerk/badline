@@ -256,7 +256,7 @@ auto AudioManager::setDriveSounds( bool init ) -> void {
 
     group = activeEmulator->getTapeMediaGroup();
 
-    if (group) { // amiga has no tape
+    if (group) {
         if (mixTapeSounds) {
             unsigned volume = settings->get<unsigned>("audio_tape_volume", 100u, {0u, 300u});
 

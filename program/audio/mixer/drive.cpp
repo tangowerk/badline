@@ -421,9 +421,6 @@ namespace Mixer {
     auto Drive::getFloppyFolderIdent(Emulator::Interface* emulator, bool external) -> std::string {
         std::string ident = "audio_floppy_folder";
 
-        if (dynamic_cast<LIBAMI::Interface*>( emulator ) )
-            ident += "_new";
-
         if (external)
             ident += "_external";
 
@@ -431,13 +428,7 @@ namespace Mixer {
     }
 
     auto Drive::getFloppyFolderDefault(Emulator::Interface* emulator, bool external) -> std::string {
-        std::string defaultFolder = "";
-
-        if (dynamic_cast<LIBAMI::Interface*>( emulator ) ) {
-            defaultFolder = external ? "extern" : "intern";
-        }
-
-        return defaultFolder;
+        return "";
     }
 
     auto Drive::getFloppyFolder(Emulator::Interface* emulator, bool external) -> std::string {

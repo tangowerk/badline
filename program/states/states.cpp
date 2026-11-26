@@ -166,10 +166,6 @@ auto States::loadFirmwarePaths( GUIKIT::Settings* loadSettings ) -> void {
 
     if (!firmwareManager->missingFirmware.empty()) {
         GUIKIT::Vector::combine( errorPaths, firmwareManager->missingFirmware );
-
-        if ( dynamic_cast<LIBAMI::Interface*>(emulator) ) {
-            FirmwareManager::getInstance( emulator )->insert();
-        }
     }
 }
 
@@ -541,8 +537,6 @@ auto States::updateModels() -> void {
 
     if (view && regionChange)
         view->updateSpeedLabels();
-
-    view->updatePowerMenu();
 }
 
 auto States::updateExpansionJumper() -> void {

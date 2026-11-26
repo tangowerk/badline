@@ -48,7 +48,6 @@ struct Autoloader {
     auto setOnlyForFirstDrive(Emulator::Interface* emulator, Emulator::Interface::Media* media) -> void;
     auto get(Emulator::Interface* emulator, bool& trapped, unsigned& selection) -> Emulator::Interface::Media*;
     auto getLatestDrive(Emulator::Interface* emulator) -> Emulator::Interface::Media*;
-	auto shouldCaptureMouse(Emulator::Interface* emulator, GUIKIT::Settings* settings) -> bool;
     auto setErrorLevel(unsigned level) -> void { ddControl.errorLevel = level; }
     auto hasLoaded() const -> bool { return !ddControl.mediaGroups.empty(); }
 };

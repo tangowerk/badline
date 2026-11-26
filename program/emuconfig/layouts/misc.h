@@ -81,7 +81,6 @@ struct AutostartLayout : GUIKIT::FramedVerticalLayout {
 
     struct DragnDrop : GUIKIT::HorizontalLayout {
         GUIKIT::CheckBox power;
-        GUIKIT::CheckBox captureMouse;
 
         DragnDrop(Emulator::Interface* emulator);
     } dragnDrop;

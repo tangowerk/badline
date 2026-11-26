@@ -191,14 +191,6 @@ struct CreatorWindow : GUIKIT::Window {
             Block(Emulator::Interface* emulator);
         } block;
 
-        struct Options : GUIKIT::VerticalLayout {
-            GUIKIT::CheckBox fastFileSystem;
-            GUIKIT::CheckBox highDensity;
-            GUIKIT::CheckBox bootable;
-
-            Options();
-        } options;
-
         GUIKIT::Widget spacer;
         GUIKIT::Button close;
         GUIKIT::Button create;

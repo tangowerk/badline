@@ -35,7 +35,6 @@
 
 #include <vector>
 #include "../guikit/api.h"
-#include "../emulation/libami/interface.h"
 #include "../emulation/libc64/interface.h"
 #include "../driver/driver.h"
 #include "video/manager.h"
@@ -109,7 +108,6 @@ struct Program : Emulator::Interface::Bind {
     auto setMemoryPattern( Emulator::Interface* emulator ) -> void;
 	auto getMemoryPatternFromConfig(Emulator::Interface* emulator, Emulator::Interface::MemoryPattern& pattern) -> void;
     auto getC64ModelValue(LIBC64::Interface::ModelId modelId) -> int;
-    auto getAMIModelValue(LIBAMI::Interface::ModelId modelId) -> int;
 
     auto init() -> void;
     auto addEmulators() -> void;

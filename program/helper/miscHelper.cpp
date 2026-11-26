@@ -29,17 +29,6 @@ auto MiscHelper::addFileFonts() -> void {
             ((LIBC64::Interface*) emulator)->convertPetsciiToScreencode(useCustomFont);
             ((LIBC64::Interface*) emulator)->loadWithColumn( Program::getSettings(emulator)->get<bool>("autostart_load_with_column") );
 
-        } else if ( dynamic_cast<LIBAMI::Interface*>(emulator)) {
-            GUIKIT::CustomFont font;
-            font.name = "TopazPlus a500a1000a2000";
-            //font.name = "Topaz a500a1000a2000";
-            font.refPtr = (void*)emulator;
-            font.filePath = program->fontFolder() + "TopazPlus_a500_v1.0.ttf";
-            //font.filePath = program->fontFolder() + "Topaz_a500_v1.0.ttf";
-
-            font.sizeAdjust = 1;
-            font.modifier = 0;
-            GUIKIT::Window::addCustomFont( font );
         }
     }
 
@@ -344,7 +333,7 @@ auto MiscHelper::setRunAhead(Emulator::Interface* emulator) -> void {
 
     emulator->runAhead( settings->get<unsigned>( "runahead", 0, {0u, 10u}) );
 
-    emulator->runAheadPerformance( settings->get<bool>( "runahead_performance", dynamic_cast<LIBAMI::Interface*>(emulator)) );
+    emulator->runAheadPerformance( settings->get<bool>( "runahead_performance", false) );
 
     emulator->runAheadPreventJit( settings->get<bool>( "runahead_prevent_jit", true ) );
 }
@@ -375,10 +364,6 @@ auto MiscHelper::getDevice( Emulator::Interface* emulator, Emulator::Interface::
 
     for(auto& device : emulator->devices) {
         if (device.isJoypad() && connector->isPort2()) {
-            defaultDevice = device.id;
-            break;
-        }
-        if (device.isMouse() && dynamic_cast<LIBAMI::Interface*>( emulator ) && connector->isPort1()) {
             defaultDevice = device.id;
             break;
         }

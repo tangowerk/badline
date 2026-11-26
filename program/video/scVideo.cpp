@@ -8,13 +8,8 @@ SCVideo::SCVideo(VideoManager* manager) : manager( manager ) {
     evenTable = new ColorLumaChroma[manager->colorCount];
     oddTable = new ColorLumaChroma[manager->colorCount];
 
-    if (manager->isAmiga()) {
-        tempDest = new uint32_t[2048 * 600]; // shres
-        std::memset(tempDest, 0, 2048 * 600 * 4);
-    } else {
-        tempDest = new uint32_t[1024 * 600];
-        std::memset(tempDest, 0, 1024 * 600 * 4);
-    }
+    tempDest = new uint32_t[1024 * 600];
+    std::memset(tempDest, 0, 1024 * 600 * 4);
 
     render.dest = nullptr;
 }

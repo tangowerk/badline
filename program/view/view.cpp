@@ -398,8 +398,6 @@ auto View::build() -> void {
 
 	            if (result == 1)
 	                program->power(program->getEmulator("C64"));
-	            else if (result == 0)
-	                program->power(program->getEmulator("Amiga"));
 
 	            emuThread->unlock();
 	        } else if ( grabMouseLeft && !inputDriver->mIsAcquired()) {
@@ -758,8 +756,7 @@ auto View::setConnectors() -> void {
         }
         
         inputItem = new GUIKIT::MenuItem;
-        std::string txt = dynamic_cast<LIBAMI::Interface*>(emulator) ? "swap joypads Port2" : "swap Ports";
-		inputItem->setText(emulator->ident + " " + trans->getA(txt) );
+		inputItem->setText(emulator->ident + " " + trans->getA("swap Ports") );
         
         inputItem->onActivate = [emulator, settings]() {
             emuThread->lock();
@@ -769,39 +766,16 @@ auto View::setConnectors() -> void {
             auto connector2 = emulator->getConnector( 1 );
             auto connectedDevice2 = emulator->getConnectedDevice( connector2 );
 
-            if (dynamic_cast<LIBAMI::Interface*>(emulator)) {
-                for (auto& device : emulator->devices) {
-                    if (!device.isJoypad())
-                        continue;
-                    if (!connectedDevice2 || !connectedDevice2->isJoypad()) {
-                        connectedDevice2 = &device;
-                        break;
-                    }
-                    if (connectedDevice2 != &device) {
-                        connectedDevice2 = &device;
-                        break;
-                    }
-                }
+            emulator->connect( connector1, connectedDevice2 );
+            emulator->connect( connector2, connectedDevice1 );
 
-                emulator->connect( connector2, connectedDevice2 );
-                auto manager = InputManager::getManager(emulator);
-                manager->updateMappingsInUse();
-                emuThread->unlock();
+            emuThread->unlock();
 
-                settings->set<unsigned>( _underscore(connector2->name), connectedDevice2->id);
-                view->checkInputDevice(emulator, connector2, connectedDevice2);
-            } else {
-                emulator->connect( connector1, connectedDevice2 );
-                emulator->connect( connector2, connectedDevice1 );
+            settings->set<unsigned>( _underscore(connector1->name), connectedDevice2->id);
+            settings->set<unsigned>( _underscore(connector2->name), connectedDevice1->id);
 
-                emuThread->unlock();
-
-                settings->set<unsigned>( _underscore(connector1->name), connectedDevice2->id);
-                settings->set<unsigned>( _underscore(connector2->name), connectedDevice1->id);
-
-                view->checkInputDevice(emulator, connector1, connectedDevice2);
-                view->checkInputDevice(emulator, connector2, connectedDevice1);
-            }
+            view->checkInputDevice(emulator, connector1, connectedDevice2);
+            view->checkInputDevice(emulator, connector2, connectedDevice1);
 
             auto emuView = EmuConfigView::TabWindow::getView(emulator);
             if (emuView && emuView->inputLayout)
@@ -1327,52 +1301,7 @@ auto View::buildMenu() -> void {
                 emuThread->unlock();
             };
             sM.debugger->append( *sM.debuggerSid );
-            sM.debuggerCopper = nullptr;
-            sM.debuggerBlitter = nullptr;
-            sM.debuggerAgnus = nullptr;
-            sM.debuggerPaula = nullptr;
-            sM.debuggerSerial = nullptr;
         } else {
-            sM.debuggerCopper = new GUIKIT::MenuItem;
-            sM.debuggerCopper->onActivate = [emulator]() {
-                emuThread->lock();
-                program->openDebugger(emulator, DebuggerTheme::Copper);
-                emuThread->unlock();
-            };
-            sM.debugger->append( *sM.debuggerCopper );
-
-            sM.debuggerBlitter = new GUIKIT::MenuItem;
-            sM.debuggerBlitter->onActivate = [emulator]() {
-                emuThread->lock();
-                program->openDebugger(emulator, DebuggerTheme::Blitter);
-                emuThread->unlock();
-            };
-            sM.debugger->append( *sM.debuggerBlitter );
-
-            sM.debuggerAgnus = new GUIKIT::MenuItem;
-            sM.debuggerAgnus->onActivate = [emulator]() {
-                emuThread->lock();
-                program->openDebugger(emulator, DebuggerTheme::Agnus);
-                emuThread->unlock();
-            };
-            sM.debugger->append( *sM.debuggerAgnus );
-
-            sM.debuggerPaula = new GUIKIT::MenuItem;
-            sM.debuggerPaula->onActivate = [emulator]() {
-                emuThread->lock();
-                program->openDebugger(emulator, DebuggerTheme::Paula);
-                emuThread->unlock();
-            };
-            sM.debugger->append( *sM.debuggerPaula );
-
-            sM.debuggerSerial = new GUIKIT::MenuItem;
-            sM.debuggerSerial->onActivate = [emulator]() {
-                emuThread->lock();
-                program->openDebugger(emulator, DebuggerTheme::Serial);
-                emuThread->unlock();
-            };
-            sM.debugger->append( *sM.debuggerSerial );
-
             sM.debuggerSid = nullptr;
         }
 
@@ -2126,55 +2055,6 @@ auto View::buildMenu() -> void {
 
     power.menu.append( power.power );
     power.menu.append( power.reset );
-    power.menu.append( *new GUIKIT::MenuSeparator );
-
-    auto amiEmu = program->getEmulator("Amiga");
-    auto model = amiEmu->getModel( LIBAMI::Interface::ModelId::ModelIdAudioFilter );
-    if (model) {
-        int i = 0;
-        for([[maybe_unused]] auto& option : model->options) {
-            auto item = new GUIKIT::MenuRadioItem;
-
-            item->onActivate = [i]() {
-                auto model = activeEmulator->getModel( LIBAMI::Interface::ModelId::ModelIdAudioFilter );
-                if (!model)
-                    return;
-                auto settings = Program::getSettings(activeEmulator);
-                if (!settings)
-                    return;
-
-                settings->set<unsigned>( _underscore(model->name), i );
-                auto emuView = EmuConfigView::TabWindow::getView( activeEmulator );
-                if (emuView && emuView->audioLayout) {
-                    auto block = emuView->audioLayout->settingsLayout.getBlock(model->id);
-                    if (block && (i < block->options.size() ) )
-                        block->options[i]->setChecked();
-                }
-
-                emuThread->lock();
-                activeEmulator->setModelValue( model->id, i );
-                emuThread->unlock();
-            };
-            i++;
-            power.filters.push_back(item);
-            power.menu.append( *item );
-        }
-
-        GUIKIT::MenuRadioItem::setGroup(power.filters);
-    }
-}
-
-auto View::updatePowerMenu() -> void {
-    if (!dynamic_cast<LIBAMI::Interface*>(activeEmulator))
-        return;
-    auto model = activeEmulator->getModel( LIBAMI::Interface::ModelId::ModelIdAudioFilter );
-    if (!model)
-        return;
-
-    auto val = activeEmulator->getModelValue(model->id);
-
-    if (val < power.filters.size())
-        power.filters[val]->setChecked();
 }
 
 auto View::updateSpeedLabels() -> void {
@@ -2236,7 +2116,7 @@ auto View::updateDiskMenu() -> void {
 
 auto View::updateMouseGrab() -> void {
     auto settings = Program::getSettings( activeEmulator );
-    grabMouseLeft = settings->get<bool>("grab_mouse_left", dynamic_cast<LIBAMI::Interface*>(activeEmulator));
+    grabMouseLeft = settings->get<bool>("grab_mouse_left", false);
 }
 
 auto View::showTapeMenu( bool show, Emulator::Interface::TapeMode mode ) -> void {
@@ -2329,16 +2209,6 @@ auto View::translate() -> void {
         sysMenu.debuggerVideo->setText(getReadable( DebuggerTheme::Video, sysMenu.emulator ));
         if (sysMenu.debuggerSid)
             sysMenu.debuggerSid->setText(getReadable( DebuggerTheme::SID ));
-        if (sysMenu.debuggerCopper)
-            sysMenu.debuggerCopper->setText( getReadable( DebuggerTheme::Copper ));
-        if (sysMenu.debuggerBlitter)
-            sysMenu.debuggerBlitter->setText(getReadable( DebuggerTheme::Blitter ));
-        if (sysMenu.debuggerAgnus)
-            sysMenu.debuggerAgnus->setText( getReadable( DebuggerTheme::Agnus ));
-        if (sysMenu.debuggerPaula)
-            sysMenu.debuggerPaula->setText( getReadable( DebuggerTheme::Paula ));
-        if (sysMenu.debuggerSerial)
-            sysMenu.debuggerSerial->setText( getReadable( DebuggerTheme::Serial ));
 
         sysMenu.debuggerDma->setText(getReadable( DebuggerTheme::DMA ));
 
@@ -2429,17 +2299,6 @@ auto View::translate() -> void {
 
     power.power.setText( trans->get("Hard Reset") );
     power.reset.setText( trans->get("Soft Reset") );
-
-    auto amiEmu = program->getEmulator("Amiga");
-    auto model = amiEmu->getModel( LIBAMI::Interface::ModelId::ModelIdAudioFilter );
-    if (model) {
-        int i = 0;
-        for (auto& option: model->options) {
-            std::string _trans = i == 0 ? (trans->getA("PAULA Filter", true) + " ") : "";
-            _trans += trans->getA(option);
-            power.filters[i++]->setText( _trans );
-        }
-    }
     
 	tapePlayItem.setText( trans->get("tape_play_key") );
 	tapeStopItem.setText( trans->get("tape_stop_key") );
@@ -3049,21 +2908,11 @@ auto View::getReadable(DebuggerTheme theme, Emulator::Interface* emulator) -> st
         case DebuggerTheme::CIA:
             return "CIA";
         case DebuggerTheme::Video:
-            return !emulator ? "Video" : (dynamic_cast<LIBC64::Interface*>(emulator) ? "VIC-II" : "Denise");
+            return !emulator ? "Video" : "VIC-II";
         case DebuggerTheme::DMA:
             return "DMA";
         case DebuggerTheme::SID:
             return "SID";
-        case DebuggerTheme::Copper:
-            return "Copper";
-        case DebuggerTheme::Blitter:
-            return "Blitter";
-        case DebuggerTheme::Agnus:
-            return "Agnus";
-        case DebuggerTheme::Paula:
-            return "Paula";
-        case DebuggerTheme::Serial:
-            return "Serial";
     }
 
     return "";

@@ -162,18 +162,8 @@ auto Autoloader::postProcessing() -> void {
                 activateDrive( ddControl.emulator, mediaGroup, countImagesFor(mediaGroup) + (slotMode() ? ddControl.selection : 0), activeEmulator == ddControl.emulator );
 
             if (view) {
-                if (activeEmulator && (ddControl.mode == Mode::OpenWithSlot || ddControl.mode == Mode::DragnDrop) ) {
-
-                    if (shouldCaptureMouse(ddControl.emulator, settings))
-                        view->prepareCursorHide(200, true);
-                    else {
-                        view->setForeground();
-                        view->setFocused(100 );
-                    }
-                } else {
-                    view->setForeground();
-                    view->setFocused(100);
-                }
+                view->setForeground();
+                view->setFocused(100);
             }
 
             autoloader->setOnlyForFirstDrive(ddControl.emulator, &mediaGroup->media[0]);
@@ -235,11 +225,7 @@ auto Autoloader::postProcessing() -> void {
         if (!useExpansion)
             MiscHelper::removeExpansion(ddControl.emulator, true);
 
-        if ( dynamic_cast<LIBC64::Interface*>(ddControl.emulator) || (ddControl.emulator != activeEmulator)
-            || (activeEmulator->getModelValue( LIBAMI::Interface::ModelIdSystem ) > 0 ) )
-            program->power( ddControl.emulator, emuView != nullptr );
-        else
-            program->reset(ddControl.emulator); // because of A1000 WOM
+        program->power( ddControl.emulator, emuView != nullptr );
 
         if (statusHandler && useExpansion && activeEmulator->isExpansionUnsupported())
             statusHandler->setMessage(trans->getA("unsupported cartridge"), true);
@@ -297,28 +283,13 @@ auto Autoloader::postProcessing() -> void {
 
             view->setForeground();
 
-		    bool acqMouse = false;
-            if (ddControl.mode == Mode::AutoStartWithSlot || ddControl.mode == Mode::DragnDrop) {
-                if (shouldCaptureMouse(ddControl.emulator, settings))
-                    acqMouse = true;
-		    }
-		    if (acqMouse)
-		        view->prepareCursorHide(100, true);
-		    else
-		        view->setFocused(100 );
+		    view->setFocused(100 );
 
 			if (!cmd->debug && (mediaGroup->isTape() || mediaGroup->isDisk()) ) {
                 program->initAutoWarp(mediaGroup);
 			}
 		}
     }
-}
-
-auto Autoloader::shouldCaptureMouse(Emulator::Interface* emulator, GUIKIT::Settings* settings) -> bool {
-    return dynamic_cast<LIBAMI::Interface*>(emulator)
-        && view->canGrabInputFocusAfterDnDFromOtherApp()
-        && view->isAnalogDeviceConnected()
-        && settings->get<bool>("dragndrop_capture_mouse",false);
 }
 
 auto Autoloader::loadFiles() -> void {
@@ -359,7 +330,6 @@ auto Autoloader::loadFiles() -> void {
 	        GUIKIT::Vector::combine(groups, emulator->getMediaGroups());
 
 	    archiveViewer->preferSuffixes(groups);
-        archiveViewer->allowNativeArchive(dynamic_cast<LIBAMI::Interface*>(activeEmulator) ? activeEmulator->getDiskMediaGroup() : nullptr);
 		archiveViewer->setView( file, items );
 	} else if (ddControl.archiveId >= 0) {
 	    if (ddControl.archiveId < items.size())

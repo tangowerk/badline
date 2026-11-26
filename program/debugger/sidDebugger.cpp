@@ -176,12 +176,8 @@ auto SidDebugger::updateTheme() -> void {
     if (emulator != activeEmulator)
         return;
 
-    if (isAmiga()) {
-       // LIBAMI::DebuggerSnapshot& snap = *static_cast<LIBAMI::DebuggerSnapshot*>(snapshot);
-    } else {
-        LIBC64::DebuggerSnapshot& snap = *static_cast<LIBC64::DebuggerSnapshot*>(snapshot);
-        updateSID( snap );
-    }
+    LIBC64::DebuggerSnapshot& snap = *static_cast<LIBC64::DebuggerSnapshot*>(snapshot);
+    updateSID( snap );
 }
 
 auto SidDebugger::updateSID(LIBC64::DebuggerSnapshot& snap) -> void {
@@ -301,5 +297,6 @@ auto SidDebugger::saveIdent() -> std::string {
 }
 
 auto SidDebugger::titleIdent() -> std::string {
-    return emulator->ident + (isC64() ? " Debugger SID" : " Debugger Paula");
+    return emulator->ident + " Debugger SID";
+
 }

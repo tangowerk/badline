@@ -207,17 +207,8 @@ CreatorWindow::DiskCreatorLayout::Block::Block(Emulator::Interface* emulator) : 
     append(diskLabel, {0u, 0u});
 }
 
-CreatorWindow::DiskCreatorLayout::Options::Options() {
-    append(fastFileSystem, {0u, 0u}, 2);
-    append(highDensity, {0u, 0u}, 2);
-    append(bootable, {0u, 0u});
-}
-
 CreatorWindow::DiskCreatorLayout::DiskCreatorLayout( Emulator::Interface* emulator ) : block(emulator) {
     append(block, {0u, 0u}, 10);
-
-    if (dynamic_cast<LIBAMI::Interface*>(emulator))
-        append(options, {0u, 0u}, 10);
 
     append(spacer, {~0u, ~0u});
     append(close, {0u, 0u}, 10);
@@ -610,9 +601,6 @@ auto DialogPreviewLayout::updatePreviewContent(GUIKIT::Settings* settings, Emula
 
                 outTooltip = std::string((const char*) utf8.data(), utf8.size());
             }
-        } else {
-            out = "Amiga Disk Amiga Disk Amiga Disk Amiga Disk Amiga Disk";
-            outTooltip = "s/startup-sequence";
         }
 
         auto videoManager = VideoManager::getInstance(emulator);
@@ -625,13 +613,8 @@ auto DialogPreviewLayout::updatePreviewContent(GUIKIT::Settings* settings, Emula
         else
             previewBox.resetSelectionColor();
 
-        if (dynamic_cast<LIBAMI::Interface*>(emulator)) {
-            previewBox.setRowForegroundColor( backgroundColor, 0 );
-            previewBox.setRowBackgroundColor( foregroundColor, 0 );
-        } else {
-            previewBox.resetRowForegroundColor( 0 );
-            previewBox.resetRowBackgroundColor( 0 );
-        }
+        previewBox.resetRowForegroundColor( 0 );
+        previewBox.resetRowBackgroundColor( 0 );
         
         for (unsigned i = 0; i < 8; i++) {
             previewBox.append( {out} );

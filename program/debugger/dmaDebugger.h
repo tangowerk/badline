@@ -66,7 +66,6 @@ struct DmaDebugger : Debugger {
 
     struct DmaControl : GUIKIT::HorizontalLayout {
         GUIKIT::Button rdyButton;
-        GUIKIT::Button cycleButton;
 
         DmaControl(DmaDebugger* debugger);
     } *dmaControl = nullptr;
@@ -107,7 +106,6 @@ struct DmaDebugger : Debugger {
     auto initTheme() -> void override;
     auto buildControl() -> GUIKIT::Layout* override;
 
-    auto updateView(LIBAMI::DebuggerSnapshot& s) -> void;
     auto updateView(LIBC64::DebuggerSnapshot& s) -> void;
     auto updateColor(Dma::DmaFrame::BusUsage* busUsage, unsigned id, unsigned _col) -> void;
 

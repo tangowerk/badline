@@ -44,9 +44,8 @@ VideoDebugger::Video::Wraper::RegWrapper::Register::Register() {
 
 VideoDebugger::Video::Wraper::RegWrapper::RegWrapper(Debugger* debugger) {
     setPadding( 10 );
-    registers.resize( debugger->isAmiga() ? 9 : 7 );
-    if (debugger->isC64())
-        append( mode, {~0u, 0u}, 7 );
+    registers.resize( 7 );
+    append( mode, {~0u, 0u}, 7 );
 
     for (auto& reg : registers) {
         reg = new Register();
@@ -62,34 +61,16 @@ VideoDebugger::Video::Wraper::Flags::Block::Block() {
 }
 
 VideoDebugger::Video::Wraper::Flags::Flags(Debugger* debugger) {
-    blocks.resize( debugger->isAmiga() ? 4 : 3 );
+    blocks.resize( 3 );
     append(spacer, {~0u, 0u});
 
     for (auto& block : blocks) {
         block = new Block();
-        append(*block, {0u, 0u}, blocks.back() == block ? 0 : (debugger->isAmiga() ? 5 : 30));
+        append(*block, {0u, 0u}, blocks.back() == block ? 0 : 30);
     }
 
     setPadding( 10 );
     setAlignment( 0.5 );
-}
-
-VideoDebugger::Video::Wraper::Colors::Row::Row() {
-    append(spacer, {~0u, 0u});
-    int i = 0;
-
-    for (auto& col : cols)
-        append(col, {15u, 15u}, ++i == 16 ? 0 : 5);
-
-    setAlignment( 0.5 );
-}
-
-VideoDebugger::Video::Wraper::Colors::Colors() {
-    setPadding( 10 );
-    int i = 0;
-
-    for (auto& row : rows)
-        append(row, {~0u, 0u}, ++i == 2 ? 0 : 5);
 }
 
 VideoDebugger::Video::Wraper::Intr::Row::Row(Debugger* debugger, bool isMask) {
@@ -116,8 +97,6 @@ VideoDebugger::Video::Wraper::Intr::Row::Row(Debugger* debugger, bool isMask) {
 
 VideoDebugger::Video::Wraper::Intr::Intr(Debugger* debugger)
 : latch( debugger, false ), mask( debugger, true ) {
-    if (debugger->isAmiga())
-        return;
     append( latch, {0u, 0u}, 7 );
     append( mask, {0u, 0u} );
 
@@ -128,11 +107,7 @@ VideoDebugger::Video::Wraper::Wraper(Debugger* debugger)
 : regWrapper( debugger), flags( debugger ), intr( debugger ) {
     append( regWrapper, {~0u, 0u}, 7 );
     append( flags, {~0u, 0u}, 7 );
-    if (debugger->isC64()) {
-        append( intr, {~0u, 0u}, 7 );
-    } else {
-        append( colors, {~0u, 0u} );
-    }
+    append( intr, {~0u, 0u}, 7 );
 }
 
 VideoDebugger::Video::WraperRight::Lightpen::Top::Top() {
@@ -179,7 +154,7 @@ VideoDebugger::Video::WraperRight::WraperRight(Debugger* debugger)
 
 VideoDebugger::Video::Sprites::Viewer::Viewer(Debugger* debugger) {
     canvas.setPadding( 2 );
-    append(canvas, { debugger->isAmiga() ? 300u : 360u, 300u});
+    append(canvas, { 360u, 300u});
 }
 
 VideoDebugger::Video::Sprites::Selector::Selector() {
@@ -216,19 +191,9 @@ VideoDebugger::Video::Sprites::Position::Direction::Direction(Debugger* debugger
     memoryVal.setAlign( GUIKIT::LineEdit::Align::Right );
     flag.setReadonly();
 
-    if (debugger->isAmiga()) {
-        valTo.setFont( GUIKIT::Font::monospace() );
-        valTo.setEditable( false );
-        valTo.setAlign( GUIKIT::LineEdit::Align::Right );
-    }
-
     append( label, {0u, 0u}, 10 );
     append( val, {getWidth(3, true), 0u}, 10 );
-    if (debugger->isAmiga()) {
-        append( labelTo, {0u, 0u}, 10 );
-        append( valTo, {getWidth(3, true), 0u}, 10 );
-    } else
-        append( flag, {0u, 0u}, 20 );
+    append( flag, {0u, 0u}, 20 );
 
     append( labelMemory, {0u, 0u}, 10 );
     append( memoryVal, {getWidth(4, true), 0u} );
@@ -256,12 +221,8 @@ VideoDebugger::Video::Video( Debugger* debugger )
 : wraper( debugger ), wraperRight( debugger ), sprites( debugger ) {
     append(wraper, {0u, 0u}, 20);
 
-    if (debugger->isC64()) {
-        append(sprites, {0u, 0u}, 20);
-        append(wraperRight, {0u, 0u});
-    } else {
-        append(sprites, {0u, 0u});
-    }
+    append(sprites, {0u, 0u}, 20);
+    append(wraperRight, {0u, 0u});
 }
 
 auto VideoDebugger::buildTheme() -> GUIKIT::Layout* {
@@ -291,13 +252,8 @@ auto VideoDebugger::updateTheme() -> void {
     if (emulator != activeEmulator)
         return;
 
-    if (isC64()) {
-        LIBC64::DebuggerSnapshot& snap = *static_cast<LIBC64::DebuggerSnapshot*>(snapshot);
-        updateView(snap);
-    } else {
-        LIBAMI::DebuggerSnapshot& snap = *static_cast<LIBAMI::DebuggerSnapshot*>(snapshot);
-        updateView(snap);
-    }
+    LIBC64::DebuggerSnapshot& snap = *static_cast<LIBC64::DebuggerSnapshot*>(snapshot);
+    updateView(snap);
 }
 
 auto VideoDebugger::initTheme() -> void {
@@ -439,172 +395,16 @@ auto VideoDebugger::updateView(LIBC64::DebuggerSnapshot& s) -> void {
     updateControl( s.vPos, s.hPos );
 }
 
-auto VideoDebugger::updateView(LIBAMI::DebuggerSnapshot& s) -> void {
-    auto& snap = s.denise;
-    uint8_t nr = getSelectedSprite();
-    auto& spr = snap.spr[nr];
-    auto vManager = VideoManager::getInstance( emulator );
-    auto& canvas = video->sprites.viewer.canvas;
-    auto& pos = video->sprites.position;
-    auto& sel = video->sprites.selector;
-
-    if (spr.pos) {
-        canvas.setGrid( 15, spr.pos / 16, 16 );
-        auto* ptr = canvas.getDotPtr();
-        uint16_t _d;
-
-        for (unsigned i = 0; i < spr.pos; i++) {
-            _d = spr.data[i];
-            *ptr++ = _d & 0x8000 ? 0 : vManager->colorTable[ _d ];
-        }
-    } else
-        canvas.setGrid( 15, 0, 0);
-
-    canvas.update();
-
-    auto& sprFlags = video->sprites.flags;
-    updateReg( *sprFlags.boxes[0], spr.attached );
-
-    uint8_t sprGroup = nr & ~1;
-    switch (sprGroup) {
-        case 0: // group 0/1
-            updateReg( *sprFlags.boxes[1], snap.clxDat & 0b111000000000 );
-            updateReg( *sprFlags.boxes[2], snap.clxDat & 0x20 );
-            updateReg( *sprFlags.boxes[3], snap.clxDat & 2 );
-            break;
-        case 2: // group 2/3
-            updateReg( *sprFlags.boxes[1], snap.clxDat & 0b11001000000000 );
-            updateReg( *sprFlags.boxes[2], snap.clxDat & 0x40 );
-            updateReg( *sprFlags.boxes[3], snap.clxDat & 4 );
-            break;
-        case 4: // group 4/5
-            updateReg( *sprFlags.boxes[1], snap.clxDat & 0b101010000000000 );
-            updateReg( *sprFlags.boxes[2], snap.clxDat & 0x80 );
-            updateReg( *sprFlags.boxes[3], snap.clxDat & 8 );
-            break;
-        case 6: // group 6/7
-            updateReg( *sprFlags.boxes[1], snap.clxDat & 0b110100000000000 );
-            updateReg( *sprFlags.boxes[2], snap.clxDat & 0x100 );
-            updateReg( *sprFlags.boxes[3], snap.clxDat & 0x10 );
-            break;
-    }
-
-    updateReg(pos.vertical.val, spr.vStart);
-    updateReg(pos.vertical.valTo, spr.vStop);
-    updateReg(pos.vertical.memoryVal, spr.datA);
-
-    updateReg(pos.horizontal.val, spr.x);
-    updateReg(pos.horizontal.valTo, spr.x + 16);
-    updateReg(pos.horizontal.memoryVal, spr.datB);
-
-    for (unsigned i = 0; i < 8; i++) {
-        auto& spr = sel.spr[i];
-        auto& _spr = snap.spr[i];
-
-        if (spr.getStore() != !!_spr.pos) {
-            if (_spr.pos) {
-                spr.setFont( GUIKIT::Font::system( "bold" ) );
-                spr.setForegroundColor(SUCCESS_COLOR );
-            } else {
-                spr.setFont( GUIKIT::Font::system( "" ) );
-                spr.resetForegroundColor();
-            }
-            spr.setStore( _spr.pos != 0 );
-        }
-    }
-
-    int i = 0;
-    unsigned colMask = (1 << vManager->countColorBits) - 1;
-    for (auto& row : video->wraper.colors.rows) {
-        for (auto& col : row.cols) {
-            uint16_t colIndex = snap.colors[i++] & colMask;
-            uint32_t rgb = vManager->colorTable[ colIndex ];
-            std::string tooltip = "Index: " + GUIKIT::String::convertToHex(colIndex) + ", RGB: " + GUIKIT::String::convertToHex(rgb & 0xffffff);
-            col.setTooltip( tooltip );
-            col.setBackgroundColor( rgb );
-        }
-    }
-
-    auto& regs = video->wraper.regWrapper.registers;
-    i = 0;
-    for (auto& reg : regs) {
-        switch (i++) {
-            case 0:
-                updateReg(reg->leftVal, snap.bplCon0);
-                updateReg(reg->rightVal, snap.bplCon2);
-                break;
-            case 1:
-                updateReg(reg->leftVal, snap.bplCon1);
-                updateReg(reg->rightVal, snap.bplCon3);
-                break;
-            case 2:
-                updateReg(reg->leftVal, (snap.bplCon0 >> 12) & 7 );
-                updateReg(reg->leftVal, snap.clxDat );
-                break;
-            case 3:
-                updateReg(reg->leftVal, snap.delayPf1);
-                updateReg(reg->rightVal, snap.delayPf2);
-                break;
-            case 4:
-                updateReg(reg->leftVal, snap.bplCon2 & 7);
-                updateReg(reg->rightVal, (snap.bplCon2 >> 3) & 7);
-                break;
-            case 5:
-                updateReg(reg->leftVal, snap.hStart);
-                updateReg(reg->rightVal, snap.hStop);
-                break;
-            case 6:
-                updateReg(reg->leftVal, snap.bpl1dat);
-                updateReg(reg->rightVal, snap.bpl2dat);
-                break;
-            case 7:
-                updateReg(reg->leftVal, snap.bpl3dat);
-                updateReg(reg->rightVal, snap.bpl4dat);
-                break;
-            case 8:
-                updateReg(reg->leftVal, snap.bpl5dat);
-                updateReg(reg->rightVal, snap.bpl6dat);
-                break;
-        }
-    }
-
-    auto& flags = video->wraper.flags;
-    updateReg(flags.blocks[0]->flag1, snap.bplCon0 & 0x8000); // hires
-    updateReg(flags.blocks[0]->flag2, snap.bplCon0 & 0x40); // shres
-
-    updateReg(flags.blocks[1]->flag1, snap.bplCon0 & 0x400); // dual
-    updateReg(flags.blocks[1]->flag2, snap.bplCon0 & 0x800); // ham
-
-    updateReg(flags.blocks[2]->flag1, snap.bplCon2 & 0x40); // pf2pri
-    updateReg(flags.blocks[2]->flag2, snap.bplCon0 & 1); // ecs enable
-
-    updateReg(flags.blocks[3]->flag1, snap.bplCon3 & 1); // extblken
-    updateReg(flags.blocks[3]->flag2, snap.bplCon3 & 0x20); // brdblnk
-
-    updateControl( s.vPos, s.hPos );
-}
-
 auto VideoDebugger::translateTheme() -> void {
     auto& flags = video->wraper.flags;
     flags.setText( "Flags" );
 
-    if (isC64()) {
-        flags.blocks[0]->flag1.setText( "DEN" );
-        flags.blocks[0]->flag2.setText( "Badline" );
-        flags.blocks[1]->flag1.setText( "Idle" );
-        flags.blocks[1]->flag2.setText( "Vblank" );
-        flags.blocks[2]->flag1.setText( "H-Flop" );
-        flags.blocks[2]->flag2.setText( "V-Flop" );
-    } else {
-        flags.blocks[0]->flag1.setText( "HIRES" );
-        flags.blocks[0]->flag2.setText( "SHRES" );
-        flags.blocks[1]->flag1.setText( "DUAL" );
-        flags.blocks[1]->flag2.setText( "HAM" );
-        flags.blocks[2]->flag1.setText( "PF2Pri" );
-        flags.blocks[2]->flag2.setText( "ECS Enable" );
-        flags.blocks[3]->flag1.setText( "External Blank" );
-        flags.blocks[3]->flag2.setText( "Border Blank" );
-    }
+    flags.blocks[0]->flag1.setText( "DEN" );
+    flags.blocks[0]->flag2.setText( "Badline" );
+    flags.blocks[1]->flag1.setText( "Idle" );
+    flags.blocks[1]->flag2.setText( "Vblank" );
+    flags.blocks[2]->flag1.setText( "H-Flop" );
+    flags.blocks[2]->flag2.setText( "V-Flop" );
 
     video->wraper.intr.setText( "Interrupts" );
     auto& intMask = video->wraper.intr.mask;
@@ -632,51 +432,39 @@ auto VideoDebugger::translateTheme() -> void {
 
     video->wraper.regWrapper.setText( "Register" );
 
-    if (isC64()) {
-        auto& mode = video->wraper.regWrapper.mode;
-        mode.label.setText( "Mode" );
-    } else {
-        video->wraper.colors.setText( "Colors" );
-    }
+    auto& mode = video->wraper.regWrapper.mode;
+    mode.label.setText( "Mode" );
 
     int i = 0;
     for (auto& reg : video->wraper.regWrapper.registers) {
         switch (i++) {
             case 0:
-                reg->left.setText(isAmiga() ? "BPLCON0" : "V" );
-                reg->right.setText(isAmiga() ? "BPLCON2" : "H" );
+                reg->left.setText( "V" );
+                reg->right.setText( "H" );
                 break;
             case 1:
-                reg->left.setText(isAmiga() ? "BPLCON1" : "Y-Scroll" );
-                reg->right.setText(isAmiga() ? "BPLCON3" : "X-Scroll" );
+                reg->left.setText( "Y-Scroll" );
+                reg->right.setText( "X-Scroll" );
                 break;
             case 2:
-                reg->left.setText(isAmiga() ? "Bitplanes" : "VC" );
-                reg->right.setText(isAmiga() ? "CLXDAT" : "VC Base" );
+                reg->left.setText( "VC" );
+                reg->right.setText( "VC Base" );
                 break;
             case 3:
-                reg->left.setText(isAmiga() ? "Delay PF1" : "RC" );
-                reg->right.setText(isAmiga() ? "Delay PF2" : "VMLI" );
+                reg->left.setText( "RC" );
+                reg->right.setText( "VMLI" );
                 break;
             case 4:
-                reg->left.setText(isAmiga() ? "PF1P" : "Raster IRQ" );
-                reg->right.setText(isAmiga() ? "PF2P" : "VIC Bank" );
+                reg->left.setText( "Raster IRQ" );
+                reg->right.setText( "VIC Bank" );
                 break;
             case 5:
-                reg->left.setText(isAmiga() ? "HSTART" : "Screen Mem" );
-                reg->right.setText(isAmiga() ? "HSTOP" : "Char Mem" );
+                reg->left.setText( "Screen Mem" );
+                reg->right.setText( "Char Mem" );
                 break;
             case 6:
-                reg->left.setText(isAmiga() ? "BPL1DAT" : "Reg 11" );
-                reg->right.setText(isAmiga() ? "BPL2DAT" : "Reg 16" );
-                break;
-            case 7:
-                reg->left.setText("BPL3DAT" );
-                reg->right.setText("BPL4DAT" );
-                break;
-            case 8:
-                reg->left.setText("BPL5DAT" );
-                reg->right.setText("BPL6DAT" );
+                reg->left.setText( "Reg 11" );
+                reg->right.setText( "Reg 16" );
                 break;
         }
     }
@@ -689,29 +477,16 @@ auto VideoDebugger::translateTheme() -> void {
     pos.vertical.label.setText( "Y" );
     pos.horizontal.label.setText( "X" );
 
-    if (isAmiga()) {
-        pos.vertical.labelTo.setText( "-" );
-        pos.horizontal.labelTo.setText( "-" );
-        pos.vertical.labelMemory.setText( "DatA" );
-        pos.horizontal.labelMemory.setText( "DatB" );
+    pos.vertical.flag.setText( "expandY" );
+    pos.vertical.labelMemory.setText( "Mc Base" );
+    pos.horizontal.flag.setText( "expandX" );
+    pos.horizontal.labelMemory.setText( "Memory" );
 
-        auto& flagsSpr = video->sprites.flags;
-        flagsSpr.boxes[0]->setText( "Attach" );
-        flagsSpr.boxes[1]->setText( "SS Col" );
-        flagsSpr.boxes[2]->setText( "Even BPL Col" );
-        flagsSpr.boxes[3]->setText( "Odd BPL Col" );
-    } else {
-        pos.vertical.flag.setText( "expandY" );
-        pos.vertical.labelMemory.setText( "Mc Base" );
-        pos.horizontal.flag.setText( "expandX" );
-        pos.horizontal.labelMemory.setText( "Memory" );
-
-        auto& flagsSpr = video->sprites.flags;
-        flagsSpr.boxes[0]->setText( "Priority" );
-        flagsSpr.boxes[1]->setText( "MultiColor" );
-        flagsSpr.boxes[2]->setText( "SF Collision" );
-        flagsSpr.boxes[3]->setText( "SS Collision" );
-    }
+    auto& flagsSpr = video->sprites.flags;
+    flagsSpr.boxes[0]->setText( "Priority" );
+    flagsSpr.boxes[1]->setText( "MultiColor" );
+    flagsSpr.boxes[2]->setText( "SF Collision" );
+    flagsSpr.boxes[3]->setText( "SS Collision" );
     
     GUIKIT::Layout::alignChildWidth({&intLatch, &intMask});
 }
@@ -721,5 +496,6 @@ auto VideoDebugger::saveIdent() -> std::string {
 }
 
 auto VideoDebugger::titleIdent() -> std::string {
-    return emulator->ident + (isC64() ? " Debugger VIC-II" : " Debugger Denise");
+    return emulator->ident + " Debugger VIC-II";
+
 }

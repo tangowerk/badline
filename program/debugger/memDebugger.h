@@ -84,7 +84,6 @@ struct MemDebugger : Debugger {
     auto memChanged(bool noColorChanges = true) -> void;
 
     auto updateC64MemControl(uint8_t _mode, bool init = false) -> void;
-    auto updateMemory(LIBAMI::DebuggerSnapshot& s) -> void;
     auto updateMemory(LIBC64::DebuggerSnapshot& s) -> void;
     template<typename T> auto loadMemoryBank(uint8_t bank, bool noColorChanges) -> void;
     template<typename T> auto fetchDump() -> void;

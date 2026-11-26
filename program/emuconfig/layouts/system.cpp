@@ -167,9 +167,6 @@ auto SystemLayout::translate() -> void {
 }
 
 auto SystemLayout::updateExpansionMemory() -> void {
-    if (dynamic_cast<LIBAMI::Interface*>(emulator))
-        return;
-
     Emulator::Interface::Model* useModel = nullptr;
     Emulator::Interface::Model* useModel2 = nullptr;
     Emulator::Interface::Expansion* expansionSelected = nullptr;
@@ -273,20 +270,6 @@ auto SystemModelLayout::updated( Line::Block* block, Emulator::Interface::Model*
                     tabWindow->audioLayout->settingsLayout.updateWidget(LIBC64::Interface::ModelIdSid);
             } break;
         }
-    } else {
-        switch(model->id) {
-            case LIBAMI::Interface::ModelIdRegion:
-                if (tabWindow->presentationLayout)
-                    tabWindow->presentationLayout->updatePresets(true, false);
-                else if (videoDriver)
-                    VideoManager::getInstance( emulator )->reloadSettings(false);
-                // fallthrough
-            case LIBAMI::Interface::ModelIdSystem:
-            case LIBAMI::Interface::ModelIdCpu:
-                if (this->emulator == activeEmulator)
-                    program->power(activeEmulator);
-                break;
-        }
     }
 }
 
@@ -303,8 +286,6 @@ auto SystemModelLayout::getIdent( Emulator::Interface::Model* model, std::string
             default:
                 return ModelLayout::getIdent(model, tooltip);
         }
-    } else if (dynamic_cast<LIBAMI::Interface*>(emulator)) {
-        return ModelLayout::getIdent(model, tooltip);
     }
 
     return name;
@@ -319,15 +300,6 @@ auto MemoryModelLayout::updated( Line::Block* block, Emulator::Interface::Model*
                 if (this->emulator == activeEmulator)
                     program->power(activeEmulator);
 
-                break;
-        }
-    } else {
-        switch(model->id) {
-            case LIBAMI::Interface::ModelIdChipMem:
-            case LIBAMI::Interface::ModelIdSlowMem:
-            case LIBAMI::Interface::ModelIdFastMem:
-                if (this->emulator == activeEmulator)
-                    program->power(activeEmulator);
                 break;
         }
     }
@@ -361,24 +333,6 @@ auto DriveModelLayout::updated( Line::Block* block, Emulator::Interface::Model* 
                 hintDriveSettings();
                 break;
         }
-    } else {
-        switch(model->id) {
-            case LIBAMI::Interface::ModelIdDiskDrivesConnected:
-                if (tabWindow->mediaLayout)
-                    tabWindow->mediaLayout->updateVisibility(emulator->getDiskMediaGroup(), block->combo->selection());
-
-                if (this->emulator == activeEmulator)
-                    program->power(activeEmulator);
-                break;
-
-            case LIBAMI::Interface::ModelIdHardDrivesConnected:
-                if (tabWindow->mediaLayout)
-                    tabWindow->mediaLayout->updateVisibility(emulator->getHardDiskMediaGroup(), block->combo->selection());
-
-                if (this->emulator == activeEmulator)
-                    program->power(activeEmulator);
-                break;
-        }
     }
 }
 
@@ -388,14 +342,6 @@ auto DriveModelLayout::widgetUpdated( Line::Block* block, Emulator::Interface::M
         if (tabWindow->mediaLayout) {
             if (model->id == LIBC64::Interface::ModelIdDiskDrivesConnected )
                 tabWindow->mediaLayout->updateVisibility(emulator->getDiskMediaGroup(), block->combo->selection());
-        }
-    } else {
-        if (tabWindow->mediaLayout) {
-            if (model->id == LIBAMI::Interface::ModelIdDiskDrivesConnected )
-                tabWindow->mediaLayout->updateVisibility(emulator->getDiskMediaGroup(), block->combo->selection());
-
-            if (model->id == LIBAMI::Interface::ModelIdHardDrivesConnected )
-                tabWindow->mediaLayout->updateVisibility(emulator->getHardDiskMediaGroup(), block->combo->selection());
         }
     }
 }
@@ -428,8 +374,6 @@ auto DriveModelLayout::getIdent( Emulator::Interface::Model* model, std::string&
             default:
                 return ModelLayout::getIdent(model, tooltip);
         }
-    } else if (dynamic_cast<LIBAMI::Interface*>(emulator)) {
-        return ModelLayout::getIdent(model, tooltip);
     }
 
     return name;
@@ -438,12 +382,6 @@ auto DriveModelLayout::getIdent( Emulator::Interface::Model* model, std::string&
 auto DriveModelLayout::getUnit(Emulator::Interface::Model* model) -> std::string {
     if (dynamic_cast<LIBC64::Interface*>(this->emulator)) {
         if (model->id == LIBC64::Interface::ModelIdDiskDriveSpeed || model->id == LIBC64::Interface::ModelIdDiskDriveWobble)
-            return " RPM";
-    } else {
-        if (model->id == LIBAMI::Interface::ModelIdDriveStepperDelay || model->id == LIBAMI::Interface::ModelIdDriveStepperAccess)
-            return " ms";
-
-        if (model->id == LIBAMI::Interface::ModelIdDiskDriveSpeed || model->id == LIBAMI::Interface::ModelIdDiskDriveWobble)
             return " RPM";
     }
 

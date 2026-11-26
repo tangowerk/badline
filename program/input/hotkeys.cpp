@@ -92,8 +92,6 @@ auto InputManager::setCustomHotkeys() -> void {
 	customHotkeys.push_back( {Hotkey::Id::Power, "Hard Reset", true} );
     if (dynamic_cast<LIBC64::Interface*>(emulator) )
         customHotkeys.push_back( {Hotkey::Id::PowerWithUnplugCart, "Hard Reset + Unplug Cart", false} );
-    else
-        customHotkeys.push_back({ Hotkey::Id::PowerWithEjectDisks, "Hard Reset + Eject Disks", false });
 
 	customHotkeys.push_back( {Hotkey::Id::SoftReset, "Soft Reset", true} );
     customHotkeys.push_back( {Hotkey::Id::AnyLoad, "load software", true} );
@@ -116,8 +114,7 @@ auto InputManager::setCustomHotkeys() -> void {
 	    customHotkeys.push_back( {Hotkey::Id::ToggleSuperCpuTurbo, "SuperCPU Turbo", false} );
         customHotkeys.push_back( {Hotkey::Id::Toggle2MHzCpuTurbo, "toggle 2 MHz Turbo", false });
 	    customHotkeys.push_back( {Hotkey::Id::PrioDoubleAssignment, "Allow Keyset Joystick", false });
-	} else
-        customHotkeys.push_back( {Hotkey::Id::SwapJoypadsPort2, "swap joypads Port2", false} );
+	}
     
 	customHotkeys.push_back( {Hotkey::Id::Software, "Software", true} );	
     customHotkeys.push_back( {Hotkey::Id::System, "System", true} );
@@ -141,7 +138,6 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
     Hotkey::Id id = (Hotkey::Id)trigger->hotkeyId;
 
     typedef LIBC64::Interface C64Interface;
-    typedef LIBAMI::Interface AmigaInterface;
     
     auto settings = Program::getSettings( activeEmulator );
     
@@ -221,7 +217,7 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             if (!activeEmulator)
                 break;
             
-            bool state = settings->get<bool>( "runahead_performance", dynamic_cast<LIBAMI::Interface*>(activeEmulator));
+            bool state = settings->get<bool>( "runahead_performance", false);
             state ^= 1;
             settings->set<bool>( "runahead_performance", state);
             emuThread->lock();
@@ -235,38 +231,6 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             statusHandler->setMessage( trans->get( !state ? "runahead accuracy mode" : "runahead performance mode" ), false, true );
         } break;
 
-        case Hotkey::Id::SwapJoypadsPort2: {
-            if (activeEmulator != emulator)
-                break;
-
-            emuThread->lock();
-            auto settings = Program::getSettings( emulator );
-            auto connector = emulator->getConnector( 1 );
-            auto connectedDevice = emulator->getConnectedDevice( connector );
-
-            for (auto& device : emulator->devices) {
-                if (!device.isJoypad())
-                    continue;
-                if (!connectedDevice || !connectedDevice->isJoypad()) {
-                    connectedDevice = &device;
-                    break;
-                }
-                if (connectedDevice != &device) {
-                    connectedDevice = &device;
-                    break;
-                }
-            }
-
-            emulator->connect( connector, connectedDevice );
-            auto manager = InputManager::getManager(emulator);
-            manager->updateMappingsInUse();
-            settings->set<unsigned>( _underscore(connector->name), connectedDevice->id);
-            view->checkInputDevice(emulator, connector, connectedDevice);
-
-            auto emuView = EmuConfigView::TabWindow::getView(emulator);
-            if (emuView && emuView->inputLayout)
-                emuView->inputLayout->updateConnectorButtons();
-        } break;
 		case Hotkey::Id::SwapPortDevices: {
 		    if (activeEmulator != emulator)
 		        break;
@@ -347,13 +311,6 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             program->power(emulator);
             break;
 
-        case Hotkey::PowerWithEjectDisks:
-            emuThread->lock(true);
-            for (auto& media : emulator->getDiskMediaGroup()->media)
-                fileloader->eject(emulator, &media);
-            MiscHelper::removeExpansion(emulator);
-            program->power(emulator);
-            break;
 			
 		case Hotkey::SoftReset:
             emuThread->lock(true);

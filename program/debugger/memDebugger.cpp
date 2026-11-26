@@ -2,7 +2,6 @@
 #include "cpuDebugger.h"
 #include "../thread/emuThread.h"
 #include "../program.h"
-#include "../tools/macros.h"
 #include <cstring>
 
 MemDebugger::MemDebugger( Emulator::Interface* emulator )
@@ -29,22 +28,7 @@ MemDebugger::Memory::Memory(Debugger* debugger)
     #define AR GUIKIT::ListView::Align::Right
     #define AC GUIKIT::ListView::Align::Center
 
-    if (debugger->isAmiga()) {
-        pageList.setHeaderText( { "address", "0","2", "4", "6", "8", "A", "C", "E", "ASCII" });
-        pageList.setAlignment( {AL, AR, AR, AR, AR, AR, AR, AR, AR}, true );
-
-        bankList.lockRedraw();
-        for (unsigned i = 0; i < 0x100; i++) {
-            bankList.append({GUIKIT::String::convertToHex(i, 2), "Unmapped" }, true);
-            bankList.setRowForegroundColor( UNUSED_COLOR, i );
-        }
-        bankList.unlockRedraw();
-
-        pageList.lockRedraw();
-        for (unsigned i = 0; i < 0x1000; i++)
-            pageList.append({GUIKIT::String::convertToHex(i * 16, 4), "   0", "   0", "   0", "   0", "   0", "   0", "   0", "   0", "................"}, true);
-        pageList.unlockRedraw();
-    } else if (debugger->getTheme() == DebuggerTheme::MemorySCPU) {
+    if (debugger->getTheme() == DebuggerTheme::MemorySCPU) {
         pageList.setHeaderText( { "address", "0","1", "2", "3", "4", "5", "6", "7", "8","9", "A", "B", "C", "D", "E","F", "ASCII" });
         pageList.setAlignment( {AL, AC, AC, AC, AC, AC, AC, AC, AC, AC, AC, AC, AC, AC, AC, AC, AC}, true );
 
@@ -95,7 +79,7 @@ MemDebugger::Memory::Memory(Debugger* debugger)
 
 MemDebugger::Memory::Options::Address::Address(Debugger* debugger) {
     edit.setFont( GUIKIT::Font::monospace() );
-    edit.setMaxLength( debugger->isAmiga() || debugger->getTheme() == DebuggerTheme::MemorySCPU ? 6 : 4 );
+    edit.setMaxLength( debugger->getTheme() == DebuggerTheme::MemorySCPU ? 6 : 4 );
     append(edit, {getWidth(7, true), 0u}, 5);
     append(view, {0u, 0u});
     setAlignment( 0.5 );
@@ -154,7 +138,7 @@ MemDebugger::C64MemControl::C64MemControl(Debugger* debugger)
 }
 
 auto MemDebugger::buildControl() -> GUIKIT::Layout* {
-    if (isC64() && !isDriveMem()) {
+    if (!isDriveMem()) {
         c64MemControl = new C64MemControl(this);
         return c64MemControl;
     }
@@ -163,17 +147,10 @@ auto MemDebugger::buildControl() -> GUIKIT::Layout* {
 
 auto MemDebugger::searchAddress(unsigned addr) -> void {
     if ( (getTheme() == DebuggerTheme::Memory) || isDriveMem()) {
-        if (isAmiga()) {
-            uint8_t bank = (addr >> 16) & 0xff;
-            memory->bankList.setSelection( bank );
-            uint16_t page = addr & 0xffff;
-            memory->pageList.setSelection( page / 16 );
-        } else {
-            uint8_t bank = (addr >> 12) & 0xff;
-            memory->bankList.setSelection( bank );
-            uint16_t page = addr & 0xfff;
-            memory->pageList.setSelection( page / 16 );
-        }
+        uint8_t bank = (addr >> 12) & 0xff;
+        memory->bankList.setSelection( bank );
+        uint16_t page = addr & 0xfff;
+        memory->pageList.setSelection( page / 16 );
     } else if (getTheme() == DebuggerTheme::MemorySCPU) {
         uint8_t bank = (addr >> 16) & 0xff;
         memory->bankList.setSelection( bank );
@@ -186,7 +163,7 @@ auto MemDebugger::searchAddress(unsigned addr) -> void {
 auto MemDebugger::buildTheme() -> GUIKIT::Layout* {
     memory = new Memory(this);
 
-    if (isAmiga() || (getTheme() == DebuggerTheme::MemorySCPU)) {
+    if (getTheme() == DebuggerTheme::MemorySCPU) {
         memDump = new uint8_t[0x10000];
         memDumpOld = new uint8_t[0x10000];
         std::memset(memDumpOld, 0, 0x10000);
@@ -196,7 +173,7 @@ auto MemDebugger::buildTheme() -> GUIKIT::Layout* {
         std::memset(memDumpOld, 0, 0x1000);
     }
 
-    if (isC64() && !isDriveMem()) {
+    if (!isDriveMem()) {
         updateC64MemControl(0, true);
     }
 
@@ -245,24 +222,15 @@ auto MemDebugger::buildTheme() -> GUIKIT::Layout* {
 
         uint32_t addr = memory->bankList.selection();
 
-        if (isAmiga()) {
-            if (col == 9)
-                return false;
+        if (col == 17)
+            return false;
 
+        if (getTheme() == DebuggerTheme::MemorySCPU) {
             addr = (addr & 0xff) << 16;
-            addr |= row * 16 + ((col - 1) << 1);
-
+            addr |= row * 16 + (col - 1);
         } else {
-            if (col == 17)
-                return false;
-
-            if (getTheme() == DebuggerTheme::MemorySCPU) {
-                addr = (addr & 0xff) << 16;
-                addr |= row * 16 + (col - 1);
-            } else {
-                addr = (addr & 0xf) << 12;
-                addr |= row * 16 + (col - 1);
-            }
+            addr = (addr & 0xf) << 12;
+            addr |= row * 16 + (col - 1);
         }
 
         memory->options.address.edit.setText( GUIKIT::String::convertToHex( addr ) );
@@ -292,16 +260,11 @@ auto MemDebugger::updateTheme() -> void {
     if (emulator != activeEmulator)
         return;
 
-    if (isAmiga()) {
-        LIBAMI::DebuggerSnapshot& snap = *static_cast<LIBAMI::DebuggerSnapshot*>(snapshot);
+    LIBC64::DebuggerSnapshot& snap = *static_cast<LIBC64::DebuggerSnapshot*>(snapshot);
+    if (isDriveMem() || (getTheme() == DebuggerTheme::Memory)) {
         updateMemory( snap);
-    } else {
-        LIBC64::DebuggerSnapshot& snap = *static_cast<LIBC64::DebuggerSnapshot*>(snapshot);
-        if (isDriveMem() || (getTheme() == DebuggerTheme::Memory)) {
-            updateMemory( snap);
-        } else if (snap.superCpu && getTheme() == DebuggerTheme::MemorySCPU) {
-            updateMemory( snap);
-        }
+    } else if (snap.superCpu && getTheme() == DebuggerTheme::MemorySCPU) {
+        updateMemory( snap);
     }
 }
 
@@ -314,66 +277,13 @@ auto MemDebugger::closeTheme() -> void {
 }
 
 auto MemDebugger::prepareTheme(bool external) -> void {
-    isAmiga() ? fetchDump<uint16_t>() : fetchDump<uint8_t>();
+    fetchDump<uint8_t>();
 }
 
 auto MemDebugger::memChanged(bool noColorChanges) -> void {
     unsigned selectedBank = memory->bankList.selection();
-    if (isAmiga()) {
-        fetchDump<uint16_t>();
-        loadMemoryBank<uint16_t>( selectedBank, noColorChanges );
-    } else {
-        fetchDump<uint8_t>();
-        loadMemoryBank<uint8_t>( selectedBank, noColorChanges );
-    }
-}
-
-auto MemDebugger::updateMemory(LIBAMI::DebuggerSnapshot& s) -> void {
-    auto& bankList = memory->bankList;
-    bankList.lockRedraw();
-
-    int bank = 0;
-    std::string ident;
-    for (auto& m : s.mapper) {
-        switch (m) {
-            case 1: ident = "Chip Ram"; break;
-            case 2: ident = "Slow Ram"; break;
-            case 3: ident = "Kick ROM"; break;
-            case 4: ident = "Ext ROM"; break;
-            case 5: ident = "WOM"; break;
-            case 6: ident = "Chipset"; break;
-            case 7: ident = "CIA"; break;
-            case 8: ident = "RTC"; break;
-            case 9: ident = "Auto Conf"; break;
-            case 10: ident = "Fast Ram"; break;
-            case 11: ident = "Expansion"; break;
-
-            default:
-            case 0: ident = "Unmapped"; break;
-        }
-
-        if (bankListStore[bank] != m) {
-            bankList.setText( bank, 1, ident );
-            if (m == 0)
-                bankList.setRowForegroundColor( UNUSED_COLOR, bank );
-            else
-                bankList.resetRowForegroundColor( bank );
-
-            bankListStore[bank] = m;
-        }
-
-        bank++;
-    }
-
-    bankList.unlockRedraw();
-
-    unsigned selectedBank = 0;
-    if (bankList.selected())
-        selectedBank = bankList.selection();
-
-    loadMemoryBank<uint16_t>(selectedBank, false);
-
-    updateControl( s.vPos, s.hPos );
+    fetchDump<uint8_t>();
+    loadMemoryBank<uint8_t>( selectedBank, noColorChanges );
 }
 
 auto MemDebugger::updateMemory(LIBC64::DebuggerSnapshot& s) -> void {
@@ -479,7 +389,7 @@ auto MemDebugger::fetchDump() -> void {
 
     auto* pNew = reinterpret_cast<T*>(memDump);
 
-    if (isC64() && ((getTheme() == DebuggerTheme::Memory) || isDriveMem()))
+    if ((getTheme() == DebuggerTheme::Memory) || isDriveMem())
         emulator->getMemoryDumpPage( getTheme(), selectedBank, reinterpret_cast<uint8_t*>(pNew) );
     else {
         emulator->getMemoryDumpBank( selectedBank, pNew );
@@ -513,11 +423,7 @@ auto MemDebugger::loadMemoryBank(uint8_t bank, bool noColorChanges) -> void {
     bool pause = isPaused();
     std::string val;
     unsigned mask = (std::is_same_v<T, uint8_t>) ? 0xf : 7;
-    bool _swapWords = false;
-    if (isAmiga()) {
-        auto mapping = bankListStore[bank];
-        _swapWords = mapping == 1 || mapping == 2 || mapping == 3 || mapping == 4 || mapping == 5 || mapping == 10;
-    }
+
     char ascii[17];
     unsigned limit = 0x1000;
     if constexpr (std::is_same_v<T, uint16_t>)
@@ -533,10 +439,8 @@ auto MemDebugger::loadMemoryBank(uint8_t bank, bool noColorChanges) -> void {
             if (allowedTextChanges)
                 allowedTextChanges--;
 
-            if (_swapWords)
-                val = GUIKIT::String::convertToHex( _swapWord(*pNew) );
-            else
-                val = GUIKIT::String::convertToHex( *pNew );
+            val = GUIKIT::String::convertToHex( *pNew );
+
             pageList.setText( line, 1 + (pos & mask), val, true );
             updateCol = true;
         }

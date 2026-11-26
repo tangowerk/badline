@@ -165,7 +165,6 @@ add_subdirectory(emulation/cia)
 add_subdirectory(emulation/wdc/65C02)
 add_subdirectory(emulation/wdc/65816)
 add_subdirectory(emulation/libc64)
-add_subdirectory(emulation/libami)
 add_subdirectory(program)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")

@@ -163,9 +163,6 @@ auto Fileloader::load(Emulator::Interface* emulator, Emulator::Interface::Media*
         if (settings->get<bool>("software_preview_commodore_hi", true ))
             fileDialogPtr->setContentViewSelection( backgroundColor, foregroundColor );
 
-        if (dynamic_cast<LIBAMI::Interface*>(emulator) )
-            fileDialogPtr->setContentViewFirstRow( backgroundColor, foregroundColor );
-
         fileDialogPtr->setContentViewColorTooltips(true);
     }
 
@@ -259,9 +256,6 @@ auto Fileloader::anyLoad( Emulator::Interface* emulator, bool mIsAcquiredBefore 
         if (settings->get<bool>("software_preview_commodore_hi", true ))
             fileDialogPtr->setContentViewSelection( backgroundColor, foregroundColor );
 
-        if (dynamic_cast<LIBAMI::Interface*>(emulator) )
-            fileDialogPtr->setContentViewFirstRow( backgroundColor, foregroundColor );
-
         fileDialogPtr->setContentViewColorTooltips(true);
     }
 
@@ -270,28 +264,6 @@ auto Fileloader::anyLoad( Emulator::Interface* emulator, bool mIsAcquiredBefore 
     fileDialogPtr->setFilters({trans->get("all_files")});
 
     fileDialogPtr->setOnChangeCallback( [this, emulator](std::string file, bool multi) {
-
-        if (multi && dynamic_cast<LIBAMI::Interface*>(emulator)) {
-            // amiga disk / harddisk multi selection
-            auto mediaGroups = emulator->getDriveMediaGroups();
-            std::vector<GUIKIT::BrowserWindow::Listing> out;
-            auto extension = GUIKIT::String::getExtension(file, "exe", 2);
-            GUIKIT::String::toLowerCase(extension);
-            auto parts = GUIKIT::String::split(extension, '.');
-
-            for (auto& part : parts) {
-                for (auto mediaGroup : mediaGroups) {
-                    if (GUIKIT::Vector::find(mediaGroup->suffix, part)) {
-                        for (auto media : mediaGroup->media)
-                            out.push_back({ media.name });
-                    }
-                }
-
-                if (out.size())
-                    break;
-            }
-            return out;
-        }
 
         return this->previewFile(file, emulator);
     } );
@@ -764,7 +736,6 @@ auto Fileloader::insertFile( Emulator::Interface* emulator, Emulator::Interface:
             }
             emuThread->unlock();
         };
-        archiveViewer->allowNativeArchive(dynamic_cast<LIBAMI::Interface*>(emulator) ? media->group : nullptr);
         archiveViewer->preferSuffixes({media->group});
         archiveViewer->setView(file, items);
     } else {

@@ -151,22 +151,16 @@ auto ConditionViewDebugger::create(DbgWatcher* watcher, GUIKIT::Position positio
 
     std::string placeHolder = "";
 
-    if (debugger->isAmiga()) {
-        for (auto& cond: LIBAMI::DebuggerSnapshot::breakConditions)
+    if (debugger->getTheme() == DebuggerTheme::SCPU) {
+        for (auto& cond: LIBC64::DebuggerSnapshot::breakConditionsSCPU)
             placeHolder += " " + (std::string)cond.ident;
-
-        GUIKIT::String::replace( placeHolder, ":", ":$000000" );
     } else {
-        if (debugger->getTheme() == DebuggerTheme::SCPU) {
-            for (auto& cond: LIBC64::DebuggerSnapshot::breakConditionsSCPU)
-                placeHolder += " " + (std::string)cond.ident;
-        } else {
-            for (auto& cond: LIBC64::DebuggerSnapshot::breakConditions)
-                placeHolder += " " + (std::string)cond.ident;
-        }
-
-        GUIKIT::String::replace( placeHolder, ":", ":$0000" );
+        for (auto& cond: LIBC64::DebuggerSnapshot::breakConditions)
+            placeHolder += " " + (std::string)cond.ident;
     }
+
+    GUIKIT::String::replace( placeHolder, ":", ":$0000" );
+
 
     conditionLayout.info.setText(
         trans->getA("operators") + ": $ | & ^ || &&  == != <= < << >= > >> + - * / % \n" +

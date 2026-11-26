@@ -56,10 +56,7 @@ CpuDebugger::CPU::State::Flags::Flags(Debugger* debugger) {
     int i;
     const char* ident;
 
-    if (debugger->isAmiga()) {
-        i = sizeof(LIBAMI::DebuggerSnapshot::flagIdent);
-        ident = &LIBAMI::DebuggerSnapshot::flagIdent[0];
-    } else if (debugger->getTheme() == DebuggerTheme::SCPU) {
+    if (debugger->getTheme() == DebuggerTheme::SCPU) {
         i = sizeof(LIBC64::DebuggerSnapshot::flagIdent65816);
         ident = &LIBC64::DebuggerSnapshot::flagIdent65816[0];
     } else {
@@ -105,9 +102,9 @@ CpuDebugger::CPU::State::Registers::Registers(Debugger* debugger) {
     rightVal.setStore( 0 );
 
     append(left, {getWidth(4, false), 0u}, 5);
-    append(leftVal, {getWidth(debugger->isAmiga() ? 8 : 4, true), 0u}, 10);
+    append(leftVal, {getWidth(4, true), 0u}, 10);
     append(right, {getWidth(4, false), 0u}, 5);
-    append(rightVal, {getWidth(debugger->isAmiga() ? 8 : 4, true), 0u});
+    append(rightVal, {getWidth(4, true), 0u});
 
     setAlignment( 0.5 );
 }
@@ -119,7 +116,7 @@ CpuDebugger::CPU::State::State::Trace::Trace() {
 }
 
 CpuDebugger::CPU::State::Options::Address::Address(Debugger* debugger) {
-    edit.setMaxLength( debugger->isAmiga() ? 6 : 4 );
+    edit.setMaxLength( 4 );
     edit.setFont( GUIKIT::Font::monospace() );
     append(edit, {getWidth(7, true), 0u}, 5);
     append(view, {0u, 0u});
@@ -142,15 +139,13 @@ CpuDebugger::CPU::State::Options::Options(Debugger* debugger)
 CpuDebugger::CPU::State::State(Debugger* debugger)
 : flags(debugger), options( debugger ) {
     int i = 0;
-    unsigned elements = 11; // Amiga
-    if (debugger->isC64()) {
-        if (debugger->isDriveCpu())
-            elements = 3;
-        else if (debugger->getTheme() == DebuggerTheme::SCPU)
-            elements = 5;
-        else
-            elements = 4;
-    }
+    unsigned elements;
+    if (debugger->isDriveCpu())
+        elements = 3;
+    else if (debugger->getTheme() == DebuggerTheme::SCPU)
+        elements = 5;
+    else
+        elements = 4;
 
     registers.resize( elements );
 
@@ -158,10 +153,7 @@ CpuDebugger::CPU::State::State(Debugger* debugger)
         reg = new Registers(debugger);
         i++;
 
-        if (debugger->isAmiga())
-            append(*reg, {0u, 0u}, (i == 8 || i == elements) ? 20 : 5);
-        else
-            append(*reg, {0u, 0u}, (i == elements) ? 20 : 5);
+        append(*reg, {0u, 0u}, (i == elements) ? 20 : 5);
     }
 
     append(flags, {0u, 0u}, 20);
@@ -209,10 +201,7 @@ auto CpuDebugger::buildTheme() -> GUIKIT::Layout* {
     watcherHelper.debugger = this;
     watcherHelper.watcherList = &cpu->watcher.list;
 
-    if (isAmiga()) {
-        for (const Emulator::Interface::DebuggerIdent& debuggerException : LIBAMI::DebuggerSnapshot::exceptions)
-            cpu->watcher.excAdder.exceptionCombo.append( debuggerException.ident, (int)debuggerException.vector );
-    } else if (getTheme() == DebuggerTheme::SCPU) {
+    if (getTheme() == DebuggerTheme::SCPU) {
         for (const Emulator::Interface::DebuggerIdent& debuggerException : LIBC64::DebuggerSnapshot::exceptions65816)
             cpu->watcher.excAdder.exceptionCombo.append( debuggerException.ident, (int)debuggerException.vector );
     } else {
@@ -457,10 +446,7 @@ auto CpuDebugger::updateTraceList() -> void {
 
     unsigned flagSize;
     const char* flagIdent;
-    if (isAmiga()) {
-        flagSize = sizeof(LIBAMI::DebuggerSnapshot::flagIdent);
-        flagIdent = &LIBAMI::DebuggerSnapshot::flagIdent[0];
-    } else if (getTheme() == DebuggerTheme::SCPU) {
+    if (getTheme() == DebuggerTheme::SCPU) {
         flagSize = sizeof(LIBC64::DebuggerSnapshot::flagIdent65816);
         flagIdent = &LIBC64::DebuggerSnapshot::flagIdent65816[0];
     } else {
@@ -585,19 +571,14 @@ auto CpuDebugger::prepareTheme(bool external) -> void {
         return;
 
     unsigned addr;
-    if (isAmiga()) {
-        LIBAMI::DebuggerSnapshot& snap = *static_cast<LIBAMI::DebuggerSnapshot*>(snapshot);
-        addr = snap.pcEdge;
-    } else {
-        LIBC64::DebuggerSnapshot& snap = *static_cast<LIBC64::DebuggerSnapshot*>(snapshot);
-        if (!isDriveCpu() && !(snap.superCpu && getTheme() == DebuggerTheme::SCPU) && !(!snap.superCpu && getTheme() == DebuggerTheme::CPU) )
-            return;
+    LIBC64::DebuggerSnapshot& snap = *static_cast<LIBC64::DebuggerSnapshot*>(snapshot);
+    if (!isDriveCpu() && !(snap.superCpu && getTheme() == DebuggerTheme::SCPU) && !(!snap.superCpu && getTheme() == DebuggerTheme::CPU) )
+        return;
 
-        if (isDriveCpu()) {
-            addr = snap.drives[getDriveId()].pcEdge;
-        } else
-            addr = snap.pcEdge;
-    }
+    if (isDriveCpu()) {
+        addr = snap.drives[getDriveId()].pcEdge;
+    } else
+        addr = snap.pcEdge;
 
     if (cpu->switchLayout.selection() == 1)
         fetchTraces();
@@ -629,22 +610,16 @@ auto CpuDebugger::updateTheme() -> void {
     if (emulator != activeEmulator)
         return;
 
-    if (isAmiga()) {
-        LIBAMI::DebuggerSnapshot& snap = *static_cast<LIBAMI::DebuggerSnapshot*>(snapshot);
-        update68k(snap);
+    LIBC64::DebuggerSnapshot& snap = *static_cast<LIBC64::DebuggerSnapshot*>(snapshot);
 
-    } else {
-        LIBC64::DebuggerSnapshot& snap = *static_cast<LIBC64::DebuggerSnapshot*>(snapshot);
-
-        if (isDriveCpu())
-            update6502( snap );
-        else if (!snap.superCpu && getTheme() == DebuggerTheme::CPU)
-            update6510( snap );
-        else if (snap.superCpu && getTheme() == DebuggerTheme::SCPU)
-            update65816( snap );
-        else
-            return;
-    }
+    if (isDriveCpu())
+        update6502( snap );
+    else if (!snap.superCpu && getTheme() == DebuggerTheme::CPU)
+        update6510( snap );
+    else if (snap.superCpu && getTheme() == DebuggerTheme::SCPU)
+        update65816( snap );
+    else
+        return;
 
     if (cpu->switchLayout.selection() == 1)
         updateTraceList();
@@ -684,35 +659,6 @@ auto CpuDebugger::closeTheme() -> void {
         emulator->debuggerRemove( getTheme(), DebuggerAction::History );
         emulator->debuggerRemove( getTheme(), DebuggerAction::ModifiedCode );
     }
-}
-
-auto CpuDebugger::update68k(LIBAMI::DebuggerSnapshot& s) -> void {
-    int i = 0;
-    for (auto& reg : cpu->state.registers) {
-        switch (i) {
-            case 0: case 1: case 2: case 3:
-            case 4: case 5: case 6: case 7:
-                updateReg(reg->leftVal, s.regsD[i]);
-                updateReg(reg->rightVal, s.regsA[i]);
-                break;
-            case 8:
-                updateReg(reg->leftVal, s.pc);
-                updateReg(reg->rightVal, s.ird);
-                break;
-            case 9:
-                updateReg(reg->leftVal, s.ssp);
-                updateReg(reg->rightVal, s.irc);
-                break;
-            case 10:
-                updateReg(reg->leftVal, s.usp);
-                updateReg(reg->rightVal, s.ipl);
-                break;
-        }
-        i++;
-    }
-
-    updateControl( s.vPos, s.hPos );
-    updateCpuFlags(&LIBAMI::DebuggerSnapshot::flagIdent[0], s.flags);
 }
 
 auto CpuDebugger::update6502(LIBC64::DebuggerSnapshot& s) -> void {
@@ -809,47 +755,27 @@ auto CpuDebugger::translateTheme() -> void {
     cpu->watcher.memoryAccessLayout.writeCheck.setText( trans->getA( "write" ) );
 
     int i = 0;
-    if (isAmiga()) {
-        for (auto& reg : cpu->state.registers) {
-            if (i < 8) {
-                reg->left.setText( "D" + std::to_string( i ) );
-                reg->right.setText( "A" + std::to_string( i ) );
-            } else if (i == 8) {
-                reg->left.setText("PC");
-                reg->right.setText("IRD");
-            } else if (i == 9) {
-                reg->left.setText("SSP");
-                reg->right.setText("IRC");
-            } else if (i == 10) {
-                reg->left.setText("USP");
-                reg->right.setText("IPL");
+    for (auto& reg : cpu->state.registers) {
+        if (i == 0) {
+            reg->left.setText( "PC" );
+            reg->right.setText( "S" );
+        } else if (i == 1) {
+            reg->left.setText( "X" );
+            reg->right.setText( "Y" );
+        } else if (i == 2) {
+            reg->left.setText( "A" );
+            if (!isDriveCpu())
+                reg->right.setText( getTheme() == DebuggerTheme::SCPU ? "D" : "I/O" );
+        } else if (i == 3) {
+            if (!isDriveCpu()) {
+                reg->left.setText( getTheme() == DebuggerTheme::SCPU ? "PBR" : "POR" );
+                reg->right.setText( getTheme() == DebuggerTheme::SCPU ? "DBR" : "DDR" );
             }
-
-            i++;
+        } else if (i == 4) {
+            reg->left.setText( getTheme() == DebuggerTheme::SCPU ? "M-E" : "" );
         }
-    } else {
-        for (auto& reg : cpu->state.registers) {
-            if (i == 0) {
-                reg->left.setText( "PC" );
-                reg->right.setText( "S" );
-            } else if (i == 1) {
-                reg->left.setText( "X" );
-                reg->right.setText( "Y" );
-            } else if (i == 2) {
-                reg->left.setText( "A" );
-                if (!isDriveCpu())
-                    reg->right.setText( getTheme() == DebuggerTheme::SCPU ? "D" : "I/O" );
-            } else if (i == 3) {
-                if (!isDriveCpu()) {
-                    reg->left.setText( getTheme() == DebuggerTheme::SCPU ? "PBR" : "POR" );
-                    reg->right.setText( getTheme() == DebuggerTheme::SCPU ? "DBR" : "DDR" );
-                }
-            } else if (i == 4) {
-                reg->left.setText( getTheme() == DebuggerTheme::SCPU ? "M-E" : "" );
-            }
 
-            i++;
-        }
+        i++;
     }
 
     cpu->instructionLayout.list.setHeaderText( {"", trans->getA( "address"), trans->getA( "data"), trans->getA( "instruction") } );
@@ -939,7 +865,8 @@ auto CpuDebugger::updateWatcherBreakpointVisuals(DbgWatcher* watcher) -> void {
 }
 
 auto CpuDebugger::buildControl() -> GUIKIT::Layout* {
-    if (isC64() && !isDriveCpu()) {
+    if (!isDriveCpu()) {
+
         c64RdyControl = new C64RdyControl();
 
         c64RdyControl->rdyButton.onActivate = [this]() {

@@ -1,14 +1,12 @@
 
 #include "debugger.h"
 
-#include "../../emulation/libami/interface.h"
 #include "../program.h"
 #include "../thread/emuThread.h"
 #include "../../data/icons.h"
 #include "../../emulation/interface.h"
 #include "memDebugger.h"
 #include "cpuDebugger.h"
-#include "copperDebugger.h"
 #include "conditionViewDebugger.h"
 #include "watcherHelper.h"
 #include "../helper/settingsHelper.h"
@@ -106,7 +104,6 @@ auto Debugger::build() -> void {
     checkedImg.loadPng((uint8_t*)Icons::checked, sizeof(Icons::checked));
     forwardImg.loadPng((uint8_t*)Icons::forward, sizeof(Icons::forward));
     systemImg.loadPng((uint8_t*)Icons::system, sizeof(Icons::system));
-    nextImg.loadPng((uint8_t*)Icons::next, sizeof(Icons::next));
     arrowLeftImg.loadPng((uint8_t*)Icons::arrowLeft, sizeof(Icons::arrowLeft));
     arrowRightImg.loadPng((uint8_t*)Icons::arrowRight, sizeof(Icons::arrowRight));
 
@@ -263,28 +260,18 @@ auto Debugger::build() -> void {
 }
 
 auto Debugger::appendDebuggerItems() -> void {
-    std::vector<DebuggerTheme> themes;
-
-    if (isC64()) {
-        themes = {
-            DebuggerTheme::CPU, DebuggerTheme::SCPU, DebuggerTheme::Memory, DebuggerTheme::MemorySCPU,
-            DebuggerTheme::CIA, DebuggerTheme::Video, DebuggerTheme::DMA, DebuggerTheme::SID,
-            DebuggerTheme::Unspecified,
-            DebuggerTheme::Drive8CPU, DebuggerTheme::Drive8Memory, DebuggerTheme::Drive8VIA,
-            DebuggerTheme::Unspecified,
-            DebuggerTheme::Drive9CPU, DebuggerTheme::Drive9Memory, DebuggerTheme::Drive9VIA,
-            DebuggerTheme::Unspecified,
-            DebuggerTheme::Drive10CPU, DebuggerTheme::Drive10Memory, DebuggerTheme::Drive10VIA,
-            DebuggerTheme::Unspecified,
-            DebuggerTheme::Drive11CPU, DebuggerTheme::Drive11Memory, DebuggerTheme::Drive11VIA,
+std::vector<DebuggerTheme> themes = {
+        DebuggerTheme::CPU, DebuggerTheme::SCPU, DebuggerTheme::Memory, DebuggerTheme::MemorySCPU,
+        DebuggerTheme::CIA, DebuggerTheme::Video, DebuggerTheme::DMA, DebuggerTheme::SID,
+        DebuggerTheme::Unspecified,
+        DebuggerTheme::Drive8CPU, DebuggerTheme::Drive8Memory, DebuggerTheme::Drive8VIA,
+        DebuggerTheme::Unspecified,
+        DebuggerTheme::Drive9CPU, DebuggerTheme::Drive9Memory, DebuggerTheme::Drive9VIA,
+        DebuggerTheme::Unspecified,
+        DebuggerTheme::Drive10CPU, DebuggerTheme::Drive10Memory, DebuggerTheme::Drive10VIA,
+        DebuggerTheme::Unspecified,
+        DebuggerTheme::Drive11CPU, DebuggerTheme::Drive11Memory, DebuggerTheme::Drive11VIA,
         };
-    } else {
-        themes = {
-            DebuggerTheme::CPU, DebuggerTheme::Memory, DebuggerTheme::CIA, DebuggerTheme::Video,
-            DebuggerTheme::DMA, DebuggerTheme::Copper, DebuggerTheme::Blitter,
-            DebuggerTheme::Agnus, DebuggerTheme::Paula, DebuggerTheme::Serial,
-        };
-    }
 
     for (auto& theme : themes) {
         if (theme == getTheme())
@@ -499,14 +486,6 @@ auto Debugger::isPaused() -> bool {
     return emuThread->debugging;
 }
 
-auto Debugger::isC64() -> bool {
-    return dynamic_cast<LIBC64::Interface*>(emulator);
-}
-
-auto Debugger::isAmiga() -> bool {
-    return dynamic_cast<LIBAMI::Interface*>(emulator);
-}
-
 auto Debugger::updateReg(GUIKIT::LineEdit& reg, unsigned val) -> void {
     if ((unsigned)reg.getStore() != val) {
         reg.setStore( static_cast<int>(val) );
@@ -629,10 +608,6 @@ auto Debugger::changeMemory(const std::string& addrStr, const std::string& valSt
             if (debugger->isDriveCpu() || debugger->getTheme() == DebuggerTheme::CPU || debugger->getTheme() == DebuggerTheme::SCPU) {
                 (dynamic_cast<CpuDebugger*>(debugger))->memChanged();
             }
-
-            if (debugger->getTheme() == DebuggerTheme::Copper) {
-                (dynamic_cast<CopperDebugger*>(debugger))->memChanged();
-            }
         }
     }
 
@@ -689,9 +664,6 @@ auto Debugger::openConditionView(DbgWatcher* watcher, GUIKIT::Position position)
 }
 
 auto Debugger::getCpuTheme() -> DebuggerTheme {
-    if (isAmiga())
-        return DebuggerTheme::CPU;
-
     if (getTheme() == DebuggerTheme::SCPU)
         return DebuggerTheme::SCPU;
 

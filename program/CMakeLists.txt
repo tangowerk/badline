@@ -86,13 +86,8 @@ set(srcs
         debugger/videoDebugger.cpp
         debugger/sidDebugger.cpp
         debugger/dmaDebugger.cpp
-        debugger/copperDebugger.cpp
         debugger/conditionViewDebugger.cpp
         debugger/watcherHelper.cpp
-        debugger/blitterDebugger.cpp
-        debugger/agnusDebugger.cpp
-        debugger/paulaDebugger.cpp
-        debugger/serialDebugger.cpp
         view/status.cpp
         config/config.cpp
         config/layouts/drivers.cpp
@@ -187,4 +182,4 @@ endif()
 
 target_sources(${PROJECT_NAME} PUBLIC ${srcs} )
 
-target_link_libraries(${PROJECT_NAME} PUBLIC guikit driver coreC64 coreAmiga logos icons)
+target_link_libraries(${PROJECT_NAME} PUBLIC guikit driver coreC64 logos icons)

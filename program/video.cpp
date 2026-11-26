@@ -353,22 +353,7 @@ auto Program::getScaleHotkeyDefault() -> unsigned {
 }
 
 auto Program::getCropDefault(Emulator::Interface* emulator, int pos, int direction) -> unsigned {
-    if (!dynamic_cast<LIBAMI::Interface*>(emulator))
-        return 0;
-
-    if (pos > 5 || direction > 3)
-        return 0;
-
-    static int Adjustments[6][4] = {
-        {0, 0, 0, 0},
-        {45, 19, 11, 37},
-        {45, 19, 16, 10},
-        {39, 15, 16, 11},
-        {0, 0, 0, 0},
-        {0, 0, 0, 0}
-    };
-
-    return Adjustments[pos][direction];
+    return 0;
 }
 
 auto Program::upgradeCropSettings() -> void {
@@ -391,8 +376,6 @@ auto Program::upgradeCropSettings() -> void {
             }
 
             settings->set<unsigned>("crop_type", cropType);
-            if (dynamic_cast<LIBAMI::Interface*>(emulator))
-                settings->set<unsigned>("border_hotkey", program->getCropHotkeyDefault() );
         }
     }
 }

@@ -960,10 +960,7 @@ layScreenShot(dynamic_cast<LIBC64::Interface*>(tabWindow->emulator)) {
     layBase.shader.control.loadDefaultShader.onActivate = [this]() {
         std::string path = FileHelper::generatedFolder("shaders");
         path += "bezel/koko-aio/Presets-4.1/";
-        if (dynamic_cast<LIBC64::Interface*>(emulator))
-            path += "monitor-bloom-bezel-1541-snap.slangp";
-        else
-            path += "monitor-bloom-bezel-amiga.slangp";
+        path += "monitor-bloom-bezel-1541-snap.slangp";
 
         GUIKIT::File file(path.c_str());
 

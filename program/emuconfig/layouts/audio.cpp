@@ -1316,15 +1316,6 @@ auto AudioModelLayout::updated( Line::Block* block, Emulator::Interface::Model* 
                 audioManager->setResampler();
                 break;
         }
-    } else {
-        switch(model->id) {
-            case LIBAMI::Interface::ModelIdAudioFilter:
-                view->updatePowerMenu();
-                break;
-            case LIBAMI::Interface::ModelIdSampleFetch:
-                audioManager->setResampler();
-                break;
-        }
     }
 }
 

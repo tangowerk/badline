@@ -65,18 +65,9 @@ VideoManager::VideoManager(Emulator::Interface* emulator) {
     this->palette = &emulator->palettes[0];        
     this->colorCount = this->palette->paletteColors.size();
 
-    countColorBits = 0;
-	
-	if (isC64()) {
-        countColorBits = 4;
-        softwareViewForegroundColorRef = 14;
-        softwareViewBackgroundColorRef = 6;
-		
-	} else if (isAmiga()) {
-        countColorBits = 12;
-        softwareViewForegroundColorRef = 4095;
-        softwareViewBackgroundColorRef = 90;
-	}
+    countColorBits = 4;
+    softwareViewForegroundColorRef = 14;
+    softwareViewBackgroundColorRef = 6;
 
     gamma = 1.0;
     contrast = 1.0;
@@ -120,7 +111,7 @@ VideoManager::~VideoManager() {
 
 auto VideoManager::update() -> void {
 
-    if (!colorSpectrum || !isC64() ) { // palette
+    if (!colorSpectrum) { // palette
         if ( lumaChromaMode() ) {
             convertPaletteToLumaChroma();
 
@@ -523,7 +514,7 @@ template<typename T> auto VideoManager::takeScreenshot(unsigned unscaled, const 
         if (unscaled == 2)
             _width = 320;
         else if (unscaled == 3)
-            _width = isC64() ? 384 : 344;
+            _width = 384;
 
         uint8_t* _f = activeEmulator->cropAlternatively(_width, _height, _pitch);
         if (!_f)
@@ -909,14 +900,6 @@ auto VideoManager::applyDataUpdates() -> void {
     }
 }
 
-auto VideoManager::isC64() -> bool {    
-    return dynamic_cast<LIBC64::Interface*>(emulator);
-}
-
-auto VideoManager::isAmiga() -> bool {    
-    return dynamic_cast<LIBAMI::Interface*>(emulator);
-}
-
 auto VideoManager::uclamp8(double x) -> uint8_t {
     return std::min( std::max((int)(x + 0.5), 0), 255 );
 }
@@ -1227,7 +1210,7 @@ auto VideoManager::usePal(bool state) -> void {
 }
 
 auto VideoManager::useColorSpectrum(unsigned state) -> void {
-    colorSpectrum = !isC64() ? 0 : state;
+    colorSpectrum = state;
     requestUpdate();
 }
 
@@ -1388,7 +1371,7 @@ auto VideoManager::getSettings() -> std::tuple<VPARAMST> {
 	bool _pal = _region == Emulator::Interface::Region::Pal;
 
     bool _legacyCrtMode = settings->get<bool>("video_crt_legacy", false);
-    bool moreError = isC64();
+    bool moreError = true;
 
     unsigned _saturation = settings->get<unsigned>("video_saturation", 100u,{0u, 200u});
     unsigned _contrast = settings->get<unsigned>("video_contrast", 100u,{0u, 200u});
