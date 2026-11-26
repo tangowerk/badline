@@ -1,21 +1,9 @@
 
-#ifdef __APPLE__
-    #include <OpenGL/gl3.h>
-    #include <OpenGL/gl3ext.h>
-#elif _WIN32
-    #include <GL/gl.h>
-    #include <GL/glext.h>
-    #define glGetProcAddress(name) wglGetProcAddress(name)
-#else
     #include <GL/gl.h>
     #include <GL/glx.h>
     #define glGetProcAddress(name) (*glXGetProcAddress)((const GLubyte*)(name))
-#endif
 
-#ifndef DRV_WGL
 #include <unistd.h>
-#endif
-
 
 #include <thread>
 #include <atomic>
@@ -65,7 +53,6 @@ struct GL3 {
         0.0f,  0.0f, 2.0f, 0.0f,
         -1.0f,-1.0f, 0.0f, 1.0f,
     };
-
 
     struct {
         GLTexture textures[MAX_FRAME_HISTORY + 1];
@@ -898,7 +885,6 @@ End:
             glBindBuffer(GL_UNIFORM_BUFFER, 0);
             program.uboData = new uint8_t[program.semanticBuffer[SemanticBuffer::Ubo].size]; // because glMapBuffer is slower
 
-
             // WTF: for openGL push constants we need to collect locations
             for(auto& var : program.semanticBuffer[SemanticBuffer::Push].variables) {
                 GLint vertexLocation = glGetUniformLocation(program.prg, (prefix + "_PUSH_VERTEX_INSTANCE." + var.name).c_str());
@@ -1098,11 +1084,7 @@ End:
 
             unsigned sleepInMilli = (unsigned) ((float) remaining / 1000.0);
 
-#ifdef DRV_WGL
-            Sleep(sleepInMilli);
-#else
             usleep( sleepInMilli * 1000 );
-#endif
 
             remaining = lastCapTime - Chronos::getTimestampInMicroseconds();
         }

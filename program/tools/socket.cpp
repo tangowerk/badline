@@ -1,9 +1,5 @@
 
 #include "../../guikit/api.h"
-#if defined(_WIN32)
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-#else
     #define closesocket close
     #include <sys/socket.h>
     #include <netdb.h>
@@ -11,7 +7,6 @@
     #include <netinet/tcp.h>
     #include <unistd.h>
     #include <cerrno>
-#endif
 
 #include <cstring>
 #include "socket.h"
@@ -28,7 +23,6 @@
 #ifndef IPPROTO_TCP
 #define IPPROTO_TCP 6
 #endif
-
 
 Socket::~Socket() {
     disconnect();
@@ -184,11 +178,7 @@ auto Socket::disconnect() -> void {
 
 auto Socket::getLastError() -> int {
 
-#if defined(_WIN32)
-    return WSAGetLastError();
-#else
     return errno;
-#endif
 
 }
 
@@ -198,19 +188,10 @@ auto Socket::init() -> void {
     if (init)
         return;
 
-#if defined(_WIN32)
-    WORD wVersionRequested = MAKEWORD(2, 2);
-    WSADATA wsaData;
-    WSAStartup(wVersionRequested, &wsaData);
-#endif
-
     init = true;
 }
 
 auto Socket::clean() -> void {
-#if defined(_WIN32)
-    WSACleanup();
-#endif
 }
 
 auto Socket::parseAddr(const std::string& uri) -> addrinfo* {

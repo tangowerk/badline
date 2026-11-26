@@ -286,7 +286,6 @@ AudioModelLayout::ControlLayout::ControlLayout() {
     append(firstAll, {0u, 0u}, 5);
     append(secondAll, {0u, 0u});
     append(spacer, {~0u, 0u} );
-    append(button, {0u, 0u} );
 }
 
 AudioLayout::AudioLayout(TabWindow* tabWindow) {
@@ -349,18 +348,6 @@ AudioLayout::AudioLayout(TabWindow* tabWindow) {
          Emulator::Interface::Model::Purpose::AudioResampler}, dim, dynamic_cast<LIBC64::Interface*>(emulator) ? 5 : 8);
 
     settingsLayout.setEvents();
-    
-    if (dynamic_cast<LIBC64::Interface*>(emulator)) {
-        usbSidPicoLayout = new PicoModelLayout;
-
-        usbSidPicoLayout->build(tabWindow, emulator,
-            {Emulator::Interface::Model::Purpose::AudioExtern}, {1,1,1}, 8);
-
-        usbSidPicoLayout->setMargin( 10 );
-
-        usbSidPicoLayout->setEvents();
-    } else
-        usbSidPicoLayout = nullptr;
     
     dspFrame.append( bass, {~0u, 0u}, 5 );
     dspFrame.append( echo, {~0u, 0u}, 5 );
@@ -949,15 +936,12 @@ auto AudioLayout::setSeparation() -> void {
 
 auto AudioLayout::translate() -> void {
     settingsLayout.translate();
-    if (usbSidPicoLayout)
-        usbSidPicoLayout->translate();
     moduleFrame.setText(trans->get("selection"));
 
     if (dynamic_cast<LIBC64::Interface*>(this->emulator)) {
         settingsLayout.controlLayout.label.setText(trans->getA("all"));
         settingsLayout.controlLayout.firstAll.setText("8580");
         settingsLayout.controlLayout.secondAll.setText("6581");
-        settingsLayout.controlLayout.button.setText("USBSID-Pico");
 
         auto& lines = settingsLayout.lines;
         std::vector<GUIKIT::Layout*> layouts = {&settingsLayout.controlLayout,
@@ -1046,8 +1030,6 @@ auto AudioLayout::translate() -> void {
 
 auto AudioLayout::loadSettings() -> void {
     settingsLayout.updateWidgets();
-    if (usbSidPicoLayout)
-        usbSidPicoLayout->updateWidgets();
 
     initDsp( &echo.top.amp, "audio_echo_amp", 0.2 );
     initDsp( &echo.bottom.feedback, "audio_echo_feedback", 0.5 );
@@ -1260,23 +1242,6 @@ auto AudioModelLayout::lineWillAppend( unsigned pos ) -> void {
 
         controlLayout.firstAll.setChecked( false );
     };
-
-    controlLayout.button.onActivate = [this]() {
-        auto* audioLayout = tabWindow->audioLayout;
-        auto*& window = audioLayout->picoWindow;
-
-        if (!window) {
-            window = new PicoWindow;
-            window->layout.append( *audioLayout->usbSidPicoLayout, {~0u, 0u} );
-            window->layout.append( window->spacer, {0u, ~0u} );
-            window->layout.setAlignment( 0.5 );
-            window->append( window->layout );
-        }
-
-        MiscHelper::centerGeometry( window, {500, 170}, audioLayout->tabWindow->geometry() );
-        window->setVisible(  );
-        window->setFocused(  );
-    };
 }
 
 auto AudioModelLayout::updated( Line::Block* block, Emulator::Interface::Model* model ) -> void {
@@ -1445,28 +1410,6 @@ auto AudioModelLayout::getIdent( Emulator::Interface::Model* model, std::string&
         return ModelLayout::getIdent(model, tooltip);
 
     return name;
-}
-
-auto PicoModelLayout::updated( Line::Block* block, Emulator::Interface::Model* model ) -> void {
-    if (dynamic_cast<LIBC64::Interface*> (this->emulator)) {
-        switch(model->id) {
-            case LIBC64::Interface::ModelIdSidUsbPico:
-                updateVisibillity();
-                break;
-        }
-    }
-}
-
-auto PicoModelLayout::updateVisibillity( ) -> void {
-    if (!dynamic_cast<LIBC64::Interface*>(this->emulator))
-        return;
-
-    auto pico = getBlock( LIBC64::Interface::ModelIdSidUsbPico );
-    auto bufSize = getBlock( LIBC64::Interface::ModelIdSidUsbPicoBufferSize );
-    auto diffSize = getBlock( LIBC64::Interface::ModelIdSidUsbPicoDiffSize );
-
-    bufSize->setEnabled( pico->checkBox->checked() );
-    diffSize->setEnabled( pico->checkBox->checked() );
 }
 
 }

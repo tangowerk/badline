@@ -125,28 +125,17 @@ auto File::open(Mode mode, bool createFolderIfNotExists) -> bool {
     }
     close();
     switch(this->mode = mode) {
-    #ifdef GUIKIT_WINAPI
-        case Mode::Read:    fp = _wfopen( utf16_t(filePath), L"rb"); break;
-        case Mode::Write:   fp = _wfopen( utf16_t(filePath), L"wb"); break;
-        case Mode::Update:  fp = _wfopen( utf16_t(filePath), L"rb+"); break;
-        case Mode::Append:  fp = _wfopen( utf16_t(filePath), L"ab"); break;
-    #else
         case Mode::Read:    fp = fopen( filePath.c_str(), "rb"); break;
         case Mode::Write:   fp = fopen( filePath.c_str(), "wb"); break;
         case Mode::Update:  fp = fopen( filePath.c_str(), "rb+"); break;
         case Mode::Append:  fp = fopen( filePath.c_str(), "ab"); break;
-    #endif
     }
 
     if (fp)
         return true;
             
     if ( this->mode == Mode::Update ) {
-    #ifdef GUIKIT_WINAPI
-        fp = _wfopen( utf16_t(filePath), L"rb");
-    #else
         fp = fopen( filePath.c_str(), "rb");
-    #endif        
         if (fp) {
             this->mode = Mode::Read;
             this->readOnly = true;
@@ -172,11 +161,7 @@ auto File::read() -> uint8_t* {
 auto File::write() -> bool {
     if (!fp || !data || mode == Mode::Read)
         return false;
-    #ifdef GUIKIT_WINAPI
-    _fseeki64(fp, 0, SEEK_SET);
-    #else
     fseeko(fp, 0, SEEK_SET);
-    #endif
     unsigned bytesWritten = fwrite(data, 1, fileInfo.size, fp);
     fflush( fp );
     dataChanged = true;
@@ -187,13 +172,8 @@ auto File::read(uint8_t* buffer, unsigned length, uint64_t offset) -> unsigned {
     if (!fp || mode == Mode::Write )
 		return 0;
     
-    #ifdef GUIKIT_WINAPI
-    if (_fseeki64(fp, offset, SEEK_SET))
-		return 0;
-    #else
     if (fseeko(fp, offset, SEEK_SET))
         return 0;
-    #endif
 
 	return fread(buffer, 1, length, fp);
 }
@@ -202,13 +182,8 @@ auto File::write(const uint8_t* buffer, unsigned length, uint64_t offset) -> uns
     if (!fp || mode == Mode::Read)
         return 0;
 
-    #ifdef GUIKIT_WINAPI
-    if (_fseeki64(fp, offset, SEEK_SET))
-		return 0;
-    #else
     if (fseeko(fp, offset, SEEK_SET))
         return 0;
-    #endif
     auto bytesWritten = fwrite(buffer, 1, length, fp);
     fflush( fp );
     dataChanged = true;
@@ -230,11 +205,7 @@ auto File::truncate() -> bool {
     if (mode == Mode::Read)
         return false;
 
-    #ifdef _MSC_VER
-        int result = _chsize(fileno(fp), 0);
-    #else
         int result = ftruncate(fileno(fp), 0);
-    #endif
 
     return result == 0;
 }
@@ -312,9 +283,6 @@ auto File::scanArchive() -> std::vector<File::Item>& {
                 break;
 
             for (auto& file : lha->files) {
-#ifdef GUIKIT_WINAPI                
-                item.info.name = utf8_t(utf16_t(file.name, CP_ACP));
-#else
                 std::vector<uint8_t> out;
 
                 for (uint8_t _char : file.name)
@@ -322,7 +290,6 @@ auto File::scanArchive() -> std::vector<File::Item>& {
 
                 std::string sstr(out.begin(), out.end());
                 item.info.name = sstr;
-#endif                
                 item.info.size = file.size;
                 item.info.date = file.date;
                 item.isDirectory = file.isDirectory;
@@ -494,11 +461,7 @@ auto File::getPath() -> std::string {
 }
 
 auto File::del( ) -> bool {
-    #ifdef GUIKIT_WINAPI
-        int result = _wunlink( utf16_t( filePath ) );
-    #else
         int result = unlink( filePath.c_str() );
-    #endif
     return result == 0;
 }
 
@@ -508,11 +471,7 @@ auto File::getPath( std::string _fn, bool returnSlashIfError ) -> std::string {
     std::size_t end = _fn.find_last_of("/");
     if (end == std::string::npos) {
         if (returnSlashIfError) {
-#ifdef GUIKIT_WINAPI
-            return ".\\";
-#else
             return "./";
-#endif
         }
         return _fn;
     }
@@ -536,23 +495,13 @@ auto File::appendFolderToTreeView(std::string& basePath, TreeViewItem* tvi, cons
     std::string path = basePath + treeFile;
     path = beautifyPath(path);
 
-#ifdef GUIKIT_WINAPI
-    _WDIR* dir = _wopendir(utf16_t(path));
-#else
     DIR* dir = opendir(path.c_str());
-#endif
     if (dir == NULL)
         return;
 
-#ifdef GUIKIT_WINAPI
-    struct _wdirent* ent;
-    while ((ent = _wreaddir(dir)) != NULL) {
-        file = utf8_t(ent->d_name);
-#else
     struct dirent* ent;
     while ((ent = readdir(dir)) != NULL) {
         file = (std::string)ent->d_name;
-#endif
         if (file == "." || file == "..")
             continue;
 
@@ -609,23 +558,13 @@ auto File::getFolderListAlt( std::string path, std::vector<std::string> subStrs,
     std::vector<std::string> list;
     std::string file;
     
-#ifdef GUIKIT_WINAPI
-    _WDIR* dir = _wopendir ( utf16_t( path ) );
-#else
     DIR* dir = opendir ( path.c_str() );
-#endif
 
     if (dir == NULL) return {};
 
-#ifdef GUIKIT_WINAPI
-    struct _wdirent* ent;
-    while ((ent = _wreaddir (dir)) != NULL) {
-        file = utf8_t( ent->d_name );
-#else
     struct dirent* ent;
     while ((ent = readdir (dir)) != NULL) {
         file = (std::string)ent->d_name;
-#endif
         if (file == "." || file == "..")
             continue;
 
@@ -666,23 +605,13 @@ auto File::getFolderListAlt( std::string path, std::vector<std::string> subStrs,
 auto File::getFolderList( std::string path, const std::string& subStr ) -> std::vector<File::Info> {
     std::vector<Info> list;
     Info info;
-#ifdef GUIKIT_WINAPI
-    _WDIR* dir = _wopendir ( utf16_t( path ) );
-#else
     DIR* dir = opendir ( path.c_str() );
-#endif
 
     if (dir == NULL) return {};
 
-#ifdef GUIKIT_WINAPI
-    struct _wdirent* ent;
-    while ((ent = _wreaddir (dir)) != NULL) {
-        info.name = utf8_t( ent->d_name );
-#else
     struct dirent* ent;
     while ((ent = readdir (dir)) != NULL) {
         info.name = (std::string)ent->d_name;
-#endif
         if (info.name == "." || info.name == "..") continue;
 		if (!subStr.empty()) {
 			if(!String::findString(info.name, subStr)) continue;
@@ -699,26 +628,16 @@ auto File::getFileList(const std::string& path, const std::string& subPath ) -> 
     std::vector<std::string> list;
     std::string fullPath = path + subPath;
 
-#ifdef GUIKIT_WINAPI
-    _WDIR* dir = _wopendir ( utf16_t( fullPath ) );
-#else
     DIR* dir = opendir ( fullPath.c_str() );
-#endif
 
     if (dir == nullptr)
         return {};
 
     std::string name;
 
-#ifdef GUIKIT_WINAPI
-    struct _wdirent* ent;
-    while ((ent = _wreaddir (dir)) != NULL) {
-        name = utf8_t( ent->d_name );
-#else
     struct dirent* ent;
     while ((ent = readdir (dir)) != NULL) {
         name = (std::string)ent->d_name;
-#endif
 
         if (name.empty() || name == "." || name == "..")
             continue;
@@ -742,21 +661,12 @@ auto File::setStats(std::string path, Info& info) -> void {
     info.size = 0;
     info.exists = true;
 
-#ifdef GUIKIT_WINAPI
-    struct __stat64 statbuf;
-    if (_wstat64( utf16_t( path ), &statbuf ) != 0 ) {
-        info.exists = false;
-        return;
-    }
-    _tm = _localtime64(&statbuf.st_mtime);
-#else
     struct stat statbuf;
     if (stat( path.c_str(), &statbuf ) != 0 ) {
         info.exists = false;
         return;
     }
     _tm = localtime(&statbuf.st_mtime);
-#endif
 
     if (_tm)
         info.date = asctime( _tm );
@@ -769,14 +679,8 @@ auto File::isDir( std::string path ) -> bool {
     int s = path.length();
     if(s < 2) return false;
 
-#ifdef GUIKIT_WINAPI
-    if (path.at( s - 1 ) == '/' ) path = path.substr(0, s - 1);
-    struct __stat64 statbuf;
-    if (_wstat64( utf16_t( path ), &statbuf ) != 0 ) return false;
-#else
     struct stat statbuf;
     if (stat( path.c_str(), &statbuf ) != 0 ) return false;
-#endif
     return statbuf.st_mode & S_IFDIR;
 }
 
@@ -806,11 +710,7 @@ auto File::createDir( std::string path, std::string basePath ) -> bool {
 
 auto File::_createDir( std::string path ) -> bool {
     
-#ifdef GUIKIT_WINAPI
-    int result = _wmkdir( utf16_t( path ) );
-#else
     int result = mkdir( path.c_str(), S_IRWXU );
-#endif
     return result == 0;
 }
 
@@ -888,19 +788,11 @@ auto File::getOffsetDataStringFromBinary( std::string inFile, std::string outFil
 }
 
 auto File::resolveRelativePath(std::string relPath ) -> std::string {
-    #ifdef GUIKIT_GTK
         return relPath;
-    #else
-        return resolveRelativePath( System::getResourceFolder(), relPath );
-    #endif
 }
 
 auto File::buildRelativePath(std::string targetPath) -> std::string {
-    #ifdef GUIKIT_GTK
         return targetPath;
-    #else
-        return buildRelativePath( System::getResourceFolder(), targetPath, true );
-    #endif
 }
 
 auto File::resolveRelativePath(std::string _fn, std::string relPath) -> std::string {
@@ -910,21 +802,10 @@ auto File::resolveRelativePath(std::string _fn, std::string relPath) -> std::str
     std::string basePath = getPath(_fn, false);
     basePath += relPath;
 
-#ifdef GUIKIT_WINAPI
-    utf16_t wBasePath(basePath.c_str());
-    wchar_t absPath[MAX_PATH];
-
-    if (_wfullpath(absPath, wBasePath, MAX_PATH)) {
-        std::string fullPath = utf8_t(absPath);
-        std::replace(fullPath.begin(), fullPath.end(), '\\', '/');
-        return fullPath;
-    }
-#else
     if (isAbsolute(basePath))
         return basePath;
 
     basePath = pSystem::getWorkingDirectory() + basePath;
-#endif
 
     return basePath;
 }
@@ -933,16 +814,6 @@ auto File::isAbsolute(const std::string& path) -> bool {
     if (path.size() > 0) {
         if (path[0] == '/')
             return true;
-#ifdef GUIKIT_WINAPI
-        if ((path[0] == '\\') && (path[1] == '\\'))
-            return true;
-
-        if ((path[1] == ':') && (path[2] == '/'))
-            return true;
-
-        if ((path[1] == ':') && (path[2] == '\\'))
-            return true;
-#endif
     }
     return false;
 }
@@ -970,11 +841,7 @@ auto File::buildRelativePath(std::string refPath, std::string targetPath, bool o
         refPath += "dummy";
     auto parts = String::split(refPath, '/');
     if (onlyWhenInRefPath) {
-#ifdef GUIKIT_WINAPI        
-        if (parts.size() > 1)
-#else
         if (parts.size() > 2)
-#endif      
             return targetPath; // keep absolute path
     }
 

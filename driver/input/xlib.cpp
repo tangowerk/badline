@@ -22,12 +22,7 @@ struct XInput : public Input {
 
     std::atomic<bool> kill;
     
-#ifdef DRV_UHID
-    Uhid* uhid;
-#endif
-#ifdef DRV_UDEV
 	Udev* udev;
-#endif	
 	
     Display* display = nullptr;
     Window rootwindow;
@@ -61,14 +56,8 @@ struct XInput : public Input {
 		hidKeyboard->id = 0;
 		hidMouse->id = 1;
 
-	#ifdef DRV_UHID
-		if (joypadDriver == "uhid")
-			if (!uhid->init()) {}
-	#endif
-	#ifdef DRV_UDEV
 		if (joypadDriver == "udev")
 			if (!udev->init()) {}
-	#endif
 		display = XOpenDisplay(0);
 		rootwindow = DefaultRootWindow(display);
 
@@ -197,7 +186,6 @@ struct XInput : public Input {
         if (keycode == 18) return Hid::Key::D9;
         if (keycode == 19) return Hid::Key::D0;
 
-        
         return Hid::Key::Unknown;
     }
 	
@@ -231,12 +219,7 @@ struct XInput : public Input {
         devices.push_back(hidKeyboard);
         devices.push_back(hidMouse);
 
-	#ifdef DRV_UHID
-		if (joypadDriver == "uhid") uhid->pollJoypad(devices);
-	#endif
-	#ifdef DRV_UDEV
 		if (joypadDriver == "udev") udev->pollJoypad(devices);
-	#endif
 			
 		return devices;
 	}
@@ -349,7 +332,6 @@ struct XInput : public Input {
 			XGrabButton(display, AnyButton, AnyModifier, rootwindow, false,
 					0, GrabModeAsync, GrabModeAsync, rootwindow, 0);
 
-
             Window root_return, child_return;
             int win_x_return = 0, win_y_return = 0;
             unsigned int mask_return = 0;
@@ -386,12 +368,7 @@ struct XInput : public Input {
 	XInput(std::string joypadDriver = "") {
 		this->joypadDriver = joypadDriver;
 		
-		#ifdef DRV_UHID
-			if (this->joypadDriver == "uhid") uhid = new Uhid();
-		#endif
-		#ifdef DRV_UDEV
 			if (this->joypadDriver == "udev") udev = new Udev();
-		#endif
 		
 		handle = 0;
 	}
@@ -403,12 +380,7 @@ struct XInput : public Input {
 
 		term();
 
-		#ifdef DRV_UHID
-			if (joypadDriver == "uhid") delete uhid;
-		#endif
-		#ifdef DRV_UDEV
 			if (joypadDriver == "udev") delete udev;
-		#endif
 	}
 };
 

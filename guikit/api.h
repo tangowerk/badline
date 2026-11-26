@@ -192,9 +192,6 @@ struct Application {
     static auto isWinApi() -> bool;
 	static auto requestClipboardText() -> void;
     static auto setClipboardText( std::string text ) -> void;
-#ifdef _WIN32
-    static auto getUtf8CmdLine(std::vector<std::string>& out) -> bool;
-#endif
     static auto closeOtherInstances() -> void;
     static auto setDarkMode(DarkMode darkMode) -> void;
 
@@ -1392,9 +1389,8 @@ struct BrowserWindow {
     auto resizeTemplate(bool resize, int adjust = 0) -> BrowserWindow&;    
     
     static auto transformFilter( std::string description, const std::vector<std::string>& suffix ) -> std::string;
-	static auto transformFilter( std::string description, const std::string& suffix ) -> std::string;   
-    
-    
+	static auto transformFilter( std::string description, const std::string& suffix ) -> std::string;
+
     // for displaying file content
     struct ContentView {
         unsigned id = 0; // for template usage

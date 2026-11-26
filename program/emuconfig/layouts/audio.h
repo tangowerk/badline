@@ -176,11 +176,6 @@ struct VolumeControlLayout : GUIKIT::HorizontalLayout {
     VolumeControlLayout();
 };
 
-struct PicoWindow : GUIKIT::Window {
-    GUIKIT::Widget spacer;
-    GUIKIT::HorizontalLayout layout;
-};
-
 struct AudioModelLayout : ModelLayout {
 
     struct ControlLayout : GUIKIT::HorizontalLayout {
@@ -188,7 +183,6 @@ struct AudioModelLayout : ModelLayout {
         GUIKIT::CheckBox firstAll;
         GUIKIT::CheckBox secondAll;
         GUIKIT::Widget spacer;
-        GUIKIT::Button button;
 
         ControlLayout();
     } controlLayout;
@@ -201,11 +195,6 @@ struct AudioModelLayout : ModelLayout {
     auto updateExtraSidVisibillity() -> void;
 
     auto getIdent( Emulator::Interface::Model* model, std::string& tooltip ) -> std::string override;
-};
-
-struct PicoModelLayout : ModelLayout {
-    auto updated( Line::Block* block, Emulator::Interface::Model* model ) -> void override;
-    auto updateVisibillity( ) -> void override;
 };
 
 struct AudioLayout : GUIKIT::HorizontalLayout {
@@ -225,8 +214,6 @@ struct AudioLayout : GUIKIT::HorizontalLayout {
     GUIKIT::SwitchLayout moduleSwitch;
     
     AudioModelLayout settingsLayout;
-    PicoModelLayout* usbSidPicoLayout = nullptr;
-    PicoWindow* picoWindow = nullptr;
     
     GUIKIT::VerticalLayout dspFrame;
     BassControlLayout bass;

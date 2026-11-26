@@ -92,16 +92,6 @@ struct Zip {
             filename[namelength] = 0;
             file.name = filename;
 
-        #ifdef GUIKIT_WINAPI
-            if ((bitFlag & 0x800) == 0) { //non utf-8
-            /** 7-zip use windows system codepage for most european chars,
-                but takes utf8 for special chars like japanese
-                convert windows system codepage to utf8 **/
-
-                file.name = utf8_t( utf16_t( file.name, CP_OEMCP ) );
-            }
-        #endif
-
             delete[] filename;
 
             file.offset = read(directory + 42, 4);

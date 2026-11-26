@@ -1,13 +1,8 @@
 
 #include <cstring>
 
-#ifdef _MSC_VER
-#include <io.h>
-#include "winapi/dirent.h"
-#else
 #include <dirent.h>
 #include <unistd.h>
-#endif
 
 #include <sys/stat.h>
 #include <ctime>
@@ -17,15 +12,7 @@
 
 #include "api.h"
 
-#ifdef GUIKIT_WINAPI
-    #include "winapi/main.cpp"
-#elif GUIKIT_GTK
     #include "gtk/main.cpp"
-#elif GUIKIT_COCOA
-    #include "cocoa/main.cpp"
-#else
-    #error no GUI KIT found
-#endif
 
 #include "tools/decode/lha.h"
 namespace GUIKIT {
@@ -77,27 +64,15 @@ std::function<void (std::string fileName)> Application::Cocoa::onOpenFile;
 std::function<void (float rate)> Monitor::onFullscreenRefreshChange = nullptr;
 
 auto Application::isCocoa() -> bool {
-#ifdef GUIKIT_COCOA
-    return true;
-#else
     return false;
-#endif
 }
 
 auto Application::isGtk() -> bool {
-#ifdef GUIKIT_GTK
     return true;
-#else
-    return false;
-#endif    
 }
 
 auto Application::isWinApi() -> bool {
-#ifdef GUIKIT_WINAPI
-    return true;
-#else
     return false;
-#endif    
 }
 
 auto Application::run() -> void {
@@ -124,9 +99,6 @@ auto Application::initialize() -> void {
 }
 
 auto Application::setDarkMode(DarkMode darkMode) -> void {
-#ifdef GUIKIT_WINAPI
-    pApplication::setDarkMode(darkMode);
-#endif
 }
 
 auto Application::requestClipboardText() -> void {
@@ -140,11 +112,6 @@ auto Application::closeOtherInstances() -> void {
 auto Application::setClipboardText( std::string text ) -> void {
     pApplication::setClipboardText( text );
 }
-#ifdef _WIN32
-auto Application::getUtf8CmdLine(std::vector<std::string>& out) -> bool {
-    return pApplication::getUtf8CmdLine(out);
-}
-#endif
 //window
 std::vector<CustomFont> Window::customFonts;
 
@@ -446,21 +413,12 @@ auto Window::handle() -> uintptr_t {
 }
 
 auto Window::Cocoa::setTitleForAppMenuItem(AppMenuItem appMenuItem, const std::string& title) -> void {
-#if GUIKIT_COCOA
-    window.p.setTitleForAppMenuItem(appMenuItem, title);
-#endif
 }
 
 auto Window::Cocoa::setHiddenForAppMenuItem(AppMenuItem appMenuItem, bool state) -> void {
-#if GUIKIT_COCOA
-    window.p.setHiddenForAppMenuItem(appMenuItem, state);
-#endif
 }
 
 auto Window::Cocoa::setDisableIconsInTopMenu(bool state) -> void {
-#if GUIKIT_COCOA
-    window.p.disableIconsInTopMenu = state;
-#endif
 }
 
 auto Window::getScrollbarWidth() -> unsigned {
@@ -468,11 +426,7 @@ auto Window::getScrollbarWidth() -> unsigned {
 }
 
 auto Window::canGrabInputFocusAfterDnDFromOtherApp() -> bool {
-#ifdef GUIKIT_GTK
     return pApplication::canGrabInputFocusAfterDnDFromOtherApp();
-#else
-    return true;
-#endif
 
 }
 
@@ -1315,7 +1269,6 @@ auto ListView::setSelectionColor(unsigned foregroundColor, unsigned backgroundCo
     p.setSelectionColor(foregroundColor, backgroundColor);
 }
 
-
 auto ListView::resetSelectionColor() -> void {
     state.overrideSelectionColor = false;
     state.selectionForegroundColor = 0;
@@ -1844,7 +1797,6 @@ auto BrowserWindow::setCallbacks( std::function<void (std::vector<std::string> f
     return *this;
 }
 
-    
 auto BrowserWindow::getContentViewSelection() -> unsigned {
     return p.contentViewSelection();
 }

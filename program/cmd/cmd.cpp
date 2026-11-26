@@ -19,11 +19,6 @@ Cmd::Cmd(int argc, char** argv) {
     ambiguousParam = false;
     prepareOptions();
 
-#ifdef _WIN32
-    if (GUIKIT::Application::getUtf8CmdLine(out))
-        argc = out.size();
-#endif
-
     for (unsigned i = 0; i < argc; i++) {
         if (i == 0) // is always the executable itself
             continue;

@@ -23,11 +23,7 @@ auto pFrame::setGeometry(Geometry geometry) -> void {
     size.height >>= 1;
     if (!widget.text().empty()) size.height = 0;
     	
-#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
-    int _adjust = 4;
-#else
 	int _adjust = 0;
-#endif
     
     geometry.y -= size.height + _adjust;
     geometry.height += size.height + _adjust;
@@ -44,17 +40,12 @@ auto pFrame::getDisplacement() -> Position {
     Size size = pFont::size(pfont, widget.text());
     if (widget.text().empty()) size.height >>= 1;
     
-#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
-    int _adjust = 4;
-#else
 	int _adjust = 2;
-#endif
 
 	size.height += _adjust;
 		
     return { (signed)frameSize().width, (signed)size.height };
 }
-
 
 auto pFrame::setText(const std::string& text) -> void {
     gtk_frame_set_label(GTK_FRAME(gtkWidget), text.c_str());

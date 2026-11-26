@@ -1,85 +1,4 @@
-# Windows (7 and higher)
-
----
-
-## MinGW
-
----
-
-- download and install CMAKE, GIT
-- download and install [mingw32 or 64](https://github.com/niXman/mingw-builds-binaries/releases)
-- open a CMD
-```
-set Path=<mingw_path>\bin;%Path%
-replace <mingw_path> with MinGW install folder, e.g. set Path=c:\mingw64\bin;%Path%
-
-git clone https://github.com/piciji/denise.git denise
-cd denise
-cmake -G "MinGW Makefiles" -B builds/release
-cmake --build builds/release --parallel
-cmake --build builds/release --target install
-.\builds\release\out\denise.exe
-```
-
-## MSYS2 to fake a Unix environment
-
----
-
-- install MSYS2 and open MSYS2 shell
-```
-pacman --noconfirm -Sy
-pacman --needed --noconfirm -S bash pacman pacman-mirrors msys2-runtime
-restart shell
-pacman --noconfirm -Su
-
-64 bit
-pacman -S --noconfirm --needed wget git make mingw-w64-x86_64-toolchain mingw-w64-x86_64-ntldd mingw-w64-x86_64-zlib mingw-w64-x86_64-pkgconf mingw-w64-x86_64-libxml2 mingw-w64-x86_64-freetype mingw-w64-x86_64-libusb mingw-w64-x86_64-python3 mingw-w64-x86_64-drmingw mingw-w64-x86_64-harfbuzz mingw-w64-x86_64-lame mingw-w64-x86_64-cmake
-32 bit
-pacman -S --noconfirm --needed wget git make mingw-w64-i686-toolchain mingw-w64-i686-ntldd mingw-w64-i686-zlib mingw-w64-i686-pkgconf mingw-w64-i686-libxml2 mingw-w64-i686-freetype mingw-w64-i686-python3 mingw-w64-i686-drmingw mingw-w64-i686-harfbuzz mingw-w64-i686-lame mingw-w64-i686-cmake
-```
-- open shell MinGW 32 or 64
-```
-pacman -S make
-pacman -S gcc
-
-git clone https://github.com/piciji/denise.git denise
-cd denise
-cmake -G "MSYS Makefiles" -B builds/release
-cmake --build builds/release --parallel
-cmake --build builds/release --target install
-./builds/release/out/denise.exe
-```
-
-## Visual Studio
-
----
-### there is a solution file in folder msvc with two targets (x86, x64)
-
-
-# macOS
-
----
-
-## Terminal
-
----
-```
-git clone https://github.com/piciji/denise.git denise
-cd denise
-cmake -B builds/release
-cmake --build builds/release --parallel
-cmake --build builds/release --target install
-```
-
-
-## Xcode
-
----
-
-### there is a solution file in folder denise.xcodeproj with two targets (x86_64, arm64)
-
-
-# Linux/BSD
+# Linux
 
 ---
 
@@ -91,7 +10,6 @@ sudo apt install mesa-common-dev
 sudo apt install libpulse-dev
 sudo apt install libudev-dev
 sudo apt install libxcb-xinput-dev && apt install libxcb-xfixes0
-sudo apt install libusb-1.0-0-dev
 sudo apt install libmp3lame-dev
 sudo apt install libfreetype-dev
 ```
@@ -127,36 +45,7 @@ sudo emerge --ask cmake
 sudo emerge --ask media-sound/pulseaudio
 ```
 
-## FreeBSD
-
----
-```
-sudo pkg install cmake
-sudo pkg install os-generic-userland-devtools    (GhostBSD)
-sudo pkg install pkgconf
-sudo pkg install pulseaudio
-```
-
-## NetBSD
-
----
-```
-sudo pkgin in cmake
-sudo pkgin in pkg-config
-sudo pkgin in pulseaudio
-sudo pkgin in libusb1
-```
-
-## OpenBSD
-
----
-```
-doas pkg_add pulseaudio
-doas pkg_add gtk+3
-```
-
-
-## for all Linux/BSD
+## Build and install
 
 ---
 ```

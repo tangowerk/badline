@@ -517,11 +517,8 @@ auto States::updateModels() -> void {
             }
         }
 
-        if (emuView->audioLayout) {
+        if (emuView->audioLayout)
             emuView->audioLayout->settingsLayout.updateWidgets();
-            if (emuView->audioLayout->usbSidPicoLayout)
-                emuView->audioLayout->usbSidPicoLayout->updateWidgets();
-        }
     }
 
     if (regionChange) {

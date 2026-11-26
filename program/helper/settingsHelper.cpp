@@ -122,31 +122,7 @@ auto SettingsHelper::loadSettings() -> void {
 }
 
 auto SettingsHelper::unsetObsoleteConfigs(GUIKIT::Settings* settings, Emulator::Interface* emulator) -> void {
-    if (!emulator) {
-        if (GUIKIT::Application::isWinApi()) {
-            if (!settings->get("unset_ds", false)) {
-                if (settings->get<std::string>("audio_driver", "") == "DirectSound") {
-                    settings->remove("audio_driver");
-                    settings->set<unsigned>("audio_latency", 30);
-                }
-                settings->set("unset_ds", true);
-            }
-            if (!settings->get("unset_d3d9", false)) {
-                if (settings->get<std::string>("video_driver", "") == "Direct3D9") {
-                    settings->remove("video_driver");
-                }
-                settings->set("unset_d3d9", true);
-            }
-        } else if (GUIKIT::Application::isCocoa()) {
-            if (!settings->get("unset_ca", false)) {
-                if (settings->get<std::string>("audio_driver", "") == "CoreAudio") {
-                    settings->remove("audio_driver");
-                    settings->set<unsigned>("audio_latency", 30);
-                }
-                settings->set("unset_ca", true);
-            }
-        }
-    } else {
+    if (emulator) {
         if (!settings->get("unset_video_mode_ident", false)) {
             static const std::string idents[] = {
                 "_pal", "_pal_spectrum", "_pal_spectrum_crtcpu", "_pal_spectrum_crtgpu", "_pal_crtcpu", "_pal_crtgpu",

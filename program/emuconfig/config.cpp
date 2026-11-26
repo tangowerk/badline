@@ -1,7 +1,4 @@
 
-#ifdef _MSC_VER
-#pragma warning(disable:4996)
-#endif
 
 #include "config.h"
 #include "../config/archiveViewer.h"

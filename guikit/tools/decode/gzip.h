@@ -54,9 +54,6 @@ struct Gzip {
             if(data[p++]) return false;
             filename = buffer;
 
-        #ifdef GUIKIT_WINAPI
-            filename = utf8_t( utf16_t( filename, CP_ACP ) );
-        #endif
         }
 
         if(flg & 0x10) {  //FCOMMENT

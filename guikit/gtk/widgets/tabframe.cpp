@@ -24,14 +24,10 @@ auto pTabFrame::minimumSize() -> Size {
 
 	auto _border = borderSize();
 
-#if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
-    int _adjust = 5;
-#else
 	int _adjust = 0;
 	if (pApplication::desktopSession == pApplication::DesktopSession::Gnome) {
         _adjust = 5;
     }
-#endif
 
     calculatedMinimumSize.minimumSize = {size.width + (_border << 1) + 55, (_border << 1) + 30 + _adjust };
 

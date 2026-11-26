@@ -407,9 +407,6 @@ auto View::build() -> void {
 	};
     
     viewport.onMouseMove = [this](GUIKIT::Position& pos, int deltaX, int deltaY) {
-#ifdef __APPLE__
-        inputDriver->sentUIMouseMovement(deltaX, deltaY);
-#endif
     };
 	
 	viewport.onMouseLeave = []() {

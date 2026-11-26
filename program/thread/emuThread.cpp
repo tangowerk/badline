@@ -114,11 +114,6 @@ auto EmuThread::unlock() -> void {
 auto EmuThread::initWorker() -> void {
 
     std::thread worker([this] {
-#ifdef __APPLE__
-        if (GUIKIT::ThreadPriority::setPriority( GUIKIT::ThreadPriority::Mode::High, 3.0, 5.0 )) {
-          // logger->log("increased emu thread prio");
-        }
-#endif
         kill = false;
         attention = false;
         acknowledged = false;
@@ -142,11 +137,8 @@ auto EmuThread::initWorker() -> void {
 
             if (kill) {
                 videoDriver->freeContext();
-#if defined(_WIN32) || defined(__APPLE__)
-#else
                 // linux hack to prevent slowdown when killing thread
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
-#endif
                 kill = false;
                 return;
             }

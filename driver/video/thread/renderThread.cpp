@@ -185,11 +185,6 @@ namespace DRIVER {
         // only macOS need higher thread priorities to prevent scrolling hiccups.
         // there are some situations, when a realtime priority blocks the system forever, mostly "un-fullscreen" with higher rendering speed.
         // in these situations, we temporarily decrease priority to normal
-#ifdef __APPLE__
-        realtime = state;
-        updatePriority = true;
-        cv.notify_one();
-#endif
     }
 
     auto RenderThread::initWorker() -> void {
@@ -198,37 +193,18 @@ namespace DRIVER {
             std::chrono::milliseconds duration(5);
             std::mutex cvM;
             std::unique_lock<std::mutex> lk(cvM);
-#ifdef __APPLE__
-            if (ThreadPriority::setPriority( ThreadPriority::Mode::Realtime, 3.0, 5.0 )) {
-               //  fprintf(stderr, "Prio: realtime ");
-            }
-            updatePriority = false;
-            realtime = true;
-#endif
             kill = false;
             ready = false;
             
             while (1) {
-#ifdef __APPLE__
-                if (updatePriority) {
-                    updatePriority = false;
-                        
-                    if (ThreadPriority::setPriority( realtime ? ThreadPriority::Mode::Realtime : ThreadPriority::Mode::Normal, 3.0, 5.0 )) {
-                 //       fprintf(stderr, realtime ? "Prio: realtime " : "Prio: normal ");
-                    }
-                }
-#endif
                 while (!ready.load()) {
                     
                     if (cv.wait_for(lk, duration, [this]() {
                         return ready.load() || kill.load();
                     })) {
                         if (kill) {
-#if defined(_WIN32) || defined(__APPLE__)
-#else
                             // linux hack to prevent slowdown when killing thread
                             std::this_thread::sleep_for(std::chrono::milliseconds(20));
-#endif
                             kill = false;
                             return;
                         }

@@ -25,11 +25,7 @@ set(srcs
         lha/crc16.cpp
 )
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    set(srcs ${srcs} lha/lha_arch_win32.cpp )
-else()
-    set(srcs ${srcs} lha/lha_arch_unix.cpp )
-endif()
+set(srcs ${srcs} lha/lha_arch_unix.cpp )
 
 target_sources(lha PRIVATE ${srcs})
 
@@ -40,21 +36,6 @@ target_sources(gif PRIVATE
         cgif/cgif.cpp
         cgif/cgif_raw.cpp
 )
-
-# PICO
-if(LIBUSB_FOUND)
-    add_library(pico STATIC)
-
-    set(srcs USBSID-Pico/USBSID.cpp)
-
-    SET_SOURCE_FILES_PROPERTIES(${srcs}
-            PROPERTIES INCLUDE_DIRECTORIES "${LIBUSB_INCLUDE_DIRS};")
-
-    target_sources(pico PRIVATE ${srcs})
-
-    target_link_directories(pico PRIVATE ${LIBUSB_LIBRARY_DIRS})
-    target_link_libraries(pico PRIVATE ${LIBUSB_LIBRARIES})
-endif()
 
 # glslang
 add_library(glslang STATIC)
@@ -98,19 +79,6 @@ set(srcs
         glslang/glslang/MachineIndependent/preprocessor/PpTokens.cpp
 )
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    set(srcs ${srcs}
-        glslang/glslang/HLSL/hlslAttributes.cpp
-        glslang/glslang/HLSL/hlslGrammar.cpp
-        glslang/glslang/HLSL/hlslOpMap.cpp
-        glslang/glslang/HLSL/hlslParseables.cpp
-        glslang/glslang/HLSL/hlslParseHelper.cpp
-        glslang/glslang/HLSL/hlslScanContext.cpp
-        glslang/glslang/HLSL/hlslTokenStream.cpp
-    )
-    SET_SOURCE_FILES_PROPERTIES(${srcs} PROPERTIES COMPILE_FLAGS "-DENABLE_HLSL")
-endif()
-
 SET_SOURCE_FILES_PROPERTIES(${srcs}
         PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/deps/glslang;")
 
@@ -126,13 +94,6 @@ set(srcs
         SPIRV-Cross/spirv_parser.cpp
         SPIRV-Cross/spirv_cross_parsed_ir.cpp
 )
-
-if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    set(srcs ${srcs} SPIRV-Cross/spirv_hlsl.cpp)
-
-elseif (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set(srcs ${srcs} SPIRV-Cross/spirv_msl.cpp)
-endif()
 
 target_sources(spirv PRIVATE ${srcs})
 

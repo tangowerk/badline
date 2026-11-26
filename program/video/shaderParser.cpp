@@ -793,13 +793,8 @@ auto ShaderParser::fetchShaderSource(const std::string& path, ShaderPreset::Pass
 
                     char id[64];
                     char desc[64];
-#ifdef _MSC_VER
-                    if ((filled = sscanf_s(line.c_str(), _pre.c_str(),
-                                           id, sizeof(id), desc, sizeof(desc), &param.initial, &param.minimum, &param.maximum, &param.step)) < 5)
-#else
                     if ((filled = sscanf(line.c_str(), _pre.c_str(),
                                          id, desc, &param.initial, &param.minimum, &param.maximum, &param.step)) < 5)
-#endif
                         goto End;
 
                     param.id = id;

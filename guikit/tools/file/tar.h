@@ -43,10 +43,6 @@ struct Tar {
 
             file.name = std::string(tar->name, nameLength);
 
-        #ifdef GUIKIT_WINAPI
-            file.name = utf8_t( utf16_t( file.name, CP_OEMCP ) );
-        #endif
-
             String::trim(file.name);
 
             std::string mtime(tar->mtime, 12);

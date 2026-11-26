@@ -72,17 +72,9 @@ auto Lha::open(FILE* fp, unsigned size) -> bool {
         try {
             time_t ts = header->timestamp;
             if (ts) {
-#ifdef _MSC_VER
-                struct tm _tm ;
-                localtime_s(&_tm, &ts);
-                char str[26];
-                asctime_s(str, sizeof str, &_tm);
-                file.date = str;
-#else
                 struct tm* _tm = localtime(&ts);
                 if (_tm)
                     file.date = asctime(_tm);
-#endif            
             }
         } catch (...) {}
 

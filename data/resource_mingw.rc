@@ -1,4 +1,0 @@
-
-#define ID_MANIFEST 1
-
-#include "resource.rc"

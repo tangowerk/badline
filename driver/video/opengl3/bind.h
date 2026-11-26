@@ -1,5 +1,4 @@
 
-#if defined(_WIN32) || defined(__linux__) || defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__NetBSD__) || defined(__OpenBSD__)
     PFNGLCREATEPROGRAMPROC glCreateProgram = nullptr;
     PFNGLDELETEPROGRAMPROC glDeleteProgram = nullptr;
     PFNGLUSEPROGRAMPROC glUseProgram = nullptr;
@@ -57,19 +56,12 @@
     PFNGLUNIFORM1FVPROC glUniform1fv = nullptr;
     PFNGLISSHADERPROC glIsShader = nullptr;
     PFNGLUNIFORMBLOCKBINDINGPROC glUniformBlockBinding = nullptr;
-#else
-    #define GL_GENERATE_MIPMAP_HINT 0x8192
-#endif
-#if defined(_WIN32)
-    PFNGLACTIVETEXTUREPROC glActiveTexture = nullptr;
-#endif
 
 static bool OpenGLBind() {
     #define bind(prototype, function) \
             function = (prototype)glGetProcAddress(#function); \
             if(function == nullptr) return false
 
-    #if defined(_WIN32) || defined(__linux__) || defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__NetBSD__) || defined(__OpenBSD__)
         bind(PFNGLCREATEPROGRAMPROC, glCreateProgram);
         bind(PFNGLDELETEPROGRAMPROC, glDeleteProgram);
         bind(PFNGLUSEPROGRAMPROC, glUseProgram);
@@ -127,11 +119,6 @@ static bool OpenGLBind() {
         bind(PFNGLUNIFORM1FVPROC, glUniform1fv);
         bind(PFNGLISSHADERPROC, glIsShader);
         bind(PFNGLUNIFORMBLOCKBINDINGPROC, glUniformBlockBinding);
-
-    #endif
-    #if defined(_WIN32)
-        bind(PFNGLACTIVETEXTUREPROC, glActiveTexture);
-    #endif
 
     #undef bind
 

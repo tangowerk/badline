@@ -154,31 +154,7 @@ endif()
 SET_SOURCE_FILES_PROPERTIES(program.cpp
         PROPERTIES COMPILE_FLAGS "-DAPP_NAME=\"\\\"${AppName}\\\"\" -DTRANSLATION_FOLDER=\"\\\"${translationFolder}/\\\"\" -DDATA_FOLDER=\"\\\"${dataFolder}/\\\"\" -DPRESET_FOLDER=\"\\\"${presetFolder}/\\\"\" -DIMAGES_FOLDER=\"\\\"${imagesFolder}/\\\"\" -DSOUND_FOLDER=\"\\\"${soundFolder}/\\\"\" ")
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    set(srcs ${srcs} "${CMAKE_SOURCE_DIR}/${guikit.resource}" )
-
-    target_link_libraries(${PROJECT_NAME} PUBLIC "-static")
-
-    if(CMAKE_BUILD_TYPE STREQUAL Release)
-        target_link_libraries(${PROJECT_NAME} PUBLIC "-mwindows")
-    else()
-        target_link_libraries(${PROJECT_NAME} PUBLIC "-mconsole")
-    endif()
-
-elseif (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
-    set_target_properties(${PROJECT_NAME} PROPERTIES OSX_ARCHITECTURES ${CMAKE_OSX_ARCHITECTURES})
-    set_target_properties(${PROJECT_NAME} PROPERTIES INSTALL_RPATH "@executable_path/../Frameworks")
-
-else()
-    target_link_libraries(${PROJECT_NAME} PUBLIC pthread rt dl)
-
-    if (CMAKE_SYSTEM_NAME MATCHES "BSD")
-        # otherwise CMAKE removes runtime paths when installing to final location, check binary with ldd command to see assigned shared libs
-        set_target_properties(${PROJECT_NAME} PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
-    else()
-        target_link_libraries(${PROJECT_NAME} PUBLIC -no-pie)
-    endif()
-endif()
+target_link_libraries(${PROJECT_NAME} PUBLIC pthread rt dl -no-pie)
 
 target_sources(${PROJECT_NAME} PUBLIC ${srcs} )
 

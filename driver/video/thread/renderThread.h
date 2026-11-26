@@ -25,10 +25,6 @@ namespace DRIVER {
         std::atomic<bool> ready;
         std::atomic<bool> kill;
         std::atomic<bool> threadEnabled;
-#ifdef __APPLE__
-        std::atomic<bool> updatePriority;
-        std::atomic<bool> realtime;
-#endif
         std::condition_variable cv;
         std::mutex accessMutex;
 
