@@ -3,15 +3,26 @@
 //! Per frame: wait for the frame-in-flight fence, acquire, upload the emulator picture through
 //! a per-frame staging buffer, draw picture + overlay + screen text, present. Rare uploads
 //! (atlas, screen text) wait for the device to be idle.
+//!
+//! Pacing (M-Pacing1): with a queue depth d > 0 the present N waits until present N-d is on
+//! screen (the display clocks the emulation). Depth 1 is too late on compositors that compose
+//! right at vblank (Hyprland): a buffer committed after the "presented" event of N-1 misses the
+//! next vblank, so video master uses depth 2. `repeat` presents every
+//! emulator frame n times (integer multiple refresh). Every present is recorded with its
+//! display time (present timing, else the present-wait completion) for the MCP `pacing` tool.
 
 use std::ffi::{CStr, CString, c_void};
 use std::io::Cursor;
 
 use ash::ext::debug_utils;
-use ash::khr::{present_id, present_wait, surface, swapchain, wayland_surface, xlib_surface};
+use ash::khr::{get_surface_capabilities2, present_id, present_wait, surface, swapchain, wayland_surface, xlib_surface};
 use ash::{Device, Entry, Instance, vk};
 
-use crate::{BVK_FMT_R8, BVK_SURFACE_WAYLAND, BVK_SURFACE_XLIB, BVK_TEX_ATLAS, BVK_TEX_TEXT, BvkCreateInfo, BvkFrame};
+use crate::timing::{self, Feedback, Record};
+use crate::{
+    BVK_FMT_R8, BVK_PRESENT_FIFO, BVK_PRESENT_IMMEDIATE, BVK_SURFACE_WAYLAND, BVK_SURFACE_XLIB, BVK_TEX_ATLAS,
+    BVK_TEX_TEXT, BvkCreateInfo, BvkFrame,
+};
 
 const FRAMES: usize = 2;
 const PUSH_SIZE: u32 = 128;
@@ -78,6 +89,24 @@ struct PerFrame {
     uploads: Option<Buffer>,
 }
 
+/// present feedback extensions in use
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PresentApi {
+    None,
+    /// VK_KHR_present_id + present_wait
+    V1,
+    /// VK_KHR_present_id2 + present_wait2 + VK_EXT_present_timing
+    V2,
+}
+
+struct DeviceChoice {
+    physical: vk::PhysicalDevice,
+    family: u32,
+    v1: bool,
+    v2: bool,
+    absolute_time: bool,
+}
+
 struct Pipelines {
     image: vk::Pipeline,
     overlay: vk::Pipeline,
@@ -106,11 +135,29 @@ pub struct Renderer {
     swapchain_dirty: bool,
     /// window size the swapchain was last built for (current_extent may lag behind it)
     requested: vk::Extent2D,
-    /// false: MAILBOX/IMMEDIATE (warp, `video_sync` off), true: FIFO
-    vsync: bool,
+    /// BVK_PRESENT_*: FIFO, MAILBOX first (warp) or IMMEDIATE first (lowest latency)
+    present_pref: i32,
     present_modes: Vec<vk::PresentModeKHR>,
-    use_present_id: bool,
+    present_api: PresentApi,
+    present_wait_fn: Option<present_wait::Device>,
     present_counter: u64,
+    feedback: Feedback,
+    /// presents per emulator frame (integer multiple refresh)
+    repeat: u32,
+    /// presents allowed in flight: wait for present N-depth before presenting N (0: no wait;
+    /// video master, FIFO only)
+    queue_depth: u32,
+    /// emulator frame sequence of the last render with a new picture
+    last_frame: u64,
+    /// last present id on the current swapchain (0: none yet)
+    swapchain_last_id: u64,
+    /// first present id on the current swapchain
+    swapchain_first_id: u64,
+    /// a present wait timed out (hidden window, compositor stopped presenting): no waits until
+    /// a present is displayed again or a second passed; the program falls back to audio master
+    stalled: bool,
+    /// last present id when the stall began
+    stall_id: u64,
     cmd_pool: vk::CommandPool,
     desc_pool: vk::DescriptorPool,
     set_layout: vk::DescriptorSetLayout,
@@ -178,6 +225,14 @@ impl Renderer {
             _ => return Err("unsupported window system (Wayland or X11 needed)".into()),
         };
         let mut extensions = vec![surface::NAME.as_ptr(), surface_ext.as_ptr()];
+        // needed to query present id2/wait2/timing surface support
+        let caps2 = unsafe { entry.enumerate_instance_extension_properties(None) }
+            .unwrap_or_default()
+            .iter()
+            .any(|e| e.extension_name_as_c_str() == Ok(get_surface_capabilities2::NAME));
+        if caps2 {
+            extensions.push(get_surface_capabilities2::NAME.as_ptr());
+        }
         let mut layers = Vec::new();
         let mut validation = false;
         if validation_wanted() {
@@ -223,7 +278,7 @@ impl Renderer {
 
         // from here on partial objects are destroyed by `Drop` of a half-built renderer would be
         // complex; instead clean up the instance manually on error
-        let result = Self::build(entry.clone(), instance.clone(), debug.as_ref().map(|d| d.1), info);
+        let result = Self::build(entry.clone(), instance.clone(), debug.as_ref().map(|d| d.1), info, caps2);
         match result {
             Ok(mut r) => {
                 r.debug = debug;
@@ -246,6 +301,7 @@ impl Renderer {
         instance: Instance,
         _messenger: Option<vk::DebugUtilsMessengerEXT>,
         info: &BvkCreateInfo,
+        caps2: bool,
     ) -> Result<Self> {
         let surface_fn = surface::Instance::new(&entry, &instance);
         let surface = unsafe {
@@ -271,8 +327,42 @@ impl Renderer {
             e
         };
 
-        let (physical, family, use_present_id) =
-            Self::pick_device(&instance, &surface_fn, surface).map_err(fail)?;
+        let choice = Self::pick_device(&instance, &surface_fn, surface).map_err(fail)?;
+        let (physical, family) = (choice.physical, choice.family);
+        // V2 also needs the surface to support it (e.g. not on every X11 setup)
+        let mut timing_stage = 0u32;
+        let v2 = choice.v2 && caps2 && {
+            let caps2_fn = get_surface_capabilities2::Instance::new(&entry, &instance);
+            let mut id2 = timing::Bool::surface_present_id2();
+            let mut wait2 = timing::Bool::surface_present_wait2();
+            let mut tcaps = timing::PresentTimingSurfaceCaps::default();
+            let mut caps2 = vk::SurfaceCapabilities2KHR::default();
+            unsafe {
+                timing::chain(&mut caps2, &mut id2);
+                timing::chain(&mut caps2, &mut wait2);
+                timing::chain(&mut caps2, &mut tcaps);
+            }
+            let info = vk::PhysicalDeviceSurfaceInfo2KHR::default().surface(surface);
+            let ok = unsafe { caps2_fn.get_physical_device_surface_capabilities2(physical, &info, &mut caps2) }.is_ok();
+            if ok && tcaps.present_timing_supported == vk::TRUE {
+                let q = tcaps.present_stage_queries;
+                timing_stage = [timing::STAGE_FIRST_PIXEL_VISIBLE, timing::STAGE_FIRST_PIXEL_OUT, timing::STAGE_QUEUE_OPERATIONS_END]
+                    .into_iter()
+                    .find(|s| q & s != 0)
+                    .unwrap_or(0);
+            }
+            ok && id2.value == vk::TRUE && wait2.value == vk::TRUE && tcaps.present_timing_supported == vk::TRUE
+        };
+        let present_api = if v2 {
+            PresentApi::V2
+        } else if choice.v1 {
+            PresentApi::V1
+        } else {
+            PresentApi::None
+        };
+        if std::env::var("BADLINE_VK_DEBUG").is_ok() {
+            eprintln!("badline vulkan: present feedback {present_api:?}, timing stage {timing_stage:#x}");
+        }
         let props = unsafe { instance.get_physical_device_properties(physical) };
         let device_name = props
             .device_name_as_c_str()
@@ -286,27 +376,57 @@ impl Renderer {
             .queue_family_index(family)
             .queue_priorities(&priorities)];
         let mut dev_ext = vec![swapchain::NAME.as_ptr()];
-        if use_present_id {
-            dev_ext.push(present_id::NAME.as_ptr());
-            dev_ext.push(present_wait::NAME.as_ptr());
+        match present_api {
+            PresentApi::V2 => dev_ext.extend([
+                timing::PRESENT_ID_2.as_ptr(),
+                timing::PRESENT_WAIT_2.as_ptr(),
+                timing::PRESENT_TIMING.as_ptr(),
+                timing::CALIBRATED_TIMESTAMPS.as_ptr(),
+            ]),
+            PresentApi::V1 => dev_ext.extend([present_id::NAME.as_ptr(), present_wait::NAME.as_ptr()]),
+            PresentApi::None => {}
         }
         let mut f13 = vk::PhysicalDeviceVulkan13Features::default()
             .dynamic_rendering(true)
             .synchronization2(true);
         let mut f_id = vk::PhysicalDevicePresentIdFeaturesKHR::default().present_id(true);
         let mut f_wait = vk::PhysicalDevicePresentWaitFeaturesKHR::default().present_wait(true);
+        let mut f_id2 = timing::Bool::feature_present_id2().on();
+        let mut f_wait2 = timing::Bool::feature_present_wait2().on();
+        let mut f_timing = timing::PresentTimingFeatures {
+            present_timing: vk::TRUE,
+            present_at_absolute_time: if choice.absolute_time { vk::TRUE } else { vk::FALSE },
+            ..Default::default()
+        };
         let mut ci = vk::DeviceCreateInfo::default()
             .queue_create_infos(&queues)
             .enabled_extension_names(&dev_ext)
             .push_next(&mut f13);
-        if use_present_id {
-            ci = ci.push_next(&mut f_id).push_next(&mut f_wait);
+        match present_api {
+            PresentApi::V2 => unsafe {
+                timing::chain(&mut ci, &mut f_id2);
+                timing::chain(&mut ci, &mut f_wait2);
+                timing::chain(&mut ci, &mut f_timing);
+            },
+            PresentApi::V1 => ci = ci.push_next(&mut f_id).push_next(&mut f_wait),
+            PresentApi::None => {}
         }
         let device = unsafe { instance.create_device(physical, &ci, None) }
             .map_err(vkerr("vkCreateDevice"))
             .map_err(fail)?;
         let queue = unsafe { device.get_device_queue(family, 0) };
         let swapchain_fn = swapchain::Device::new(&instance, &device);
+        let present_wait_fn = (present_api == PresentApi::V1).then(|| present_wait::Device::new(&instance, &device));
+        let v2_fns = if present_api == PresentApi::V2 {
+            let fns = timing::Fns::load(&instance, device.handle());
+            if fns.is_none() {
+                eprintln!("badline vulkan: present timing entry points missing");
+            }
+            fns
+        } else {
+            None
+        };
+        let feedback = Feedback::new(v2_fns, timing_stage);
 
         // surface format: 8 bit UNORM (matches the GL default framebuffer)
         let query = || -> Result<(vk::Format, vk::SurfaceCapabilitiesKHR)> {
@@ -363,10 +483,19 @@ impl Renderer {
             can_read_back,
             swapchain_dirty: true,
             requested: vk::Extent2D::default(),
-            vsync: true,
+            present_pref: BVK_PRESENT_FIFO,
             present_modes,
-            use_present_id,
+            present_api,
+            present_wait_fn,
             present_counter: 0,
+            feedback,
+            repeat: 1,
+            queue_depth: 0,
+            last_frame: 0,
+            swapchain_last_id: 0,
+            swapchain_first_id: u64::MAX,
+            stalled: false,
+            stall_id: 0,
             cmd_pool: vk::CommandPool::null(),
             desc_pool: vk::DescriptorPool::null(),
             set_layout: vk::DescriptorSetLayout::null(),
@@ -402,9 +531,9 @@ impl Renderer {
         instance: &Instance,
         surface_fn: &surface::Instance,
         surface: vk::SurfaceKHR,
-    ) -> Result<(vk::PhysicalDevice, u32, bool)> {
+    ) -> Result<DeviceChoice> {
         let devices = unsafe { instance.enumerate_physical_devices() }.map_err(vkerr("enumerate devices"))?;
-        let mut best: Option<(u32, vk::PhysicalDevice, u32, bool)> = None;
+        let mut best: Option<(u32, DeviceChoice)> = None;
         let mut reasons = Vec::new();
 
         for pd in devices {
@@ -426,11 +555,29 @@ impl Renderer {
             let mut f13 = vk::PhysicalDeviceVulkan13Features::default();
             let mut f_id = vk::PhysicalDevicePresentIdFeaturesKHR::default();
             let mut f_wait = vk::PhysicalDevicePresentWaitFeaturesKHR::default();
+            let mut f_id2 = timing::Bool::feature_present_id2();
+            let mut f_wait2 = timing::Bool::feature_present_wait2();
+            let mut f_timing = timing::PresentTimingFeatures::default();
             let mut f2 = vk::PhysicalDeviceFeatures2::default()
                 .push_next(&mut f13)
                 .push_next(&mut f_id)
                 .push_next(&mut f_wait);
+            let v2_exts = has(timing::PRESENT_ID_2)
+                && has(timing::PRESENT_WAIT_2)
+                && has(timing::PRESENT_TIMING)
+                && has(timing::CALIBRATED_TIMESTAMPS);
+            if v2_exts {
+                unsafe {
+                    timing::chain(&mut f2, &mut f_id2);
+                    timing::chain(&mut f2, &mut f_wait2);
+                    timing::chain(&mut f2, &mut f_timing);
+                }
+            }
             unsafe { instance.get_physical_device_features2(pd, &mut f2) };
+            let v2 = v2_exts
+                && f_id2.value == vk::TRUE
+                && f_wait2.value == vk::TRUE
+                && f_timing.present_timing == vk::TRUE;
             if f13.dynamic_rendering == vk::FALSE || f13.synchronization2 == vk::FALSE {
                 reasons.push(format!("{name}: no dynamic rendering/synchronization2"));
                 continue;
@@ -457,10 +604,19 @@ impl Renderer {
                 _ => 1,
             };
             if best.as_ref().is_none_or(|b| score > b.0) {
-                best = Some((score, pd, family, present_ids));
+                best = Some((
+                    score,
+                    DeviceChoice {
+                        physical: pd,
+                        family,
+                        v1: present_ids,
+                        v2,
+                        absolute_time: f_timing.present_at_absolute_time == vk::TRUE,
+                    },
+                ));
             }
         }
-        best.map(|b| (b.1, b.2, b.3)).ok_or_else(|| {
+        best.map(|b| b.1).ok_or_else(|| {
             if reasons.is_empty() {
                 "no Vulkan device found".into()
             } else {
@@ -954,17 +1110,28 @@ impl Renderer {
         if self.can_read_back {
             usage |= vk::ImageUsageFlags::TRANSFER_SRC;
         }
-        // vsync off (warp, `video_sync` off): no waiting for the display
-        let present_mode = if self.vsync {
-            vk::PresentModeKHR::FIFO
+        // no vsync: warp prefers MAILBOX (no tearing), lowest latency IMMEDIATE (tearing allowed)
+        let order = match self.present_pref {
+            BVK_PRESENT_FIFO => [vk::PresentModeKHR::FIFO; 2],
+            BVK_PRESENT_IMMEDIATE => [vk::PresentModeKHR::IMMEDIATE, vk::PresentModeKHR::MAILBOX],
+            _ => [vk::PresentModeKHR::MAILBOX, vk::PresentModeKHR::IMMEDIATE],
+        };
+        let present_mode = order
+            .into_iter()
+            .find(|m| self.present_modes.contains(m))
+            .unwrap_or(vk::PresentModeKHR::FIFO);
+        let flags = if self.present_api == PresentApi::V2 {
+            vk::SwapchainCreateFlagsKHR::from_raw(
+                timing::SWAPCHAIN_CREATE_PRESENT_ID_2
+                    | timing::SWAPCHAIN_CREATE_PRESENT_WAIT_2
+                    | if self.feedback.stage != 0 { timing::SWAPCHAIN_CREATE_PRESENT_TIMING } else { 0 },
+            )
         } else {
-            [vk::PresentModeKHR::MAILBOX, vk::PresentModeKHR::IMMEDIATE]
-                .into_iter()
-                .find(|m| self.present_modes.contains(m))
-                .unwrap_or(vk::PresentModeKHR::FIFO)
+            vk::SwapchainCreateFlagsKHR::empty()
         };
         let old = self.swapchain;
         let ci = vk::SwapchainCreateInfoKHR::default()
+            .flags(flags)
             .surface(self.surface)
             .min_image_count(count)
             .image_format(self.format)
@@ -986,6 +1153,10 @@ impl Renderer {
         }
         self.swapchain = swapchain;
         self.extent = extent;
+        self.swapchain_last_id = 0;
+        self.swapchain_first_id = u64::MAX;
+        self.feedback.flush();
+        self.feedback.setup_swapchain(self.device.handle(), swapchain);
         self.images = unsafe { self.swapchain_fn.get_swapchain_images(swapchain) }.map_err(vkerr("swapchain images"))?;
         for &image in &self.images {
             let view = unsafe {
@@ -1010,16 +1181,83 @@ impl Renderer {
 
     // ------------------------------------------------------------ frame
 
-    pub fn set_vsync(&mut self, on: bool) {
-        if self.vsync != on {
-            self.vsync = on;
+    pub fn set_present_mode(&mut self, pref: i32) {
+        if self.present_pref != pref {
+            self.present_pref = pref;
             self.swapchain_dirty = true;
         }
     }
 
+    pub fn set_pacing(&mut self, repeat: u32, queue_depth: u32) {
+        self.repeat = repeat.clamp(1, 8);
+        self.queue_depth = queue_depth.min(3);
+    }
+
+    pub fn present_api(&self) -> PresentApi {
+        self.present_api
+    }
+
+    pub fn stalled(&self) -> bool {
+        self.stalled
+    }
+
+    pub fn timing_active(&self) -> bool {
+        self.feedback.timing_active
+    }
+
+    pub fn timing_domain(&self) -> i32 {
+        self.feedback.domain
+    }
+
+    pub fn refresh_ns(&self) -> u64 {
+        self.feedback.refresh_ns
+    }
+
+    pub fn take_presents(&mut self, out: &mut [Record]) -> usize {
+        if self.swapchain != vk::SwapchainKHR::null() {
+            self.feedback.poll(self.device.handle(), self.swapchain);
+        }
+        self.feedback.take(out)
+    }
+
+    /// Renders `f` and presents it; a new emulator picture (`frame_seq` changed) is presented
+    /// `repeat` times, redraws once.
+    ///
     /// # Safety
     /// pointers in `f` must be valid for their sizes.
     pub unsafe fn render(&mut self, f: &BvkFrame) -> Result<Rendered> {
+        // recovered once a present is displayed again (polled without waiting); no time based
+        // retry: every stall/recover flip re-evaluates the pacing in the program
+        // (only presents made after the stall count: older ones may have been shown before)
+        if self.stalled
+            && self.swapchain != vk::SwapchainKHR::null()
+            && self.swapchain_last_id > self.stall_id
+            && self.swapchain_last_id >= self.swapchain_first_id
+            && self.present_done(self.swapchain_last_id, 0)
+        {
+            self.feedback.waited(self.swapchain_last_id, timing::now_ns());
+            self.stalled = false;
+        }
+        let new_frame = f.frame_seq != 0 && f.frame_seq != self.last_frame;
+        if new_frame {
+            self.last_frame = f.frame_seq;
+        }
+        let flags = if new_frame { 0 } else { timing::REC_REDRAW };
+        let first = unsafe { self.render_once(f, 0, flags) }?;
+        if !new_frame || self.repeat <= 1 || matches!(first, Rendered::Skipped) {
+            return Ok(first);
+        }
+        // the copies show the same picture (already uploaded) without screenshot
+        let mut copy = *f;
+        copy.frame = std::ptr::null();
+        copy.screenshot = std::ptr::null_mut();
+        for n in 1..self.repeat {
+            unsafe { self.render_once(&copy, n, timing::REC_REPEAT) }?;
+        }
+        Ok(first)
+    }
+
+    unsafe fn render_once(&mut self, f: &BvkFrame, copy: u32, flags: u32) -> Result<Rendered> {
         let (ww, wh) = (f.window_width, f.window_height);
         if ww == 0 || wh == 0 {
             return Ok(Rendered::Skipped);
@@ -1072,10 +1310,12 @@ impl Renderer {
         };
 
         // finite timeout: FIFO may block for long while the window is hidden; the emu thread
-        // must not hang there (the frame is dropped instead)
+        // must not hang there (the frame is dropped instead). Once stalled, do not wait at all,
+        // otherwise every frame costs the timeout (~10 fps while hidden)
+        let timeout = if self.stalled { 0 } else { 100_000_000 };
         let acquired = unsafe {
             self.swapchain_fn
-                .acquire_next_image(self.swapchain, 100_000_000, frame.acquired, vk::Fence::null())
+                .acquire_next_image(self.swapchain, timeout, frame.acquired, vk::Fence::null())
         };
         let index = match acquired {
             Ok((i, suboptimal)) => {
@@ -1091,6 +1331,7 @@ impl Renderer {
             }
             Err(vk::Result::TIMEOUT) | Err(vk::Result::NOT_READY) => {
                 self.frames[fi] = frame;
+                self.set_stalled();
                 return Ok(Rendered::Skipped);
             }
             Err(e) => {
@@ -1099,7 +1340,7 @@ impl Renderer {
             }
         };
 
-        let res = unsafe { self.record_and_submit(f, &mut frame, index, &prep) };
+        let res = unsafe { self.record_and_submit(f, &mut frame, index, &prep, copy, flags) };
         self.frames[fi] = frame;
         res?;
         self.current = (fi + 1) % FRAMES;
@@ -1191,7 +1432,15 @@ impl Renderer {
         })
     }
 
-    unsafe fn record_and_submit(&mut self, f: &BvkFrame, frame: &mut PerFrame, index: u32, prep: &Prepared) -> Result<()> {
+    unsafe fn record_and_submit(
+        &mut self,
+        f: &BvkFrame,
+        frame: &mut PerFrame,
+        index: u32,
+        prep: &Prepared,
+        copy: u32,
+        flags: u32,
+    ) -> Result<()> {
         let d = self.device.clone();
         let cmd = frame.cmd;
         let target = self.images[index as usize];
@@ -1413,26 +1662,95 @@ impl Renderer {
             d.queue_submit2(self.queue, &[submit], frame.fence)
                 .map_err(vkerr("vkQueueSubmit2"))?;
 
+            // video master: the display clocks the emulation, at most one present queued
+            // ids on one swapchain are consecutive from `swapchain_first_id`
+            let depth = self.queue_depth as u64;
+            if depth > 0 && !self.stalled && self.present_pref == BVK_PRESENT_FIFO && self.swapchain_last_id > 0 {
+                let target = (self.swapchain_last_id + 1).saturating_sub(depth);
+                if target >= self.swapchain_first_id {
+                    self.wait_present(target);
+                }
+            }
+
             let wait = [self.render_done[index as usize]];
             let swapchains = [self.swapchain];
             let indices = [index];
             self.present_counter += 1;
-            let ids = [self.present_counter];
+            let id = self.present_counter;
+            let ids = [id];
             let mut present_ids = vk::PresentIdKHR::default().present_ids(&ids);
+            let mut present_id2 = timing::PresentId2::new(&ids[0]);
+            let timing_info = self.feedback.timing_info();
+            let mut timings = timing_info.as_ref().map(timing::PresentTimingsInfo::new);
             let mut present = vk::PresentInfoKHR::default()
                 .wait_semaphores(&wait)
                 .swapchains(&swapchains)
                 .image_indices(&indices);
-            if self.use_present_id {
-                present = present.push_next(&mut present_ids);
+            match self.present_api {
+                PresentApi::V1 => present = present.push_next(&mut present_ids),
+                PresentApi::V2 => {
+                    timing::chain(&mut present, &mut present_id2);
+                    if let Some(t) = timings.as_mut() {
+                        timing::chain(&mut present, t);
+                    }
+                }
+                PresentApi::None => {}
             }
+            let submit_ns = timing::now_ns();
+            self.swapchain_last_id = id;
+            self.swapchain_first_id = self.swapchain_first_id.min(id);
+            let timed = timings.is_some();
             match self.swapchain_fn.queue_present(self.queue, &present) {
                 Ok(false) => {}
                 Ok(true) | Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => self.swapchain_dirty = true,
+                // guarded by Feedback::timing_info; a rebuilt swapchain starts with an empty queue
+                Err(e) if e.as_raw() == timing::ERROR_PRESENT_TIMING_QUEUE_FULL => {
+                    self.swapchain_dirty = true;
+                    return Ok(());
+                }
                 Err(e) => return Err(format!("vkQueuePresentKHR: {e:?}")),
+            }
+            if self.present_api != PresentApi::None {
+                self.feedback.push(Record {
+                    present_id: id,
+                    frame: f.frame_seq,
+                    submit_ns,
+                    display_ns: 0,
+                    flags,
+                    copy,
+                }, timed);
+                self.feedback.poll(self.device.handle(), self.swapchain);
             }
         }
         Ok(())
+    }
+
+    fn set_stalled(&mut self) {
+        if !self.stalled {
+            self.stalled = true;
+            self.stall_id = self.swapchain_last_id;
+        }
+    }
+
+    fn present_done(&self, id: u64, timeout: u64) -> bool {
+        match self.present_api {
+            PresentApi::V2 => self.feedback.wait2(self.device.handle(), self.swapchain, id, timeout),
+            PresentApi::V1 => self
+                .present_wait_fn
+                .as_ref()
+                .is_some_and(|w| unsafe { w.wait_for_present(self.swapchain, id, timeout) }.is_ok()),
+            PresentApi::None => false,
+        }
+    }
+
+    /// blocks until present `id` is displayed (100 ms timeout: hidden window)
+    fn wait_present(&mut self, id: u64) {
+        let ok = self.present_done(id, 100_000_000);
+        if ok {
+            self.feedback.waited(id, timing::now_ns());
+        } else {
+            self.set_stalled();
+        }
     }
 
     fn destroy_objects(&mut self) {

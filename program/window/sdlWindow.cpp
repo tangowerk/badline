@@ -90,9 +90,16 @@ auto SdlWindow::recreate(bool vulkan) -> bool {
 auto SdlWindow::updateRefreshRate() -> void {
     float rate = 0.0f;
     if (window) {
-        if (auto mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window)))
-            rate = mode->refresh_rate;
+        if (auto mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window))) {
+            // exact rational rate when known (99.982 Hz modes, pacing tolerance 0.5 %)
+            if (mode->refresh_rate_numerator > 0 && mode->refresh_rate_denominator > 0)
+                rate = (float)((double)mode->refresh_rate_numerator / mode->refresh_rate_denominator);
+            else
+                rate = mode->refresh_rate;
+        }
     }
+    if (rate != currentRefreshRate)
+        refreshChanged = true;
     currentRefreshRate = rate;
 }
 

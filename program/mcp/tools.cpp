@@ -14,6 +14,7 @@
 #include "../overlay/overlay.h"
 #include "../view/status.h"
 #include "../video/manager.h"
+#include "../audio/manager.h"
 #include "../../emulation/libc64/system/system.h"
 #include "../../emulation/libc64/system/keyBuffer.h"
 #include <algorithm>
@@ -173,6 +174,133 @@ auto findText(const std::string& screen, const std::string& text, bool caseSensi
     return lower(screen).find(lower(text)) != std::string::npos;
 }
 
+// ---------------------------------------------------------------- pacing
+
+auto round3(double v) -> double {
+    return std::round(v * 1000.0) / 1000.0;
+}
+
+// Evaluates the presents of the Vulkan renderer: display intervals in refresh periods and how
+// long each emulator picture stayed on screen (expected: `repeat` periods under video master).
+auto pacingStats(const std::vector<DRIVER::PacingSample>& all, double refreshNs, unsigned repeat) -> Json {
+    std::vector<const DRIVER::PacingSample*> shown;
+    unsigned lost = 0, redraws = 0;
+    for (auto& p : all) {
+        if (p.flags & DRIVER::PACING_REDRAW) {
+            redraws++;
+            continue;
+        }
+        if (!p.displayNs || (p.flags & DRIVER::PACING_LOST)) {
+            lost++;
+            continue;
+        }
+        shown.push_back(&p);
+    }
+    Json out = Json::object();
+    out.set("presents", (unsigned)all.size());
+    out.set("presents_without_time", lost);
+    out.set("redraws", redraws);
+    if (shown.size() < 3) {
+        out.set("note", "not enough presents with display time");
+        return out;
+    }
+
+    std::vector<double> dts;
+    for (size_t i = 1; i < shown.size(); i++)
+        dts.push_back((double)(int64_t)(shown[i]->displayNs - shown[i - 1]->displayNs));
+    if (refreshNs <= 0.0) {
+        // estimate: median interval of the presents (one refresh each under video master)
+        auto sorted = dts;
+        std::nth_element(sorted.begin(), sorted.begin() + sorted.size() / 2, sorted.end());
+        refreshNs = sorted[sorted.size() / 2];
+    }
+    if (refreshNs <= 0.0) {
+        out.set("note", "no refresh period (identical display times)");
+        return out;
+    }
+    out.set("seconds", round3((double)(int64_t)(shown.back()->displayNs - shown.front()->displayNs) / 1e9));
+    out.set("refresh_hz", round3(1e9 / refreshNs));
+
+    // present intervals in refresh periods
+    unsigned hist[5] = {0};
+    double jitterMax = 0, jitterSum = 0;
+    Json hitches = Json::array();
+    for (size_t i = 0; i < dts.size(); i++) {
+        double dt = dts[i];
+        long periods = std::lround(dt / refreshNs);
+        hist[std::clamp(periods, 0L, 4L)]++;
+        // present shown later than one period after its predecessor: when was it submitted
+        // relative to the predecessor's display (late submit = emulation/CPU side)
+        if (periods > 1 && hitches.items.size() < 40) {
+            auto* a = shown[i];
+            auto* b = shown[i + 1];
+            Json h = Json::object();
+            h.set("t", round3((double)(b->displayNs - shown.front()->displayNs) / 1e9));
+            h.set("periods", (int64_t)periods);
+            h.set("submit_after_prev_display_ms", round3((double)((int64_t)b->submitNs - (int64_t)a->displayNs) / 1e6));
+            h.set("submit_gap_ms", round3((double)((int64_t)b->submitNs - (int64_t)a->submitNs) / 1e6));
+            h.set("copy", b->copy);
+            h.set("display_ns", b->displayNs);
+            hitches.push(h);
+        }
+        double err = std::abs(dt - periods * refreshNs) / 1e6;
+        jitterMax = std::max(jitterMax, err);
+        jitterSum += err;
+    }
+    Json intervals = Json::object();
+    intervals.set("0", hist[0]);
+    intervals.set("1", hist[1]);
+    intervals.set("2", hist[2]);
+    intervals.set("3", hist[3]);
+    intervals.set(">=4", hist[4]);
+    out.set("present_intervals", intervals);
+    out.set("timestamp_jitter_ms_avg", round3(jitterSum / dts.size()));
+    out.set("timestamp_jitter_ms_max", round3(jitterMax));
+    out.set("hitches", hitches);
+
+    // emulator pictures: periods between the first presents of consecutive pictures
+    std::vector<const DRIVER::PacingSample*> firsts;
+    for (auto* p : shown)
+        if (p->copy == 0)
+            firsts.push_back(p);
+    unsigned frameHist[6] = {0};
+    unsigned longer = 0, shorter = 0, skipped = 0;
+    for (size_t i = 1; i < firsts.size(); i++) {
+        long periods = std::lround((double)(int64_t)(firsts[i]->displayNs - firsts[i - 1]->displayNs) / refreshNs);
+        frameHist[std::clamp(periods, 0L, 5L)]++;
+        uint64_t gap = firsts[i]->frame - firsts[i - 1]->frame;
+        if (gap > 1)
+            skipped += (unsigned)(gap - 1); // pictures without any displayed present
+        if (gap == 1) {
+            if (periods > (long)repeat) longer++;
+            if (periods < (long)repeat) shorter++;
+        }
+    }
+    Json frames = Json::object();
+    frames.set("count", (unsigned)firsts.size());
+    Json fh = Json::object();
+    for (int i = 0; i < 5; i++)
+        fh.set(std::to_string(i), frameHist[i]);
+    fh.set(">=5", frameHist[5]);
+    frames.set("periods_on_screen", fh);
+    frames.set("expected_periods", repeat);
+    frames.set("repeated", longer);
+    frames.set("shortened", shorter);
+    frames.set("skipped", skipped);
+    out.set("frames", frames);
+
+    // submit -> display (same clock: CLOCK_MONOTONIC)
+    double latSum = 0, latMax = 0;
+    for (auto* p : shown) {
+        double l = (double)(int64_t)(p->displayNs - p->submitNs) / 1e6;
+        latSum += l;
+        latMax = std::max(latMax, l);
+    }
+    out.set("present_to_display_ms_avg", round3(latSum / shown.size()));
+    out.set("present_to_display_ms_max", round3(latMax));
+    return out;
+}
+
 } // namespace
 
 auto McpServer::registerTools() -> void {
@@ -304,6 +432,87 @@ auto McpServer::registerTools() -> void {
                 std::string device = videoDriver->deviceName();
                 if (!device.empty())
                     s.set("device", device);
+                job.addText(s.dump());
+                job.finish();
+            };
+        });
+
+    // ------------------------------------------------------------ pacing
+    addTool("pacing",
+        "Frame pacing of the Vulkan renderer. 'status' (default): pacing decision (video_master = display "
+        "clocks the emulation, each picture presented 'repeat' times; audio_master; lowest_latency; "
+        "unthrottled), refresh/emulation rates, present feedback. 'reset' clears the collected presents and "
+        "audio counters; 'stats' evaluates the presents since the last reset (display intervals in refresh "
+        "periods, pictures shown longer/shorter than expected, skipped pictures, audio DRC/xruns). "
+        "'set_mode' changes the setting pacing (auto | lowest_latency).",
+        R"({"type":"object","properties":{)"
+        R"("action":{"type":"string","enum":["status","reset","stats"],"default":"status"},)"
+        R"("set_mode":{"type":"string","enum":["auto","lowest_latency"]}}})",
+        [](Job& job) {
+            std::string action = job.args.getString("action", "status");
+            std::string mode = job.args.getString("set_mode");
+            if (action != "status" && action != "reset" && action != "stats")
+                return job.fail("action must be status, reset or stats");
+            if (!mode.empty() && mode != "auto" && mode != "lowest_latency")
+                return job.fail("set_mode must be auto or lowest_latency");
+            job.phase = Job::Ui;
+            job.onUi = [action, mode](Job& job) {
+                if (!videoDriver || !videoDriver->supportsPacing())
+                    return job.fail("Pacing needs the Vulkan renderer in window mode");
+                if (!mode.empty()) {
+                    EmuLock modeLock;
+                    globalSettings->set<unsigned>("pacing", mode == "auto" ? 0u : 1u);
+                    VideoManager::setSynchronize();
+                }
+                auto caps = videoDriver->pacingCaps();
+                // the emu thread rewrites the decision and the DRC statistics
+                EmuLock lock;
+                auto p = VideoManager::pacing;
+                Json s = Json::object();
+                s.set("state", VideoManager::pacingStateName());
+                s.set("mode", p.mode == 1 ? "lowest_latency" : "auto");
+                s.set("repeat", p.repeat);
+                s.set("queue_depth", p.queueDepth);
+                if (p.stalled)
+                    s.set("stalled", true);
+                s.set("refresh_hz", round3(p.refresh));
+                s.set("emulation_fps", round3(p.fps));
+                s.set("clock_factor", p.clock);
+                s.set("feedback", caps.feedback == DRIVER::PACING_FEEDBACK_TIMING ? "present_timing"
+                    : caps.feedback == DRIVER::PACING_FEEDBACK_WAIT ? "present_wait" : "none");
+                if (caps.refreshNs)
+                    s.set("timing_refresh_hz", round3(1e9 / (double)caps.refreshNs));
+                if (caps.feedback == DRIVER::PACING_FEEDBACK_TIMING)
+                    s.set("time_domain", caps.timeDomain);
+
+                if (action == "reset") {
+                    std::vector<DRIVER::PacingSample> drop;
+                    videoDriver->pacingSamples(drop, true);
+                    audioDriver->resetXruns();
+                    audioManager->resetDrcStats();
+                    s.set("reset", true);
+                } else if (action == "stats") {
+                    std::vector<DRIVER::PacingSample> samples;
+                    videoDriver->pacingSamples(samples, false);
+                    double refreshNs = caps.refreshNs ? (double)caps.refreshNs : (p.refresh > 0 ? 1e9 / p.refresh : 0);
+                    s.set("video", pacingStats(samples, refreshNs, p.repeat));
+
+                    Json a = Json::object();
+                    unsigned under = 0, dropped = 0;
+                    audioDriver->xruns(under, dropped);
+                    a.set("underflows", under);
+                    a.set("dropped_bytes", dropped);
+                    a.set("drc", audioManager->dynamicRateControl);
+                    auto& d = audioManager->drcStats;
+                    if (d.count) {
+                        a.set("buffer_deviation_min", round3(d.devMin));
+                        a.set("buffer_deviation_max", round3(d.devMax));
+                        a.set("buffer_deviation_avg", round3(d.devSum / d.count));
+                        a.set("rate_adjust_min_percent", round3(d.adjMin * 100.0));
+                        a.set("rate_adjust_max_percent", round3(d.adjMax * 100.0));
+                    }
+                    s.set("audio", a);
+                }
                 job.addText(s.dump());
                 job.finish();
             };

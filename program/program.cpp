@@ -619,6 +619,11 @@ auto Program::loop() -> void {
 
     InputManager::poll();
 
+    // refresh rate changed, or the renderer stalled/recovered (hidden window): new pacing decision
+    bool refreshChanged = sdlWindow && sdlWindow->refreshChanged.exchange(false);
+    if (videoDriver->pacingChanged() || refreshChanged)
+        VideoManager::setSynchronize();
+
     if (mcpServer)
         mcpServer->emuTick();
 

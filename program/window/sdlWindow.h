@@ -31,6 +31,8 @@ struct SdlWindow {
 
     // refresh rate (Hz) of the display showing the window, 0 if unknown; any thread
     auto refreshRate() const -> float { return currentRefreshRate; }
+    // set when the refresh rate changed; the emu loop re-evaluates the frame pacing
+    std::atomic<bool> refreshChanged{false};
 
     // mouse position in drawable pixels (lightpen/gun); thread-safe snapshot
     auto mousePosition() -> GUIKIT::Position;

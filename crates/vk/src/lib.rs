@@ -3,6 +3,7 @@
 //! window handles and per-frame data through the C API below (header driver/video/vulkan/bvk.h).
 
 mod renderer;
+mod timing;
 
 use std::ffi::{c_char, c_int, c_uint, c_ulong, c_void};
 use std::ptr;
@@ -23,6 +24,16 @@ pub const BVK_SKIPPED: c_int = 1;
 pub const BVK_NO_SHOT: c_int = 2;
 pub const BVK_ERROR: c_int = -1;
 
+/// present mode preference (bvk_set_present_mode)
+pub const BVK_PRESENT_MAILBOX: c_int = 0;
+pub const BVK_PRESENT_FIFO: c_int = 1;
+pub const BVK_PRESENT_IMMEDIATE: c_int = 2;
+
+/// present feedback (BvkPacingCaps::present_api)
+pub const BVK_FEEDBACK_NONE: c_int = 0;
+pub const BVK_FEEDBACK_WAIT: c_int = 1;
+pub const BVK_FEEDBACK_TIMING: c_int = 2;
+
 #[repr(C)]
 pub struct BvkCreateInfo {
     pub kind: c_int,
@@ -34,6 +45,7 @@ pub struct BvkCreateInfo {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct BvkFrame {
     /// pixel size of the window surface
     pub window_width: c_uint,
@@ -74,6 +86,24 @@ pub struct BvkFrame {
     pub shot_y: c_int,
     pub shot_width: c_int,
     pub shot_height: c_int,
+
+    /// emulator frame sequence number: a changed value marks a new picture (presented
+    /// `repeat` times), 0 or the same value a redraw
+    pub frame_seq: u64,
+}
+
+pub use timing::Record as BvkPresent;
+
+#[repr(C)]
+pub struct BvkPacingCaps {
+    /// BVK_FEEDBACK_*
+    pub feedback: c_int,
+    /// Vulkan time domain of the display times (1 = CLOCK_MONOTONIC); 0 with BVK_FEEDBACK_WAIT
+    pub time_domain: c_int,
+    /// refresh duration reported by present timing (ns, 0 = unknown)
+    pub refresh_ns: u64,
+    /// 1: a present wait timed out and nothing was displayed since (hidden window)
+    pub stalled: c_int,
 }
 
 fn write_error(msg: &str, buf: *mut c_char, len: usize) {
@@ -165,15 +195,6 @@ pub unsafe extern "C" fn bvk_render(r: *mut Renderer, frame: *const BvkFrame, er
     }
 }
 
-/// VSync on: FIFO; off: MAILBOX or IMMEDIATE (warp, `video_sync` off). Applied with the next frame.
-///
-/// # Safety
-/// `r` must come from `bvk_create`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bvk_set_vsync(r: *mut Renderer, on: c_int) {
-    unsafe { (*r).set_vsync(on != 0) };
-}
-
 /// Name of the physical device (for messages), valid until bvk_destroy.
 ///
 /// # Safety
@@ -181,4 +202,54 @@ pub unsafe extern "C" fn bvk_set_vsync(r: *mut Renderer, on: c_int) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn bvk_device_name(r: *const Renderer) -> *const c_char {
     unsafe { (*r).device_name().as_ptr() }
+}
+
+/// Present mode preference BVK_PRESENT_* (FIFO = vsync), applied with the next frame.
+///
+/// # Safety
+/// `r` must come from `bvk_create`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bvk_set_present_mode(r: *mut Renderer, mode: c_int) {
+    unsafe { (*r).set_present_mode(mode) };
+}
+
+/// Pacing: every new picture is presented `repeat` times (1..8); `queue_depth` > 0 blocks present N
+/// (FIFO only) until present N - queue_depth is on screen (video master); 0 = no wait.
+///
+/// # Safety
+/// `r` must come from `bvk_create`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bvk_set_pacing(r: *mut Renderer, repeat: c_uint, queue_depth: c_uint) {
+    unsafe { (*r).set_pacing(repeat, queue_depth) };
+}
+
+/// # Safety
+/// `r` must come from `bvk_create`, `caps` must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bvk_pacing_caps(r: *const Renderer, caps: *mut BvkPacingCaps) {
+    let r = unsafe { &*r };
+    let caps = unsafe { &mut *caps };
+    caps.feedback = match r.present_api() {
+        renderer::PresentApi::None => BVK_FEEDBACK_NONE,
+        renderer::PresentApi::V1 => BVK_FEEDBACK_WAIT,
+        renderer::PresentApi::V2 if r.timing_active() => BVK_FEEDBACK_TIMING,
+        renderer::PresentApi::V2 => BVK_FEEDBACK_WAIT,
+    };
+    caps.time_domain = if r.timing_active() { r.timing_domain() } else { 0 };
+    caps.refresh_ns = r.refresh_ns();
+    caps.stalled = r.stalled() as c_int;
+}
+
+/// Moves up to `max` finished present records (oldest first) into `out`, returns the count.
+///
+/// # Safety
+/// `r` must come from `bvk_create`, `out` must hold `max` records.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bvk_take_presents(r: *mut Renderer, out: *mut BvkPresent, max: c_uint) -> c_uint {
+    let r = unsafe { &mut *r };
+    if out.is_null() || max == 0 {
+        return 0;
+    }
+    let out = unsafe { std::slice::from_raw_parts_mut(out, max as usize) };
+    r.take_presents(out) as c_uint
 }

@@ -234,8 +234,16 @@ def run_variant(args, name, config, exact, base):
                 client.call("wait_for_text", text="READY.", timeout=10, warp=True)
                 client.call("memory_write", address="$c000", bytes=[2])
                 client.call("type_text", text="SYS 49152\n")
-                client.call("run_frames", frames=60)
-                jams[renderer] = shot(client, "jam_" + renderer, cfgdir)
+                # the fade-in (400 ms) is time based and the renderers present with different
+                # latency (Vulkan pacing): take the shot once two in a row agree (message shown 3 s)
+                prev = None
+                for _ in range(8):
+                    client.call("run_frames", frames=5)
+                    cur = shot(client, "jam_" + renderer, cfgdir)
+                    if cur and prev and cur[3] == prev[3]:
+                        break
+                    prev = cur
+                jams[renderer] = cur
             a, b = jams["gl"], jams["vulkan"]
             if a and b and a[:3] == b[:3]:
                 w, h, ch = a[:3]

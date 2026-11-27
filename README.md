@@ -67,7 +67,7 @@ SDL3, no Windows/macOS code paths.
 | Media | D64, G64, P64, D71, G71, D81, TAP, T64, PRG, CRT, REU images; archives |
 | Cartridges | EasyFlash, Retro Replay, Action Replay-type freezers, GMod, Trilogic Expert, REU, GeoRAM and more (from Denise) |
 | Window | SDL3, native Wayland (EGL) with X11 fallback, HiDPI, fullscreen (F11 / Alt+Enter), size remembered |
-| Video | OpenGL 3.2 renderer, slang shaders (internal presets), optional render thread, VSync; Vulkan renderer (Rust, preview: no shaders yet, `-renderer vulkan`) |
+| Video | OpenGL 3.2 renderer, slang shaders (internal presets), optional render thread, VSync; Vulkan renderer (Rust, default; no shaders yet; the display clocks the emulation on integer-multiple refresh rates) |
 | Input | Keyboard (positional), mouse capture (middle button), gamepads with hotplug – the first pad drives joystick #1 |
 | Drag & drop | Drop images onto the window: slot overlay for drive/autostart |
 | Automation | Embedded MCP server, 32 tools; headless mode (no display server needed); VICE binary monitor (API v2) |
@@ -168,7 +168,7 @@ badline -mcp                     # with MCP server on 127.0.0.1:6464
 badline -headless -fetch-roms    # no window/audio, MCP on, ROM download
 badline -headless -unthrottled   # as fast as possible (CI)
 badline -binarymonitor           # VICE binary monitor for C64 Studio, VS64, ...
-badline -renderer vulkan         # Vulkan renderer for this session (default: OpenGL)
+badline -renderer gl             # OpenGL renderer for this session (default: Vulkan)
 badline -help                    # all options
 ```
 
@@ -178,7 +178,8 @@ mapped by key position.
 
 **Testing**: `tests/mcp_smoke.py` runs every MCP tool against a fresh instance
 (`--headless` for the headless variant, `--renderer vulkan` for the Vulkan
-renderer); `tests/renderer_ab.py` compares OpenGL and Vulkan screenshots.
+renderer); `tests/renderer_ab.py` compares OpenGL and Vulkan screenshots;
+`tests/pacing_check.py` measures frame pacing with `tests/pacing/softscroll.prg`.
 
 ---
 
@@ -195,7 +196,7 @@ Tools include:
 
 - **Control & media**: `status`, `reset`, `pause`/`resume`, `warp`, `load_media`
   (with autostart), `eject`, `savestate_save`/`savestate_load`, `renderer`
-  (OpenGL/Vulkan), `quit`
+  (OpenGL/Vulkan), `pacing` (frame pacing state and statistics), `quit`
 - **Input & observation**: `type_text`, `key`, `joystick`, `run_frames`,
   `wait_for_text`, `read_screen` (screen RAM as text), `screenshot` (raw or as
   rendered with shaders)

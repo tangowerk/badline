@@ -38,6 +38,26 @@ struct AudioManager {
     bool dynamicRateControl;
     double rateDelta = 0.005;
     bool allowDrc = false;
+
+    // Vulkan video master (M-Pacing1): audio does not block, DRC keeps the buffer centred;
+    // videoClock = emulation speed factor set by the display (refresh / (repeat * fps))
+    bool videoMaster = false;
+    unsigned appliedLatency = 0;
+    bool appliedClientBuffer = false;
+    // buffer setup for video master (client buffer, >= 2 frames); kept while unthrottled
+    bool videoBuffer = false;
+    double videoClock = 1.0;
+    double resamplerInput = 0.0;
+    double drcFiltered = 0.0;
+    auto setVideoMaster(bool state, double clock, bool updateBuffer) -> void;
+
+    // DRC/buffer statistics for the MCP `pacing` tool (reset there)
+    struct {
+        double devMin = 0, devMax = 0, devSum = 0;
+        double adjMin = 0, adjMax = 0;
+        unsigned count = 0;
+    } drcStats;
+    auto resetDrcStats() -> void;
     
     struct {
         float sum = 0;

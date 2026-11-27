@@ -8,6 +8,34 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ### Added
 
+- **Frame pacing on Vulkan (M-Pacing1).** When the display refresh is an
+  integer multiple of the emulated frame rate (within 0.5 %, e.g. PAL on a
+  100 Hz monitor, NTSC on 60/120 Hz), the display clocks the emulation: every
+  C64 frame is presented exactly n times, each present waits until the one two
+  presents back is on screen, and the audio follows through dynamic rate
+  control (non-blocking writes, buffer level averaged and regulated around its
+  centre). Smooth scrolling no longer judders there. Other refresh rates keep
+  audio as the clock (VRR and frame blending follow in M-Pacing2). New global
+  setting `pacing` (0 Auto, 1 Lowest latency: audio clock, IMMEDIATE present,
+  tearing allowed); the old sync settings stay for OpenGL only. The pacing
+  decision is re-evaluated when the display or its refresh rate changes. When
+  nothing is displayed any more (hidden window/workspace) the renderer stops
+  waiting (also no blocking acquire) and audio keeps the time until presents
+  show again; warp toggles keep the audio buffer setup.
+- Present feedback in the Vulkan renderer: `VK_EXT_present_timing` with
+  `VK_KHR_present_id2`/`present_wait2` (hand-written bindings, ash has none)
+  gives real display timestamps per present; without it `present_id`/
+  `present_wait` completion times are used.
+- MCP tool `pacing`: current decision (state, repeat, queue depth, refresh,
+  clock factor, feedback), `reset` and `stats` (display intervals in refresh
+  periods, C64 frames shown longer/shorter than expected, skipped frames,
+  hitches with submit times, audio underflows/drops and DRC range);
+  `set_mode` switches `pacing`.
+- `tests/pacing/softscroll.asm` (+ assembled `softscroll.prg`, acme): 8 sprites
+  at 1-4 px/frame, a hardware-scrolled text row and a frame counter at $fb/$fc;
+  `tests/pacing_check.py` measures a Vulkan instance with it and checks the
+  acceptance (0 repeated/shortened/skipped frames, no audio xruns).
+
 - **Vulkan renderer (preview).** A second video renderer written in Rust
   (`crates/vk`, Vulkan 1.3 via `ash`, Wayland and X11 surfaces) draws the C64
   picture, the overlay menu, drag & drop tiles and screen messages; screenshots
@@ -47,6 +75,20 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
   shown since then.
 
 ### Changed
+
+- Vulkan is now the default renderer (`video_driver` unset); OpenGL stays
+  selectable (`-renderer gl`, `video_driver` = `OpenGL`) and is still needed
+  for shader presets until M-VK3.
+- PulseAudio: latency and frequency changes now apply at runtime (Denise only
+  re-initialised the stream when an init handle was set, which is always 0);
+  requests are 2 ms small so the writable size stays current; under video
+  master the latency is the client buffer (no `ADJUST_LATENCY`, at least two
+  frames + 10 ms); buffer underflows and dropped bytes are counted.
+- Vulkan with a hidden window no longer slows the emulation to ~10 fps (every
+  FIFO acquire ran into its 100 ms timeout).
+- `.gitignore`: Python `__pycache__/` (pacing_check imports mcp_smoke).
+- `tests/renderer_ab.py`: the screen text shot waits until the time based
+  fade-in has settled (the renderers present with different latency).
 
 - **Only current rolling distributions are supported.** The release tarball is
   now built on current Arch Linux (CI container `archlinux:base-devel`) instead

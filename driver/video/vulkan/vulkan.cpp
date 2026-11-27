@@ -4,6 +4,8 @@
 
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <atomic>
+#include <deque>
 #include <mutex>
 #include <vector>
 #include "bvk.h"
@@ -12,6 +14,12 @@
 #include "../../tools/tools.h"
 
 namespace DRIVER {
+
+static_assert((int)BVK_REC_REPEAT == (int)PACING_REPEAT && (int)BVK_REC_REDRAW == (int)PACING_REDRAW && (int)BVK_REC_TIMING == (int)PACING_TIMING
+    && (int)BVK_REC_WAITED == (int)PACING_WAITED && (int)BVK_REC_LOST == (int)PACING_LOST, "BvkPresent flags");
+static_assert((int)BVK_FEEDBACK_TIMING == (int)PACING_FEEDBACK_TIMING && (int)BVK_FEEDBACK_WAIT == (int)PACING_FEEDBACK_WAIT, "feedback");
+static_assert((int)BVK_PRESENT_FIFO == (int)PRESENT_FIFO && (int)BVK_PRESENT_MAILBOX == (int)PRESENT_MAILBOX
+    && (int)BVK_PRESENT_IMMEDIATE == (int)PRESENT_IMMEDIATE, "present modes");
 
 struct SDLVK : public Video, Freetype {
 
@@ -27,7 +35,15 @@ struct SDLVK : public Video, Freetype {
     Viewport viewport;
     Rotation rotation = ROT_0;
     bool linearFilter = false;
-    bool vsync = true;
+    int presentMode = BVK_PRESENT_FIFO;
+    unsigned repeat = 1;
+    unsigned queueDepth = 0;
+    uint64_t frameSeq = 0;
+    // presents for the MCP `pacing` tool (~2 min at 100 Hz x 2 copies)
+    std::deque<PacingSample> samples;
+    static constexpr size_t MaxSamples = 24000;
+    bool stalled = false;
+    std::atomic<bool> stallChanged{false};
     float mvp[16];
 
     std::vector<uint32_t> buffer;
@@ -88,7 +104,9 @@ struct SDLVK : public Video, Freetype {
             error = err;
             return false;
         }
-        bvk_set_vsync(vk, vsync);
+        bvk_set_present_mode(vk, presentMode);
+        bvk_set_pacing(vk, repeat, queueDepth);
+        samples.clear();
         ftInitialized = true;
         reportedError = false;
         return true;
@@ -110,15 +128,67 @@ struct SDLVK : public Video, Freetype {
         return vk ? bvk_device_name(vk) : "";
     }
 
-    // VSync off (warp, `video_sync` off): MAILBOX/IMMEDIATE, the emulation is not held at display rate
+    // VSync off (warp): MAILBOX first, the emulation is not held at display rate
     auto synchronize(bool state) -> void {
-        std::lock_guard<std::recursive_mutex> lock(mutex);
-        vsync = state;
-        if (vk)
-            bvk_set_vsync(vk, state);
+        setPacing(repeat, queueDepth, state ? BVK_PRESENT_FIFO : BVK_PRESENT_MAILBOX);
     }
 
-    auto hasSynchronized() -> bool { return vsync; }
+    auto hasSynchronized() -> bool { return presentMode == BVK_PRESENT_FIFO; }
+
+    // ------------------------------------------------------------ pacing
+
+    auto supportsPacing() -> bool { return true; }
+
+    auto setPacing(unsigned _repeat, unsigned _queueDepth, int _presentMode) -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        repeat = std::max(1u, _repeat);
+        queueDepth = _queueDepth;
+        presentMode = _presentMode;
+        if (vk) {
+            bvk_set_present_mode(vk, presentMode);
+            bvk_set_pacing(vk, repeat, queueDepth);
+        }
+    }
+
+    auto pacingCaps() -> PacingCaps {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        PacingCaps caps;
+        if (vk) {
+            BvkPacingCaps c = {};
+            bvk_pacing_caps(vk, &c);
+            caps.feedback = c.feedback;
+            caps.timeDomain = c.time_domain;
+            caps.refreshNs = c.refresh_ns;
+            caps.stalled = c.stalled != 0;
+        }
+        return caps;
+    }
+
+    auto pacingChanged() -> bool { return stallChanged.exchange(false); }
+
+    auto pacingSamples(std::vector<PacingSample>& out, bool clear) -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        collectSamples();
+        out.assign(samples.begin(), samples.end());
+        if (clear)
+            samples.clear();
+    }
+
+    auto collectSamples() -> void {
+        if (!vk)
+            return;
+        BvkPresent buf[64];
+        unsigned n;
+        while ((n = bvk_take_presents(vk, buf, 64)) > 0) {
+            for (unsigned i = 0; i < n; i++) {
+                if (samples.size() >= MaxSamples)
+                    samples.pop_front();
+                samples.push_back({buf[i].frame, buf[i].submit_ns, buf[i].display_ns, buf[i].flags, buf[i].copy});
+            }
+            if (n < 64)
+                break;
+        }
+    }
 
     // ------------------------------------------------------------ frame
 
@@ -141,7 +211,8 @@ struct SDLVK : public Video, Freetype {
     auto unlockAndRedraw() -> void {
         std::lock_guard<std::recursive_mutex> lock(mutex);
         hasFrame = frameWidth && frameHeight;
-        render(true, true, options & OPT_TakeScreenshot, true);
+        ++frameSeq;
+        render(true, true, options & OPT_TakeScreenshot, true, frameSeq);
     }
 
     auto redraw() -> void {
@@ -166,12 +237,14 @@ struct SDLVK : public Video, Freetype {
         ftUpdateCoords();
     }
 
-    auto render(bool upload, bool showFrame, bool screenshot, bool decorations) -> void {
+    // seq: emulator frame sequence of a new picture (0 = redraw, presented once)
+    auto render(bool upload, bool showFrame, bool screenshot, bool decorations, uint64_t seq = 0) -> void {
         if (!vk || !window)
             return;
         updateWindowSize();
 
         BvkFrame f = {};
+        f.frame_seq = seq;
         f.window_width = viewScreen.windowWidth;
         f.window_height = viewScreen.windowHeight;
         if (upload && hasFrame) {
@@ -239,6 +312,13 @@ struct SDLVK : public Video, Freetype {
 
         char err[512] = {0};
         int res = bvk_render(vk, &f, err, sizeof err);
+        collectSamples();
+        BvkPacingCaps caps = {};
+        bvk_pacing_caps(vk, &caps);
+        if ((caps.stalled != 0) != stalled) {
+            stalled = caps.stalled != 0;
+            stallChanged = true;
+        }
         if (res == BVK_ERROR) {
             if (!reportedError)
                 fprintf(stderr, "Vulkan: %s\n", err);

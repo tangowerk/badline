@@ -78,6 +78,25 @@ struct OverlayFrame {
     unsigned height = 0;
 };
 
+// one present of the pacing-capable renderer (Vulkan), see bvk.h BvkPresent
+struct PacingSample {
+    uint64_t frame;       // emulator frame sequence (0 = redraw)
+    uint64_t submitNs;    // CLOCK_MONOTONIC before present
+    uint64_t displayNs;   // display time, 0 = unknown
+    uint32_t flags;       // PACING_*
+    uint32_t copy;        // 0 = first present of the picture
+};
+enum { PACING_REPEAT = 1, PACING_REDRAW = 2, PACING_TIMING = 4, PACING_WAITED = 8, PACING_LOST = 16 };
+enum { PACING_FEEDBACK_NONE = 0, PACING_FEEDBACK_WAIT = 1, PACING_FEEDBACK_TIMING = 2 };
+enum { PRESENT_MAILBOX = 0, PRESENT_FIFO = 1, PRESENT_IMMEDIATE = 2 };
+
+struct PacingCaps {
+    int feedback = PACING_FEEDBACK_NONE;
+    int timeDomain = 0;   // Vulkan time domain of displayNs (1 = CLOCK_MONOTONIC)
+    uint64_t refreshNs = 0;
+    bool stalled = false; // a present wait timed out, nothing displayed since (hidden window)
+};
+
 enum Options { OPT_HoldFrame = 1, OPT_Interlace = 2, OPT_DisallowShader = 4, OPT_TakeScreenshot = 8,
                 OPT_DisallowFilter = 0x10, OPT_Pause = 0x20, OPT_Rewind = 0x40, OPT_RGB10 = 0x80 };
 enum Rotation { ROT_0, ROT_90, ROT_180, ROT_270 };
@@ -130,6 +149,16 @@ struct Video {
     virtual auto hasOverlay() -> bool { return false; }
 
 
+    // frame pacing (Vulkan, M-Pacing1): every new picture is presented `repeat` times; with
+    // queueDepth d > 0 present N waits until present N-d is on screen (video master)
+    virtual auto supportsPacing() -> bool { return false; }
+    virtual auto setPacing(unsigned repeat, unsigned queueDepth, int presentMode) -> void {}
+    virtual auto pacingCaps() -> PacingCaps { return {}; }
+    // copies the collected presents (oldest first); `clear` drops them afterwards
+    virtual auto pacingSamples(std::vector<PacingSample>& out, bool clear) -> void {}
+    // true once after the renderer stalled or recovered (the pacing decision is re-evaluated)
+    virtual auto pacingChanged() -> bool { return false; }
+
     virtual auto setVRR(bool state, float speed = 0.0) -> void {}
     virtual auto hasVRR() -> bool { return false; }
     virtual auto changeThreadPriorityToRealtime(bool state) -> void {}
@@ -175,9 +204,15 @@ struct Audio {
     virtual auto setFrequency(unsigned value) -> void {}
     virtual auto getFrequency() -> unsigned { return 48000u; }
     virtual auto setLatency(unsigned value) -> void {}
+    // true: the latency is the client buffer only (bursty producer with DRC, video master);
+    // false: total latency incl. the server (PulseAudio ADJUST_LATENCY)
+    virtual auto setClientBuffer(bool state) -> void {}
     virtual auto synchronize(bool state) -> void {}
     virtual auto addSamples( const uint8_t* buffer, unsigned size) -> void {}
     virtual auto getCenterBufferDeviation() -> double { return 0.0; }
+    // pacing statistics: buffer underflows and bytes dropped because the buffer was full
+    virtual auto xruns(unsigned& underflows, unsigned& droppedBytes) -> void { underflows = droppedBytes = 0; }
+    virtual auto resetXruns() -> void {}
     virtual auto expectFloatingPoint() -> bool { return true; }
     virtual auto getMinimumLatency() -> unsigned { return 1; }
 	virtual auto hasSynchronized() -> bool { return true; }

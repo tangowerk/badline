@@ -24,7 +24,7 @@ auto Video::available() -> std::vector<std::string> {
 }
 
 auto Video::preferred() -> std::string {
-    return "OpenGL";
+    return "Vulkan";
 }
 
 auto Video::create(const std::string& driver) -> Video* {

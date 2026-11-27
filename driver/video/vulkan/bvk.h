@@ -13,6 +13,10 @@ enum { BVK_SURFACE_WAYLAND = 1, BVK_SURFACE_XLIB = 2 };
 enum { BVK_TEX_ATLAS = 0, BVK_TEX_TEXT = 1 };
 enum { BVK_FMT_R8 = 0, BVK_FMT_RGBA8 = 1 };
 enum { BVK_OK = 0, BVK_SKIPPED = 1, BVK_NO_SHOT = 2, BVK_ERROR = -1 };
+enum { BVK_PRESENT_MAILBOX = 0, BVK_PRESENT_FIFO = 1, BVK_PRESENT_IMMEDIATE = 2 };
+enum { BVK_FEEDBACK_NONE = 0, BVK_FEEDBACK_WAIT = 1, BVK_FEEDBACK_TIMING = 2 };
+// BvkPresent::flags
+enum { BVK_REC_REPEAT = 1, BVK_REC_REDRAW = 2, BVK_REC_TIMING = 4, BVK_REC_WAITED = 8, BVK_REC_LOST = 16 };
 
 struct BvkCreateInfo {
     int kind;
@@ -46,6 +50,24 @@ struct BvkFrame {
 
     uint8_t* screenshot;    // RGB, top-down
     int shot_x, shot_y, shot_width, shot_height;
+
+    uint64_t frame_seq;     // changed value = new emulator picture (presented `repeat` times)
+};
+
+struct BvkPresent {
+    uint64_t present_id;
+    uint64_t frame;         // emulator frame sequence (0 = redraw)
+    uint64_t submit_ns;     // CLOCK_MONOTONIC before vkQueuePresentKHR
+    uint64_t display_ns;    // display time (0 = unknown)
+    uint32_t flags;         // BVK_REC_*
+    uint32_t copy;          // 0 = first present of the picture
+};
+
+struct BvkPacingCaps {
+    int feedback;           // BVK_FEEDBACK_*
+    int time_domain;        // Vulkan time domain of display_ns with timing (1 = CLOCK_MONOTONIC)
+    uint64_t refresh_ns;    // from present timing, 0 = unknown
+    int stalled;            // 1: a present wait timed out, nothing displayed since (hidden window)
 };
 
 BvkRenderer* bvk_create(const BvkCreateInfo* info, char* error, size_t errorLen);
@@ -53,7 +75,10 @@ void bvk_destroy(BvkRenderer* r);
 int bvk_set_texture(BvkRenderer* r, int slot, int format, unsigned width, unsigned height, const void* data,
                     char* error, size_t errorLen);
 int bvk_render(BvkRenderer* r, const BvkFrame* frame, char* error, size_t errorLen);
-void bvk_set_vsync(BvkRenderer* r, int on);
+void bvk_set_present_mode(BvkRenderer* r, int mode);
+void bvk_set_pacing(BvkRenderer* r, unsigned repeat, unsigned queue_depth);
+void bvk_pacing_caps(const BvkRenderer* r, BvkPacingCaps* caps);
+unsigned bvk_take_presents(BvkRenderer* r, BvkPresent* out, unsigned max);
 const char* bvk_device_name(const BvkRenderer* r);
 
 }

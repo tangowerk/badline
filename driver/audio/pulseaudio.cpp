@@ -1,4 +1,5 @@
 
+#include <atomic>
 #include <pulse/pulseaudio.h>
 
 namespace DRIVER {       
@@ -17,10 +18,13 @@ struct PulseAudio : public Audio {
         unsigned frequency;
         unsigned latency;
         unsigned minimumLatency;
+        bool clientBuffer;
         uintptr_t handle;        
     } settings;
 
     bool cleared;
+    std::atomic<unsigned> underflows{0};
+    std::atomic<unsigned> droppedBytes{0};
     
 	auto synchronize(bool state) -> void {
 		settings.synchronize = state;
@@ -30,8 +34,8 @@ struct PulseAudio : public Audio {
 
 	auto setFrequency(unsigned value) -> void {
 		settings.frequency = value;
-        if (settings.handle)
-            init();
+        if (device.stream && !init()) // runtime change (Denise checked the init handle, always 0)
+            term(); // failed: no half-open stream, addSamples/clear become no-ops
 	}
 
     auto getFrequency() -> unsigned {
@@ -40,10 +44,15 @@ struct PulseAudio : public Audio {
 
 	auto setLatency(unsigned value) -> void {
         settings.latency = std::max(value, settings.minimumLatency);
-        if (settings.handle)
-            init();
+        if (device.stream && !init()) // runtime change (Denise checked the init handle, always 0)
+            term(); // failed: no half-open stream, addSamples/clear become no-ops
 	}   
     
+    // applied with the next setLatency/init (callers set both, one stream rebuild)
+    auto setClientBuffer(bool state) -> void {
+        settings.clientBuffer = state;
+    }
+
     auto getMinimumLatency() -> unsigned {
         
         return settings.minimumLatency;
@@ -89,6 +98,10 @@ struct PulseAudio : public Audio {
         PulseAudio* pulse = (PulseAudio*)data;
 
         pa_threaded_mainloop_signal( pulse->device.mainloop, 0);
+    }
+
+    static auto stream_underflow_cb(pa_stream* s, void* data) -> void {
+        ((PulseAudio*)data)->underflows++;
     }
 
     static auto buffer_attr_cb(pa_stream* s, void* data) -> void {
@@ -179,16 +192,21 @@ struct PulseAudio : public Audio {
         pa_stream_set_write_callback( device.stream, stream_request_cb, this );
         pa_stream_set_latency_update_callback( device.stream, stream_latency_update_cb, this);
         pa_stream_set_buffer_attr_callback( device.stream, buffer_attr_cb, this);
+        pa_stream_set_underflow_callback( device.stream, stream_underflow_cb, this);
 
         bufferAttr.maxlength = -1;
         bufferAttr.tlength   = pa_usec_to_bytes( settings.latency * PA_USEC_PER_MSEC, &spec);
         bufferAttr.prebuf    = -1;
-        bufferAttr.minreq    = -1;
+        // small requests: writable_size (DRC buffer level, non-blocking writes) stays current
+        bufferAttr.minreq    = pa_usec_to_bytes( 2 * PA_USEC_PER_MSEC, &spec);
         bufferAttr.fragsize  = -1;
 
         //pa_stream_flags_t flags = (pa_stream_flags_t) (PA_STREAM_ADJUST_LATENCY | PA_STREAM_VARIABLE_RATE);
 
-        if (pa_stream_connect_playback( device.stream, NULL, &bufferAttr, PA_STREAM_ADJUST_LATENCY, NULL, NULL) < 0) {
+        // ADJUST_LATENCY: tlength = total latency, the server keeps part of it (client buffer
+        // ~ half); without it tlength is the client buffer and the server adds its quantum
+        pa_stream_flags_t flags = settings.clientBuffer ? PA_STREAM_NOFLAGS : PA_STREAM_ADJUST_LATENCY;
+        if (pa_stream_connect_playback( device.stream, NULL, &bufferAttr, flags, NULL, NULL) < 0) {
             pa_threaded_mainloop_unlock( device.mainloop );
             return false;  
         }      
@@ -210,6 +228,8 @@ struct PulseAudio : public Audio {
     }
     
     auto addSamples( const uint8_t* buffer, unsigned size) -> void {
+        if (!device.stream) // a runtime re-init failed
+            return;
         cleared = false;
         pa_threaded_mainloop_lock( device.mainloop );
         
@@ -229,15 +249,17 @@ struct PulseAudio : public Audio {
                 // and locks again before it returns, otherwise the audio rendering
                 // thread would be blocked too long.
                 pa_threaded_mainloop_wait( device.mainloop );
-            else
+            else {
+                droppedBytes += size;
                 break;
+            }
         }
 
         pa_threaded_mainloop_unlock( device.mainloop );
     }
 
     auto clear() -> void {
-        if (cleared) return;
+        if (cleared || !device.stream) return;
 
         pa_threaded_mainloop_lock(device.mainloop);
         pa_stream_cork(device.stream, true, stream_success_cb, device.mainloop);
@@ -249,6 +271,8 @@ struct PulseAudio : public Audio {
     }
 
     auto writeAvailable() -> unsigned {
+        if (!device.stream)
+            return 0;
 
         pa_threaded_mainloop_lock( device.mainloop );
         unsigned count = pa_stream_writable_size( device.stream );
@@ -272,6 +296,16 @@ struct PulseAudio : public Audio {
         return true;
     }
 
+    auto xruns(unsigned& _underflows, unsigned& _droppedBytes) -> void {
+        _underflows = underflows;
+        _droppedBytes = droppedBytes;
+    }
+
+    auto resetXruns() -> void {
+        underflows = 0;
+        droppedBytes = 0;
+    }
+
     PulseAudio() {
         device.context = nullptr;
         device.mainloop = nullptr;
@@ -281,6 +315,7 @@ struct PulseAudio : public Audio {
         settings.synchronize = false;
 		settings.frequency = 48000;
 		settings.latency = 64;
+        settings.clientBuffer = false;
         settings.minimumLatency = 10;
 		settings.handle = 0;
     }

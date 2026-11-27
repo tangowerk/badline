@@ -33,6 +33,17 @@ auto AudioManager::setLatency() -> void {
 
     unsigned latency = globalSettings->get<unsigned>("audio_latency", 30u, {1u, 120u});
 
+    // video master: the emulation delivers a whole frame of audio in one burst, then waits for
+    // the display; the buffer (regulated around its centre by DRC) must hold two frames + margin
+    if (videoBuffer && inputFPS > 0.0)
+        latency = std::max(latency, (unsigned)std::ceil(2000.0 / inputFPS) + 10u);
+
+    // one stream rebuild for both changes (setLatency re-creates it)
+    if (latency == appliedLatency && videoBuffer == appliedClientBuffer)
+        return;
+    appliedLatency = latency;
+    appliedClientBuffer = videoBuffer;
+    audioDriver->setClientBuffer(videoBuffer);
     audioDriver->setLatency( latency );
 }
 
@@ -46,7 +57,7 @@ auto AudioManager::setSynchronize() -> void {
     bool synchronize = false;
     if (cmd->debug)
         synchronize = false;
-    else synchronize = !program->isMaximumSpeed();
+    else synchronize = !program->isMaximumSpeed() && !videoMaster;
 
     if (audioDriver->hasSynchronized() == synchronize)
         return;
@@ -97,7 +108,8 @@ auto AudioManager::setResampler() -> void {
         }
     }
     
-    ratio = (double)audioDriver->getFrequency() / inputFrequency;
+    resamplerInput = inputFrequency;
+    ratio = (double)audioDriver->getFrequency() / (inputFrequency * videoClock);
 
     cosine.reset( ratio, stat.stereoSound ? 2 : 1 );   
     
@@ -256,9 +268,12 @@ auto AudioManager::setDriveSounds( bool init ) -> void {
 
 auto AudioManager::setRateControl() -> void {
 
-    dynamicRateControl = allowDrc && globalSettings->get<bool>("dynamic_rate_control", false);
+    // video master: DRC always on (internal, no setting); GL: settings as in Denise
+    dynamicRateControl = videoMaster || (allowDrc && globalSettings->get<bool>("dynamic_rate_control", false));
 
-    if (dynamicRateControl) {
+    if (videoMaster)
+        rateDelta = 0.005;
+    else if (dynamicRateControl) {
         auto _rateDelta = globalSettings->get<float>("rate_control_delta", 0.005, {0.0, 0.010});
 
         rateDelta = (float)(static_cast<int>(_rateDelta * 10000.0 + 0.5)) / 10000.0;
@@ -266,6 +281,31 @@ auto AudioManager::setRateControl() -> void {
         rData.ratio = ratio;
 
     setBufferSize();
+}
+
+auto AudioManager::setVideoMaster(bool state, double clock, bool updateBuffer) -> void {
+    if (!state)
+        clock = 1.0;
+    bool changed = state != videoMaster || clock != videoClock;
+    if (state != videoMaster)
+        drcFiltered = 0.0;
+    videoMaster = state;
+    videoClock = clock;
+    if (updateBuffer)
+        videoBuffer = state;
+    // also follows emulated rate changes (NTSC <-> PAL); no-op when nothing changed
+    setLatency();
+
+    if (changed && resamplerInput > 0.0) {
+        ratio = (double)audioDriver->getFrequency() / (resamplerInput * videoClock);
+        rData.ratio = ratio;
+    }
+    setSynchronize();
+    setRateControl();
+}
+
+auto AudioManager::resetDrcStats() -> void {
+    drcStats = {};
 }
 
 auto AudioManager::power() -> void {
@@ -348,8 +388,30 @@ auto AudioManager::flush( ) -> void {
         if (statistics.enable)
             calcStatistics( (float)deviation );
 
-        if (dynamicRateControl)
-            rData.ratio = ratio * (1.0 + rateDelta * deviation);
+        if (dynamicRateControl) {
+            double control = deviation;
+            if (videoMaster) {
+                // the buffer level saw-tooths with the per-frame audio bursts; following it would
+                // modulate the pitch at the frame rate: regulate the average only (per flush, so
+                // the time constant is ~0.1-2 s depending on the SID sample rate; loop stays damped)
+                drcFiltered += (deviation - drcFiltered) * 0.002;
+                control = drcFiltered;
+            }
+            rData.ratio = ratio * (1.0 + rateDelta * control);
+
+            auto& d = drcStats;
+            double adj = rateDelta * control;
+            if (!d.count) {
+                d.devMin = d.devMax = deviation;
+                d.adjMin = d.adjMax = adj;
+            }
+            d.devMin = std::min(d.devMin, deviation);
+            d.devMax = std::max(d.devMax, deviation);
+            d.adjMin = std::min(d.adjMin, adj);
+            d.adjMax = std::max(d.adjMax, adj);
+            d.devSum += deviation;
+            d.count++;
+        }
     }
 
     cosine.process();
@@ -465,6 +527,8 @@ auto AudioManager::initDriver() -> void {
     }
 
     audioDriver = DRIVER::Audio::create( getSelectedDriver() );
+    audioManager->appliedLatency = 0;
+    audioManager->appliedClientBuffer = false;
     audioManager->setFrequency();
     audioManager->setLatency();
     audioManager->setSynchronize();
