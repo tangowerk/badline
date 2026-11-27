@@ -8,6 +8,7 @@
 #include "../thread/emuThread.h"
 #include "../media/autoloader.h"
 #include "../media/fileloader.h"
+#include "../helper/miscHelper.h"
 #include "../media/recentFiles.h"
 #include "../tools/filepool.h"
 #include "../tools/filesetting.h"
@@ -765,6 +766,10 @@ auto MediaBrowser::eject() -> void {
         for (auto& m : media->group->media)
             if (m.guid)
                 fileloader->eject(emu, &m);
+        // unplug the cartridge too: an empty EasyFlash etc. would stay attached and crash the boot
+        auto expansion = emu->getExpansion();
+        if (expansion && expansion->mediaGroup == media->group)
+            MiscHelper::removeExpansion(emu);
         program->power(emu);
     } else
         fileloader->eject(emu, media);

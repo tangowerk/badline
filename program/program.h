@@ -24,7 +24,7 @@
 #endif
 #define SETTINGS_FILE "settings.ini"
 #define DEFAULT_TRANS_FILE "english.txt"
-#define VERSION "0.1.1"
+#define VERSION "0.1.2"
 #define LICENSE "GPLv3"
 #define AUTHOR "Badline contributors"
 

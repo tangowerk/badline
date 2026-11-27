@@ -518,6 +518,8 @@ auto File::appendFolderToTreeView(std::string& basePath, TreeViewItem* tvi, cons
         }
     }
 
+    closedir(dir);
+
     // shuffle to test the sorting
     // std::random_shuffle(infos.begin(), infos.end());
 
@@ -599,6 +601,7 @@ auto File::getFolderListAlt( std::string path, std::vector<std::string> subStrs,
             break;
     }
     
+    closedir(dir);
     return list;
 }
 
@@ -621,6 +624,7 @@ auto File::getFolderList( std::string path, const std::string& subStr ) -> std::
 
         list.push_back( info );
     }
+    closedir(dir);
     return list;
 }
 
@@ -651,6 +655,7 @@ auto File::getFileList(const std::string& path, const std::string& subPath ) -> 
             list.push_back( subPath + name );
     }
 
+    closedir(dir);
     return list;
 }
 

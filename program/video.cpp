@@ -288,6 +288,18 @@ auto Program::repeatLastFrame() -> void {
         if (cropData16) {
             activeVideoManager->renderFrame<uint16_t>(cropData16, activeEmulator->cropWidth(), activeEmulator->cropHeight(),
                 activeEmulator->cropPitch(), activeEmulator->cropOptions() | VideoManager::RENDER_OPT_PAUSE);
+        } else {
+            // power() drops the last frame; while paused (e.g. reset/eject from the overlay) no new one
+            // is emulated, so present a black picture, otherwise the overlay is never redrawn
+            unsigned width = activeEmulator->cropWidth(), height = activeEmulator->cropHeight();
+            if (!width || !height) {
+                width = 384;
+                height = 272;
+            }
+            static std::vector<uint8_t> black;
+            if (black.size() < width * height)
+                black.assign(width * height, 0);
+            activeVideoManager->renderFrame<uint8_t>(black.data(), width, height, 0, VideoManager::RENDER_OPT_PAUSE);
         }
     }
 

@@ -7,6 +7,7 @@
 #include "../thread/emuThread.h"
 #include "../media/autoloader.h"
 #include "../media/fileloader.h"
+#include "../helper/miscHelper.h"
 #include "../states/states.h"
 #include "../view/view.h"
 #include "../window/sdlWindow.h"
@@ -369,6 +370,7 @@ auto McpServer::registerTools() -> void {
                         }
                     }
                     if (any) {
+                        MiscHelper::removeExpansion(emu);
                         program->power(emu);
                         ejected.push_back("cartridge");
                     }

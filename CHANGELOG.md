@@ -6,6 +6,23 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ## Unreleased
 
+## 0.1.2 – 2026-11-27
+
+### Fixed
+
+- The window no longer freezes on the last picture after a reset while the
+  overlay is open (e.g. cartridge eject from the Media page): a power cycle
+  drops the last emulated frame, and while paused nothing was presented, so the
+  overlay kept reacting to input but was never redrawn. A black picture is shown
+  until the emulation runs again. (Badline bug since 0.1.0, overlay menu.)
+- Ejecting a cartridge (overlay Media page, MCP `eject`) now unplugs the
+  expansion as well. Before, an empty EasyFlash (or other cartridge type) stayed
+  attached, the C64 crashed on the following hard reset and the setting was
+  saved, so every later start crashed too. (Badline bug since 0.1.0.)
+- Directory listings no longer leak file handles (`opendir` without `closedir`
+  in the guikit file helpers); inserting media from a folder left up to ~25
+  open handles per insert. (Denise bug.)
+
 ## 0.1.1 – 2026-11-27
 
 ### Removed
@@ -172,7 +189,7 @@ glibc 2.39+, SDL3 included; see `INSTALL.txt` inside) or build from source.
 
 - Drive breakpoints and steps now report their drive instead of the C64 CPU
   (`M6502New::controlBreaks`), so drive debugger windows and MCP see their own
-  stops.
+  stops. (Denise bug.)
 - Screenshots of the rendered output work on EGL (read before the buffer swap).
 - Very short key taps are no longer lost between two input polls.
 - Development builds find their resources (translations, images, fonts) when
