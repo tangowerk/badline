@@ -20,7 +20,9 @@
 #define SOUND_FOLDER "sounds/"
 #endif
 #define SETTINGS_FILE "settings.ini"
-#define VERSION "0.1.3"
+#ifndef VERSION
+#error "VERSION is passed by the build (workspace version in Cargo.toml)"
+#endif
 #define LICENSE "GPLv3"
 #define AUTHOR "Badline contributors"
 

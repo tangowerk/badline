@@ -46,7 +46,7 @@ Message* appMessage = nullptr;
 
 #include "video.cpp"
 
-int main(int argc, char** argv) {
+extern "C" int badline_main(int argc, char** argv) {
     // gtk_init did this before M9: user locale (keyboard layout guess via LC_MESSAGES),
     // but "C" number formatting (settings, shaders)
     setlocale(LC_ALL, "");

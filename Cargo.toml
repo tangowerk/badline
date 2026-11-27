@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = ["crates/badline", "xtask"]
+
+[workspace.package]
+version = "0.1.3"
+edition = "2024"
+license = "GPL-3.0-or-later"
+rust-version = "1.99"
+
+# C++ optimisation follows opt-level (see crates/badline/build.rs):
+# 0 -> -O0 -g, 1/2 -> -O2 -g, 3 -> -O3
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+opt-level = 3
+strip = true
+
+# for gdb: everything unoptimised
+[profile.gdb]
+inherits = "dev"
+opt-level = 0

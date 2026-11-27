@@ -1,0 +1,163 @@
+//! `cargo xtask dist`: relocatable Linux release tarball dist/badline-<version>-linux-x86_64.tar.gz.
+//!
+//! Meant for Ubuntu 24.04 (GitHub Actions runner or container): the binary then runs on
+//! glibc 2.39+ systems. SDL3 is not packaged there, so it is built from source and shipped
+//! in lib/ (RUNPATH $ORIGIN/../lib); everything else comes from the target system.
+//! The build goes to target/dist, so the dev binary in target/release keeps its RUNPATH.
+
+use crate::{Args, Result, VERSION, absolute, exec, install, output, root, sdl3};
+use std::fs;
+use std::path::Path;
+use std::process::Command;
+
+const APT_DEPS: &[&str] = &[
+    "build-essential",
+    "cmake",
+    "ninja-build",
+    "pkg-config",
+    "git",
+    "ca-certificates",
+    "libpulse-dev",
+    "libcurl4-openssl-dev",
+    "libfreetype-dev",
+    "libx11-dev",
+    "libxrandr-dev",
+    "libxfixes-dev",
+    "libxext-dev",
+    "libopenal-dev",
+    "libwayland-dev",
+    "libxkbcommon-dev",
+    "wayland-protocols",
+    "libdecor-0-dev",
+    "libegl-dev",
+    "libgl-dev",
+    "libgles-dev",
+    "libdrm-dev",
+    "libgbm-dev",
+    "libxcursor-dev",
+    "libxi-dev",
+    "libxss-dev",
+    "libxtst-dev",
+    "libxinerama-dev",
+    "libpipewire-0.3-dev",
+    "libasound2-dev",
+    "libudev-dev",
+    "libdbus-1-dev",
+    "libibus-1.0-dev",
+];
+
+pub fn run(args: &[String]) -> Result {
+    let mut a = Args::new(args);
+    let deps = a.flag("--deps");
+    let sdl_prefix = a
+        .value("--sdl-prefix")?
+        .map(|p| absolute(&p))
+        .unwrap_or_else(|| root().join("builds/sdl3"));
+    a.finish()?;
+
+    let root = root();
+    let name = format!("badline-{VERSION}-linux-x86_64");
+
+    if deps {
+        exec(Command::new("sudo").args(["apt-get", "update"]))?;
+        exec(
+            Command::new("sudo")
+                .args(["apt-get", "install", "-y", "--no-install-recommends"])
+                .args(APT_DEPS),
+        )?;
+    }
+
+    sdl3::build(&sdl_prefix)?;
+
+    let binary = install::build_release(
+        Some(&root.join("target/dist")),
+        &[
+            ("BADLINE_RPATH", "$ORIGIN/../lib".into()),
+            ("BADLINE_SDL3_PREFIX", sdl_prefix.display().to_string()),
+        ],
+    )?;
+
+    let dist = root.join("dist");
+    let stage = dist.join(&name);
+    let _ = fs::remove_dir_all(&stage);
+    install::install(&binary, &stage, false)?;
+
+    // ship SDL3 (soname file + symlinks)
+    let lib = stage.join("lib");
+    fs::create_dir_all(&lib).map_err(|e| e.to_string())?;
+    for e in fs::read_dir(sdl_prefix.join("lib")).map_err(|e| e.to_string())? {
+        let e = e.map_err(|e| e.to_string())?;
+        let fname = e.file_name();
+        if !fname.to_string_lossy().starts_with("libSDL3.so.0") {
+            continue;
+        }
+        let dst = lib.join(&fname);
+        let meta = fs::symlink_metadata(e.path()).map_err(|e| e.to_string())?;
+        if meta.file_type().is_symlink() {
+            let target = fs::read_link(e.path()).map_err(|e| e.to_string())?;
+            std::os::unix::fs::symlink(target, &dst).map_err(|e| e.to_string())?;
+        } else {
+            fs::copy(e.path(), &dst).map_err(|e| e.to_string())?;
+        }
+    }
+
+    check(&stage)?;
+
+    fs::write(stage.join("INSTALL.txt"), install_txt()).map_err(|e| e.to_string())?;
+    let tarball = dist.join(format!("{name}.tar.gz"));
+    exec(
+        Command::new("tar")
+            .arg("-C")
+            .arg(&dist)
+            .arg("-czf")
+            .arg(&tarball)
+            .arg(&name),
+    )?;
+    println!("dist/{name}.tar.gz");
+    Ok(())
+}
+
+/// RUNPATH set, SDL3 resolves to the bundled copy, nothing missing.
+fn check(stage: &Path) -> Result {
+    let bin = stage.join("bin/badline");
+    let dynamic = output(Command::new("readelf").arg("-d").arg(&bin))?;
+    if !dynamic
+        .lines()
+        .any(|l| l.contains("RUNPATH") && l.contains("$ORIGIN/../lib"))
+    {
+        return Err("RUNPATH $ORIGIN/../lib missing".into());
+    }
+    let ldd = output(Command::new("ldd").arg(&bin))?;
+    let bundled = format!(
+        "libSDL3.so.0 => {}/bin/../lib/libSDL3.so.0",
+        stage.display()
+    );
+    if !ldd.contains(&bundled) {
+        return Err(format!(
+            "libSDL3 does not resolve to the bundled copy:\n{ldd}"
+        ));
+    }
+    let missing: Vec<&str> = ldd.lines().filter(|l| l.contains("not found")).collect();
+    if !missing.is_empty() {
+        return Err(format!("missing libraries:\n{}", missing.join("\n")));
+    }
+    Ok(())
+}
+
+fn install_txt() -> String {
+    format!(
+        "Badline {VERSION} for Linux x86_64 (built on Ubuntu 24.04, needs glibc 2.39 or newer)
+
+Run in place:   ./bin/badline
+Install:        copy the folder anywhere (e.g. ~/.local/opt/badline) and start bin/badline;
+                share/applications/badline.desktop can be adapted for a launcher entry.
+
+SDL3 is included (lib/). The other libraries come from your system; on Ubuntu/Debian:
+  sudo apt install libpulse0 libcurl4t64 libopenal1 \\
+                   libfreetype6 libgl1 libegl1
+(Debian 13 / Ubuntu 24.04 names; most desktops have them already.)
+
+On first start Badline offers to download the C64 ROMs (see share/doc/badline/README.md).
+"
+    )
+}

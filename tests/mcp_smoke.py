@@ -2,7 +2,7 @@
 """Smoke test for the embedded MCP server (standard library only).
 
 Usage:
-  tests/mcp_smoke.py [--binary builds/release/program/badline] [--port 6465] [--attach] [--headless]
+  tests/mcp_smoke.py [--binary target/release/badline] [--port 6465] [--attach] [--headless]
 
 Without --attach the script starts the emulator with -mcp <port> (or -headless
 with --headless), runs all tools once and stops the emulator afterwards (quit
@@ -844,7 +844,7 @@ def run_headless_checks(client):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--binary", default=os.path.join(os.path.dirname(__file__), "..", "builds", "release", "program", "badline"))
+    ap.add_argument("--binary", default=os.path.join(os.path.dirname(__file__), "..", "target", "release", "badline"))
     ap.add_argument("--port", type=int, default=6465)
     ap.add_argument("--attach", action="store_true")
     ap.add_argument("--headless", action="store_true")

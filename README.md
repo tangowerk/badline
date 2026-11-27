@@ -124,7 +124,7 @@ sudo apt install libpulse0 libcurl4t64 libopenal1 \
                  libfreetype6 libgl1 libegl1
 ```
 
-`tools/build_release.sh` builds the same tarball (used by the GitHub Actions
+`cargo xtask dist` builds the same tarball (used by the GitHub Actions
 workflow).
 
 ---
@@ -134,22 +134,28 @@ workflow).
 Requirements (Arch Linux package names; other distributions are similar):
 
 ```
-cmake gcc pkgconf git ninja curl libpulse freetype2
+rust (or rustup) gcc pkgconf git curl libpulse freetype2
+for the patched SDL3: cmake ninja
 optional: openal
 ```
 
+Cargo drives the whole build; `crates/badline/build.rs` compiles the C++ sources
+(only changed files are recompiled).
+
 ```sh
-tools/build_sdl3.sh          # once: patched SDL3 in builds/sdl3 (picked up by CMake)
-cmake -B builds/release -DCMAKE_BUILD_TYPE=Release
-cmake --build builds/release --parallel
-./builds/release/program/badline
+cargo xtask sdl3             # once: patched SDL3 in builds/sdl3 (picked up automatically)
+cargo build --release
+./target/release/badline
 ```
 
-The build directory links the `data/` resources into `builds/release/share/badline`,
-so the binary runs straight from the build tree. Without `builds/sdl3` the system
-SDL3 is used (package `sdl3`); file drops from some Wayland sources then fail (see
-`tools/patches/`). `cmake --install builds/release`
-installs to `/usr/local` (binary, data, desktop file, icons; MIME types with `-DINSTALL_FILE_ASSOCIATIONS=1`).
+`cargo build` (dev profile) compiles the C++ code with `-O2 -g`, so it still runs at
+full speed; `cargo build --profile gdb` builds everything unoptimised for debugging.
+The build links the `data/` resources into `target/share/badline`, so the binary runs
+straight from the build tree. Without `builds/sdl3` the system SDL3 is used (package
+`sdl3`); file drops from some Wayland sources then fail (see `tools/patches/`).
+`cargo xtask install` installs to `/usr/local` (binary, data, desktop file, icons;
+`--prefix DIR` for another location, `--mime` adds the MIME types; for a root-owned
+prefix build first and run `sudo cargo xtask install --no-build`).
 
 ---
 

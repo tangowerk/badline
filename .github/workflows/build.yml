@@ -13,14 +13,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+
       - name: Cache SDL3
         uses: actions/cache@v4
         with:
           path: builds/sdl3
-          key: sdl3-${{ hashFiles('tools/build_sdl3.sh', 'tools/patches/sdl3-*.patch') }}-ubuntu-24.04
+          key: sdl3-${{ hashFiles('xtask/src/sdl3.rs', 'tools/patches/sdl3-*.patch') }}-ubuntu-24.04
 
       - name: Build tarball
-        run: tools/build_release.sh --deps
+        run: cargo xtask dist --deps
 
       - uses: actions/upload-artifact@v4
         with:

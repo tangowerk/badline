@@ -37,6 +37,21 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
   from SDL.
 - The VICE binary monitor keeps its checkpoints itself instead of hidden GTK
   debugger windows; new smoke test `tests/binmon_smoke.py`.
+- **Cargo builds Badline now; CMake is gone.** The repository is a Cargo
+  workspace: `crates/badline` (the binary; a small Rust `main` hands over to
+  the C++ program, its `build.rs` compiles the C++ sources with the same flags
+  as before and only recompiles changed files) and `xtask` for project tasks.
+  `cargo build --release` builds `target/release/badline`; the dev profile
+  compiles C++ with `-O2 -g` (full speed), `--profile gdb` without
+  optimisation. `cargo xtask sdl3`, `cargo xtask install [--prefix] [--mime]`
+  and `cargo xtask dist` replace `tools/build_sdl3.sh`, `cmake --install` and
+  `tools/build_release.sh`; the CI workflow uses them. The Rust toolchain is
+  pinned in `rust-toolchain.toml` (1.99). Installed files and the release
+  tarball contents are unchanged; warp speed is the same as the CMake build.
+- The version is set once in `Cargo.toml` (was `program/program.h`).
+- Removed the untested Debian package script (`data/build_deb.sh`,
+  `data/control`), the CMake `uninstall` target and the Denise-era entries in
+  `.gitignore`.
 
 ### Fixed
 

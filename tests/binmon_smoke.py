@@ -55,7 +55,7 @@ class Mon:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--binary", default=os.path.join(os.path.dirname(__file__), "..", "builds", "release", "program", "badline"))
+    ap.add_argument("--binary", default=os.path.join(os.path.dirname(__file__), "..", "target", "release", "badline"))
     ap.add_argument("--port", type=int, default=6512)
     args = ap.parse_args()
     cfgdir = tempfile.mkdtemp(prefix="badline-binmon-")
