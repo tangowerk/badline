@@ -178,6 +178,9 @@ auto EmuThread::handleStatusUpdate( ) -> void {
 
     statusMutex.unlock();
 
+    if (!view)
+        return;
+
     auto& statusBar = view->statusBar;
 
     for(auto& sU : copy) {

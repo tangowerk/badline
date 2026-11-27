@@ -182,6 +182,8 @@ struct InputManager {
     auto autoAssign( KeyboardLayout::Type type, bool keyboardOnly = true ) -> void;
     auto autoAssign( Emulator::Interface::Device& device ) -> void;
     auto autoAssignHotkeys() -> void;
+    static auto assignDefaultHotkeys() -> void;
+    static auto autoAssignJoypads() -> void;
 	auto addMapping(InputMapping* mapping) -> void;
     auto addMappingInUse(InputMapping* mapping) -> void;
     template<bool changeTrigger = false> auto update() -> void;

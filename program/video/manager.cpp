@@ -438,7 +438,7 @@ template<typename T> auto VideoManager::renderFrame(const T* src, unsigned width
     }
 
     if (unlikely(takeScreenShots)) {
-        auto& screenshot = view->screenshot;
+        auto& screenshot = program->screenshot;
 
         if (!--screenshot.intervalPos) {
             screenshot.intervalPos = screenshot.interval;
@@ -701,7 +701,7 @@ template<typename T> auto VideoManager::renderToScreenshot(unsigned width, unsig
 
             src += srcPitch;
         }
-    } else if (view->screenshot.writePalette) {
+    } else if (program->screenshot.writePalette) {
         for (unsigned h = 0; h < height; h++) {
             for (unsigned w = 0; w < width; w++)
                 *dest++ = *src++ & mask;

@@ -92,7 +92,7 @@ target_sources(guikit PRIVATE
 # the libraries lha and gif are built in "deps/CMakeLists.txt"
 target_link_libraries(guikit PRIVATE lha gif)
 
-target_link_libraries(guikit PUBLIC fontconfig Xrandr)
+target_link_libraries(guikit PUBLIC fontconfig Xrandr ${X11_LIBRARIES})
 
 target_link_directories(guikit PUBLIC ${GTK_LIBRARY_DIRS})
 target_link_libraries(guikit PUBLIC ${GTK_LIBRARIES})

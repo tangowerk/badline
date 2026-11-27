@@ -1,6 +1,7 @@
 
 #include "manager.h"
 #include "../view/status.h"
+#include "../window/sdlWindow.h"
 #include "../audio/manager.h"
 #include "../thread/emuThread.h"
 #include "../media/fileloader.h"
@@ -249,8 +250,10 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             settings->set<unsigned>( _underscore(connector1->name), connectedDevice2->id);
             settings->set<unsigned>( _underscore(connector2->name), connectedDevice1->id);
 
-            view->checkInputDevice( emulator, connector1, connectedDevice2 );
-			view->checkInputDevice( emulator, connector2, connectedDevice1 );
+            if (view) {
+                view->checkInputDevice( emulator, connector1, connectedDevice2 );
+                view->checkInputDevice( emulator, connector2, connectedDevice1 );
+            }
 
             auto emuView = EmuConfigView::TabWindow::getView(emulator);
             if (emuView && emuView->inputLayout)
@@ -286,8 +289,8 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             break;
 
         case Hotkey::Id::Fullscreen:
-            emuThread->lock();
-            view->switchFullScreen( !view->fullScreen() );
+            if (sdlWindow)
+                sdlWindow->setFullScreen( !sdlWindow->fullScreen() );
             break;
 
         case Hotkey::Id::Quit: {
@@ -295,7 +298,10 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             tempTimer->setInterval(5);
             tempTimer->onFinished = [tempTimer]() {
                 tempTimer->setEnabled(false);
-                view->onClose();
+                if (!program->quitInProgress) {
+                    program->quit();
+                    GUIKIT::Application::quit();
+                }
             };
             tempTimer->setEnabled();
         } break;
@@ -328,9 +334,9 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
                 auto fpsScreen = globalSettings->get<unsigned>("fps_screen", 0);
 
                 if (statusHandler->showFPSScreen)
-                    fpsScreen |= 1 << (view->fullScreen() ? 1 : 0);
+                    fpsScreen |= 1 << (sdlWindow && sdlWindow->fullScreen() ? 1 : 0);
                 else
-                    fpsScreen &= ~(1 << (view->fullScreen() ? 1 : 0));
+                    fpsScreen &= ~(1 << (sdlWindow && sdlWindow->fullScreen() ? 1 : 0));
 
                 globalSettings->set<unsigned>("fps_screen", fpsScreen);
             }
@@ -346,22 +352,17 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             }
         } break;
 			
-        case Hotkey::AnyLoad:           
-            view->setAnyload( emulator );
+        case Hotkey::AnyLoad:
+            if (view)
+                view->setAnyload( emulator );
             break;
             
         case Hotkey::Id::CaptureMouse:
-            if (inputDriver->mIsAcquired()) {
+            // the SDL window applies the capture state on the UI thread
+            if (inputDriver->mIsAcquired())
                 inputDriver->mUnacquire();
-            } else if (view->fullScreen()) {
-                // dinput needs this, when grab button is mapped to mouse
-                view->prepareCursorHide(200);
-                //inputDriver->mAcquire();
-            } else if (!program->isPause && view->isAnalogDeviceConnected()) {
-                view->prepareCursorHide(200);
-                // inputDriver->mAcquire();
-                view->setFocused();
-            }
+            else if (!program->isPause)
+                inputDriver->mAcquire();
             break;
         case Hotkey::Id::DiskSwapper:
         case Hotkey::Id::Software:
@@ -394,10 +395,8 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
                 statusHandler->setMessage(_str, false, true, 4);
         } break;
         case Hotkey::Id::TakeScreenShot:
-            if (view) {
-                emuThread->lock();
-                view->takeScreenshot();
-            }
+            emuThread->lock();
+            program->requestScreenshot();
             break;
         case Hotkey::Id::ThreadedRenderer: {
             auto _settings = Program::getSettings( activeEmulator );
@@ -441,8 +440,9 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
 
         } break;
         case Hotkey::Id::Pause:
-            view->togglePause();
-            view->updatePauseCheck();
+            program->togglePause();
+            if (view)
+                view->updatePauseCheck();
             break;
         case Hotkey::IncSlot:
         case Hotkey::DecSlot:
@@ -462,11 +462,11 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             }
             break;
         case Hotkey::ToggleMenu:
-            if(!view->fullScreen()) view->updateMenuBar( true );
+            if (view && !view->fullScreen()) view->updateMenuBar( true );
             break;
         case Hotkey::ToggleStatus:
             emuThread->lock();
-            if(!videoDriver || !videoDriver->hasExclusiveFullscreen()) view->updateStatusBar( true );
+            if (view && (!videoDriver || !videoDriver->hasExclusiveFullscreen())) view->updateStatusBar( true );
             break;
 
         case Hotkey::ApplyWindowSize:
@@ -516,7 +516,8 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
                 emuThread->lock();
                 settings->set<unsigned>("aspect_mode", aspectMode);
                 program->setVideoDimension(activeEmulator);
-                view->updateViewport();
+                if (view)
+                    view->updateViewport();
             }
             statusHandler->setMessage( program->getScaleMessage(activeEmulator, aspectMode), false, true );
         } break;
@@ -597,26 +598,26 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             if (id == Hotkey::PlayTape) {
                 activeEmulator->controlTape( media, TapeMode::Play );
                 statusHandler->setMessage(trans->get("tape_play_state"), false, true);
-                view->updateTapeIcons( TapeMode::Play );
+                if (view) view->updateTapeIcons( TapeMode::Play );
             } else if (id == Hotkey::StopTape) {
                 activeEmulator->controlTape( media, TapeMode::Stop );
                 statusHandler->setMessage(trans->get("tape_stop_state"), false, true);
-                view->updateTapeIcons( TapeMode::Stop );
+                if (view) view->updateTapeIcons( TapeMode::Stop );
             } else if (id == Hotkey::RecordTape) {              
                 activeEmulator->controlTape( media, TapeMode::Record );
                 statusHandler->setMessage(trans->get("tape_record_state"), false, true);
-                view->updateTapeIcons( TapeMode::Record );
+                if (view) view->updateTapeIcons( TapeMode::Record );
                 if (activeEmulator->isWriteProtected( media ))
                     statusHandler->setMessage( trans->get("tape_record_wp_state"), true );						
 
             } else if (id == Hotkey::ForwardTape) {
                 activeEmulator->controlTape( media, TapeMode::Forward );
                 //status->addMessage( trans->get("tape_forward_state") );                        
-                view->updateTapeIcons( TapeMode::Forward );
+                if (view) view->updateTapeIcons( TapeMode::Forward );
             } else if (id == Hotkey::RewindTape) {
                 activeEmulator->controlTape( media, TapeMode::Rewind );
                 //status->addMessage( trans->get("tape_rewind_state") );
-                view->updateTapeIcons( TapeMode::Rewind );
+                if (view) view->updateTapeIcons( TapeMode::Rewind );
             } else if (id == Hotkey::ResetTapeCounter) {
                 activeEmulator->controlTape( media, TapeMode::ResetCounter );
                 statusHandler->setMessage(trans->get("tape_counter_reset"), false, true);

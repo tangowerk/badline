@@ -44,6 +44,7 @@
 #include "debugger/sidDebugger.h"
 #include "debugger/dmaDebugger.h"
 #include "mcp/server.h"
+#include "window/sdlWindow.h"
 #include <chrono>
 #include <thread>
 #include "view/message.h"
@@ -65,6 +66,7 @@ std::vector<FileSetting*> FileSetting::instances = {};
 VideoManager* activeVideoManager = nullptr;
 InputManager* activeInputManager = nullptr;
 bool Program::focused = false;
+Message* appMessage = nullptr;
 
 #include "video.cpp"
 
@@ -92,7 +94,10 @@ Program::Program() {
     GUIKIT::Application::name = APP_NAME;
     GUIKIT::Application::vendor = AUTHOR;
     GUIKIT::Application::onQuitRequest = []() {
-        view->onClose();
+        if (program->quitInProgress)
+            return;
+        program->quit();
+        GUIKIT::Application::quit();
     };
     srand(time(nullptr) );
 
@@ -102,12 +107,13 @@ Program::Program() {
     emuThread = new EmuThread;
     settingsStorage.push_back( globalSettings );
 	if(!cmd->noGui) {
-		view = new View;
-		archiveViewer = new ArchiveViewer;    
-		trans = new GUIKIT::Translation;		
+		// SDL window instead of the GTK main window; GTK windows are not created anymore
+		sdlWindow = new SdlWindow;
+		trans = new GUIKIT::Translation;
 		statusHandler = new StatusHandler;
 		audioManager = new AudioManager;
-	}    
+		appMessage = new Message(nullptr);
+	}
     
 	logger = new Logger;
 	filePool = new FilePool;
@@ -122,6 +128,8 @@ Program::Program() {
         
         if (view)
             view->updateSpeedLabels();
+        else if (statusHandler)
+            statusHandler->resetFrameCounter();
 
         fpsChangeTimer.setEnabled(false);
         emuThread->unlock();
@@ -132,11 +140,12 @@ Program::Program() {
 
 	if(!cmd->noGui) {
 		InputManager::build();
-		view->build();		
-		if (view->setVisible()) {			
-			view->updateViewport();
-			finishStartup();
+		if (!sdlWindow->create()) {
+			GUIKIT::Application::exitCode = 1;
+			GUIKIT::Application::isQuit = true;
+			return;
 		}
+		finishStartup();
     } else {
         finishStartup();
     }
@@ -147,8 +156,8 @@ auto Program::finishStartup() -> void {
     AudioManager::initDriver();
     initVideo();
 
-    if (cmd->recommendPlaceholder())
-        view->loadPlaceholder();
+    if (cmd->recommendPlaceholder() && sdlWindow)
+        sdlWindow->loadSplashScreen();
 
     cmd->autoloadImages();
 
@@ -246,7 +255,7 @@ auto Program::init() -> void {
         auto style = globalSettings->get<unsigned>("visual_style", GUIKIT::Application::DarkMode::Auto);
         GUIKIT::Application::setDarkMode((GUIKIT::Application::DarkMode)style);
 
-        if (view && !loadTranslation(globalSettings->get<std::string>("translation", getSystemLangFile()))) {
+        if (trans && !loadTranslation(DEFAULT_TRANS_FILE)) {
             GUIKIT::System::printToCmd( "language plugin not found\n" );
         }
     }
@@ -416,30 +425,34 @@ auto Program::power( Emulator::Interface* emulator, bool regular ) -> void {
 		    updateOnScreenText();
 		    initFastForward();
 
-            if (settings->get<bool>("scale_emu_switch", false))
+            if (view && settings->get<bool>("scale_emu_switch", false))
                 view->updateToHoldDimension();
-            view->updateScreenshotUI();
+            if (view)
+                view->updateScreenshotUI();
         }
 
 	    Debugger::reset();
 
 		MiscHelper::resetRunAhead();
 
-		archiveViewer->setVisible(false);
-		view->setCursor( activeEmulator );
-		view->updateCartButtons( activeEmulator );
-
-        view->showTapeMenu( emulator->getModelValue( emulator->getModelIdOfEnabledDrives( emulator->getTapeMediaGroup() ) ) );
+		if (archiveViewer)
+			archiveViewer->setVisible(false);
+		if (view) {
+			view->setCursor( activeEmulator );
+			view->updateCartButtons( activeEmulator );
+			view->showTapeMenu( emulator->getModelValue( emulator->getModelIdOfEnabledDrives( emulator->getTapeMediaGroup() ) ) );
+		}
 
 		globalSettings->set("last_used_emu", activeEmulator->ident);
 
         statusHandler->reset();
 
-        view->updateSpeedLabels();
-
-        view->updateDiskMenu();
-	    view->updateMouseGrab();
-	    view->updateFPSMenu();
+        if (view) {
+            view->updateSpeedLabels();
+            view->updateDiskMenu();
+            view->updateMouseGrab();
+            view->updateFPSMenu();
+        }
 	}
 	
 	activeEmulator->power();
@@ -447,6 +460,72 @@ auto Program::power( Emulator::Interface* emulator, bool regular ) -> void {
         setRotation();
 
     updateFullscreenSetting();
+}
+
+auto Program::getSpeedBySelectedProfile(float& speed, bool& percent) -> unsigned {
+    auto settings = Program::getSettings( activeEmulator );
+
+    if (warp.mode == Program::Warp::FastForward) {
+        speed = warp.ff_speed;
+        percent = warp.ff_percent;
+        return ~0;
+    }
+
+    auto speedProfile = settings->get<unsigned>("speed_profile", 1, {0, SpeedProfiles - 1});
+    getSpeed(speedProfile, speed, percent);
+    return speedProfile;
+}
+
+auto Program::getSpeed(unsigned pos, float& speed, bool& percent) -> void {
+    percent = false;
+    speed = 50.0;
+
+    auto& stats = activeEmulator->stats;
+
+    switch (pos) {
+        case 0: speed = stats.fps; break;
+        case 1: speed = stats.isPal() ? 50.0 : 60.0; break;
+        case 2: speed = 5.0; break;
+        case 3: speed = 25.0; break;
+        case 4: speed = stats.isPal() ? 60.0 : 50.0; break; // alternate
+        case 5: speed = 70.0; break;
+        case 6: speed = 75.0; break;
+        case 7: speed = 80.0; break;
+        case 8: speed = 90.0; break;
+        case 9: speed = 100.0; break;
+        case 10: speed = 120.0; break;
+        case 11: speed = 250.0; break; // maximum
+        case 12: {
+            auto settings = Program::getSettings( activeEmulator );
+            speed = settings->get<float>("custom_speed", 59.95);
+            percent = settings->get<bool>("custom_speed_percent", false);
+        } break;
+    }
+}
+
+auto Program::isMaximumSpeed() -> bool {
+    if (!activeEmulator || warp.mode == Program::Warp::FastForward)
+        return false;
+
+    auto settings = Program::getSettings( activeEmulator );
+    return settings->get<unsigned>("speed_profile", 1, {0, SpeedProfiles - 1}) == (SpeedProfiles - 2);
+}
+
+auto Message::showOnScreen(const std::string& text, bool warn) -> void {
+    if (!statusHandler || !program || program->quitInProgress)
+        return;
+    emuThread->lockStatus();
+    statusHandler->setMessage(text, warn, true, 5);
+    emuThread->unlockStatus();
+}
+
+auto Program::togglePause() -> void {
+    if (!activeEmulator)
+        return;
+    isPause ^= 1;
+    audioDriver->clear();
+    if (!isPause && statusHandler)
+        statusHandler->resetFrameCounter();
 }
 
 auto Program::reset( Emulator::Interface* emulator ) -> void {
@@ -495,7 +574,8 @@ auto Program::powerOff() -> void {
 	}
 	
 	if (!cmd->noGui) {
-        view->updatePauseCheck();
+        if (view)
+            view->updatePauseCheck();
         emuThread->clearEvents();
 		statusHandler->clear();
 		if (activeVideoManager)
@@ -504,7 +584,8 @@ auto Program::powerOff() -> void {
 		audioDriver->clear();
 		audioManager->powerOff();
 		filePool->unloadOrphaned();
-		view->updateCartButtons(nullptr);
+		if (view)
+			view->updateCartButtons(nullptr);
 		FileHelper::updateSaveIdent( nullptr );
 		InputManager::urgentUpdate = true;
 		InputManager::resetJit();
@@ -556,7 +637,12 @@ auto Program::loopNoGui() -> void {
 
 auto Program::loop() -> void {
     if (!emuThread->enabled) {
-        focused = view->focused();
+        if (sdlWindow) {
+            sdlWindow->pumpEvents();
+            if (GUIKIT::Application::isQuit || quitInProgress)
+                return;
+            focused = sdlWindow->focused();
+        }
         if (mcpServer) {
             mcpServer->uiTick();
             if (mcpHandleQuit())
@@ -615,7 +701,12 @@ auto Program::loopDebugging() -> void {
 // when emu thread is active
 auto Program::loopUserInterface() -> void {
     GUIKIT::System::sleep( 1 );
-    focused = view->focused();
+    if (sdlWindow) {
+        sdlWindow->pumpEvents();
+        if (GUIKIT::Application::isQuit || quitInProgress)
+            return;
+        focused = sdlWindow->focused();
+    }
     emuThread->handleStatusUpdate();
     emuThread->handleUIEvents();
 
@@ -670,6 +761,9 @@ auto Program::quit() -> void {
     fpsChangeTimer.setEnabled(false);
 
     // headless sessions (pipelines, agents) never write the desktop settings
+    if (sdlWindow)
+        sdlWindow->saveState();
+
     if (!cmd->debug && !cmd->noGui) {
         for(auto rF : fileloader->recentFiles)
             rF->save();
@@ -692,6 +786,11 @@ auto Program::quit() -> void {
     delete inputDriver;
     delete audioDriver;
     delete videoDriver;
+    if (sdlWindow) {
+        sdlWindow->destroy();
+        delete sdlWindow;
+        sdlWindow = nullptr;
+    }
 	if (trans)
 		delete trans;    
 	delete logger;
@@ -800,8 +899,10 @@ auto Program::exit(int code) -> void {
         GUIKIT::Application::quit();
 			
 	} else if (!emuThread || !emuThread->enabled) {
-        if(view)
-            view->onClose();
+        if (sdlWindow)
+            sdlWindow->saveState();
+        program->quit();
+        GUIKIT::Application::quit();
     }
 
     // this function doesn't close the APP when emu thread is enabled.
@@ -1122,8 +1223,8 @@ auto Program::loopStopped() -> void {
             mcpServer->uiTick();
             mcpServer->emuTick();
         }
-        if (!cmd->noGui)
-            GUIKIT::Application::processEvents();
+        if (sdlWindow)
+            sdlWindow->pumpEvents();
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     emuThread->debugging = false;
@@ -1143,10 +1244,14 @@ auto Program::mcpHandleQuit() -> bool {
     if (std::chrono::steady_clock::now() - since < std::chrono::milliseconds(200))
         return false;
     mcpServer->quitRequested = false;
-    if (cmd->noGui || !view)
+    if (sdlWindow)
+        sdlWindow->saveState();
+    if (cmd->noGui || !emuThread->enabled)
         exit(0);
-    else
-        view->onClose();
+    else {
+        quit();
+        GUIKIT::Application::quit();
+    }
     return true;
 }
 

@@ -3,6 +3,7 @@
 
 #include "../../guikit/api.h"
 #include "message.h"
+#include "../video/screenshot.h"
 #include "../media/recentFiles.h"
 #include <mutex>
 
@@ -23,23 +24,7 @@ struct View : GUIKIT::Window {
     GUIKIT::Image placeholder;
     GUIKIT::Image dndOverlays[2];
 
-    struct {        
-        std::string path;
-        GUIKIT::Image::Type type;
-        bool withEffects = false;
-        unsigned unscaled = 0;
-        bool twoFrames = false;
-        bool saveState = false;
-        unsigned pause = 0;
-        bool writePalette = false;
-        unsigned gun = 0;
-        bool animatedGif = false;
-        std::vector<uint8_t*> buffer;
-        unsigned bufferSize;
-        unsigned interval;
-        unsigned intervalPos;
-        std::mutex sharedMutex;
-    } screenshot;
+    ScreenshotState screenshot;
 
     struct ShaderFavourites {
         std::string path;

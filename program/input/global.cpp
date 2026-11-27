@@ -1,5 +1,6 @@
 
 #include "manager.h"
+#include "../cmd/cmd.h"
 
 auto InputManager::getManager( Emulator::Interface* emulator ) -> InputManager* {
 	
@@ -18,6 +19,42 @@ auto InputManager::build() -> void {
 auto InputManager::init() -> void {       
 	hidDevices = inputDriver->poll();
     assignChangedDeviceState();
+
+    // SDL3 scancode inputs replace the X11 keycode inputs of the GTK era: stored assignments
+    // point to other keys, so start once from the defaults. Emulator mappings and custom hotkeys
+    // live in the emulator config, shared hotkeys in the global config: each has its own marker.
+    if (!cmd->noGui) {
+        // bump when the keyboard input list changes (SDL3b: letters follow the active layout)
+        static const std::string marker = "SDL3b";
+        auto clear = [](InputMapping* mapping) {
+            for (auto m = mapping; m; m = m->alternate) {
+                m->hids.clear();
+                if (m->setting)
+                    m->setting->value = "";
+            }
+        };
+
+        if (globalSettings->get<std::string>("input_mapping_driver", "") != marker) {
+            for (auto& hotkey : hotkeys)
+                if (hotkey.guid)
+                    clear((InputMapping*)hotkey.guid);
+            assignDefaultHotkeys();
+            globalSettings->set<std::string>("input_mapping_driver", marker);
+        }
+
+        for (auto manager : inputManagers) {
+            if (!manager->emulator)
+                continue;
+            auto settings = Program::getSettings( manager->emulator );
+            if (settings->get<std::string>("input_mapping_driver", "") == marker)
+                continue;
+            for (auto mapping : manager->mappings)
+                if (mapping->inputManager == manager)
+                    clear(mapping);
+            settings->set<bool>( "automapped", false );
+            settings->set<std::string>("input_mapping_driver", marker);
+        }
+    }
 	
     for (auto manager : inputManagers) {
         
@@ -45,9 +82,93 @@ auto InputManager::init() -> void {
     }           
 
 	bindHidsGlobal();
+    autoAssignJoypads();
     
     if (activeInputManager)
         activeInputManager->setupKeycodeTransfer();
+}
+
+// There is no input settings UI in the SDL window: host joypads take over the emulated
+// joypads (#1 = first host pad, #2 = second) on the alternate mapping, if no joypad is assigned yet.
+auto InputManager::autoAssignJoypads() -> void {
+    if (cmd->noGui)
+        return;
+
+    std::vector<Hid::Device*> pads;
+    for (auto hidDevice : hidDevices)
+        if (hidDevice->isJoypad())
+            pads.push_back(hidDevice);
+    if (pads.empty())
+        return;
+
+    auto findInput = [](Hid::Device* pad, unsigned groupId, std::vector<std::string> names) -> Hid::Input* {
+        for (auto& input : pad->group(groupId).inputs)
+            for (auto& name : names)
+                if (input.name == name)
+                    return &input;
+        return nullptr;
+    };
+
+    for (auto manager : inputManagers) {
+        if (!manager->emulator)
+            continue;
+
+        unsigned padIndex = 0;
+        bool changed = false;
+
+        for (auto& device : manager->emulator->devices) {
+            if (!device.isJoypad())
+                continue;
+            if (padIndex >= pads.size())
+                break;
+            auto pad = pads[padIndex++];
+
+            bool hasJoypad = false;
+            for (auto& input : device.inputs)
+                for (auto m = (InputMapping*)input.guid; m; m = m->alternate)
+                    for (auto& hid : m->hids)
+                        if (hid.device->isJoypad())
+                            hasJoypad = true;
+            if (hasJoypad)
+                continue;
+
+            for (auto& input : device.inputs) {
+                auto mapping = (InputMapping*)input.guid;
+                auto alt = mapping ? mapping->alternate : nullptr;
+                if (!alt || !alt->hids.empty())
+                    continue;
+
+                auto addHid = [&](unsigned groupId, Hid::Input* hidInput, unsigned qualifier) {
+                    if (hidInput && alt->hids.size() < MaxMappings)
+                        alt->hids.push_back({pad, &pad->group(groupId), hidInput, qualifier, 0});
+                };
+                using Q = InputMapping::Qualifier;
+                auto hatX = findInput(pad, Hid::Joypad::Hat, {"DPad.X", "0.X"});
+                auto hatY = findInput(pad, Hid::Joypad::Hat, {"DPad.Y", "0.Y"});
+                auto axisX = findInput(pad, Hid::Joypad::Axis, {"X"});
+                auto axisY = findInput(pad, Hid::Joypad::Axis, {"Y"});
+
+                if (input.name == "Up") { addHid(Hid::Joypad::Hat, hatY, Q::Lo); addHid(Hid::Joypad::Axis, axisY, Q::Lo); }
+                else if (input.name == "Down") { addHid(Hid::Joypad::Hat, hatY, Q::Hi); addHid(Hid::Joypad::Axis, axisY, Q::Hi); }
+                else if (input.name == "Left") { addHid(Hid::Joypad::Hat, hatX, Q::Lo); addHid(Hid::Joypad::Axis, axisX, Q::Lo); }
+                else if (input.name == "Right") { addHid(Hid::Joypad::Hat, hatX, Q::Hi); addHid(Hid::Joypad::Axis, axisX, Q::Hi); }
+                else if (input.name == "Button 1" || input.name == "Button Red")
+                    addHid(Hid::Joypad::Button, findInput(pad, Hid::Joypad::Button, {"A", "0"}), 0);
+                else if (input.name == "Button 2" || input.name == "Button Blue")
+                    addHid(Hid::Joypad::Button, findInput(pad, Hid::Joypad::Button, {"B", "1"}), 0);
+                else
+                    continue;
+
+                alt->anded = false;
+                alt->updateSetting();
+                changed = true;
+            }
+        }
+        if (changed) {
+            manager->updateMappingsInUse();
+            InputManager::urgentUpdate = true;
+        }
+    }
 }
 
 auto InputManager::assumeLayoutType() -> KeyboardLayout::Type {
@@ -469,6 +590,44 @@ auto InputManager::prioritiseConnectedDevicesOverKeyboard() -> void {
                 else
                     break;
             }            
+        }
+    }
+}
+
+// Fullscreen: F11, alternate Alt+Return
+auto InputManager::assignDefaultHotkeys() -> void {
+    Hid::Device* keyboard = nullptr;
+    for (auto hidDevice : hidDevices)
+        if (hidDevice->isKeyboard())
+            keyboard = hidDevice;
+    if (!keyboard)
+        return;
+
+    auto find = [keyboard](Hid::Key key) -> Hid::Input* {
+        for (auto& input : keyboard->group(Hid::Keyboard::GroupID::Button).inputs)
+            if (input.key == key)
+                return &input;
+        return nullptr;
+    };
+
+    for (auto& hotkey : hotkeys) {
+        if (hotkey.id != Hotkey::Id::Fullscreen)
+            continue;
+        auto mapper = (InputMapping*)hotkey.guid;
+        auto& group = keyboard->group(Hid::Keyboard::GroupID::Button);
+        auto f11 = find(Hid::Key::F11);
+        auto alt = find(Hid::Key::AltLeft);
+        auto ret = find(Hid::Key::Return);
+
+        if (mapper && f11) {
+            mapper->hids = { {keyboard, &group, f11, 0, 0} };
+            mapper->anded = true;
+            mapper->updateSetting();
+        }
+        if (mapper && mapper->alternate && alt && ret) {
+            mapper->alternate->hids = { {keyboard, &group, alt, 0, 0}, {keyboard, &group, ret, 0, 0} };
+            mapper->alternate->anded = true;
+            mapper->alternate->updateSetting();
         }
     }
 }

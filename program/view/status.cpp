@@ -1,6 +1,7 @@
 
 #include "status.h"
 #include "view.h"
+#include "../window/sdlWindow.h"
 #include "../audio/manager.h"
 #include "../cmd/cmd.h"
 #include "../tools/chronos.h"
@@ -73,7 +74,13 @@ auto StatusHandler::setMessage(const std::string& txt, bool warn, bool force, un
     setMessageUpdate();
 }
 
-auto StatusHandler::clear() -> void {    
+auto StatusHandler::clear() -> void {
+    if (!statusBar) {
+        message.clear();
+        clearUpdates();
+        setMessage("", false, true);
+        return;
+    }
     statusBar->hideContent();
     statusBar->updateText(15, "");
     statusBar->updateVisible(18, showVolume);
@@ -91,7 +98,10 @@ auto StatusHandler::resetFrameCounter() -> void {
 
     float speed;
     bool percent;
-    view->getSpeedBySelectedProfile(speed, percent);
+    if (view)
+        view->getSpeedBySelectedProfile(speed, percent);
+    else
+        program->getSpeedBySelectedProfile(speed, percent);
 
     if (percent) {
         fpsCounter.fps = (stats.fps * (double)speed) / 100.0;
@@ -118,7 +128,7 @@ auto StatusHandler::setFpsRefresh() -> void {
     fpsCounter.decimalPoints = settings->get<unsigned>("fps_decimal_point", 1u, {0u, 3u});
 
     if (pointsBefore != fpsCounter.decimalPoints) {
-        switch(fpsCounter.decimalPoints) {
+        if (statusBar) switch(fpsCounter.decimalPoints) {
             case 0: statusBar->updateDimension( 0, "1000" ); break;
             case 1: statusBar->updateDimension( 0, "1000.9" ); break;
             case 2: statusBar->updateDimension( 0, "1000.99" ); break;
@@ -133,7 +143,7 @@ auto StatusHandler::updateOnScreenFPS() -> void {
     auto fpsScreen = globalSettings->get<unsigned>("fps_screen", 0);
 
     bool _showFPSScreen = showFPSScreen;
-    if (fpsScreen & (1 << (view->fullScreen() ? 1 : 0)))    showFPSScreen = true;
+    if (fpsScreen & (1 << (sdlWindow && sdlWindow->fullScreen() ? 1 : 0)))    showFPSScreen = true;
     else                                                    showFPSScreen = false;
 
     if (_showFPSScreen == showFPSScreen)
@@ -208,7 +218,7 @@ auto StatusHandler::updateVolume( bool state ) -> void {
     }
 
     emuThread->lock();
-    if (state)
+    if (state && statusBar)
         statusBar->updateSlider(18, volume / 5);
     audioManager->setVolume();
     updateVisible(18, showVolume = state);
@@ -287,7 +297,7 @@ auto StatusHandler::setVolumeSlider(Emulator::Interface* emulator) -> void {
 }
 
 auto StatusHandler::setVolumeSlider(unsigned value) -> void {
-    if (showVolume)
+    if (showVolume && statusBar)
         statusBar->updateSlider(18, value / 5);
 }
 
@@ -339,6 +349,8 @@ auto StatusHandler::enableLED(LEDState& ledState) -> void {
 }
 
 auto StatusHandler::getLEDImage(LEDState& ledState) -> GUIKIT::Image* {
+    if (!view)
+        return nullptr;
     switch (ledState.ledId) {
         case Emulator::Interface::LedId::Power:
             switch (ledState.state & 3) {
@@ -492,6 +504,7 @@ auto StatusHandler::setMessageLevel() -> void {
 }
 
 auto StatusHandler::updateDiskDriveSpace() -> void {
+    if (!statusBar) return;
     statusBar->updateDimension( 1, "8 00.0" );
     statusBar->updateDimension( 3, "9 00.0" );
     statusBar->updateDimension( 5, "10 00.0" );
@@ -505,7 +518,8 @@ auto StatusHandler::update() -> void {
     emuThread->lockStatus();
 
     if (activeEmulator) {
-        if (deviceUpdate()) {
+        // without status bar (SDL window) only screen texts are shown
+        if (statusBar && deviceUpdate()) {
             for(auto& deviceState : deviceStates) {
 
                 if (!deviceState.update)
@@ -609,7 +623,7 @@ auto StatusHandler::update() -> void {
             }
         }
 
-        if (ledUpdate()) {
+        if (statusBar && ledUpdate()) {
             for(auto& ledState : ledStates) {
                 if (!ledState.inputs)
                     continue;
@@ -671,6 +685,7 @@ inline auto StatusHandler::getStatusId(Emulator::Interface::LedId ledId) -> unsi
 }
 
 auto StatusHandler::updateVisible(unsigned id, bool visible) -> void {
+    if (!statusBar) return;
     if (emuThread->enabled)
         emuThread->addStatusUpdate(id, (int)visible);
     else
@@ -678,6 +693,7 @@ auto StatusHandler::updateVisible(unsigned id, bool visible) -> void {
 }
 
 auto StatusHandler::updateText(unsigned id, std::string text, bool alignRight, int overrideForegroundColor) -> void {
+    if (!statusBar) return;
     if (emuThread->enabled)
         emuThread->addStatusUpdate(id, -1, nullptr, text, alignRight, overrideForegroundColor);
     else
@@ -685,6 +701,7 @@ auto StatusHandler::updateText(unsigned id, std::string text, bool alignRight, i
 }
 
 auto StatusHandler::updateImage(unsigned id, GUIKIT::Image* image) -> void {
+    if (!statusBar) return;
     if (emuThread->enabled)
         emuThread->addStatusUpdate(id, -1, image);
     else
@@ -692,6 +709,7 @@ auto StatusHandler::updateImage(unsigned id, GUIKIT::Image* image) -> void {
 }
 
 auto StatusHandler::updateStatusBar() -> void {
+    if (!statusBar) return;
     if (!emuThread->enabled)
         statusBar->update();
 }

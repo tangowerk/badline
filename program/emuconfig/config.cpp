@@ -114,15 +114,12 @@ auto TabWindow::build() -> void {
     };
     
     onKeyPress = [this](bool keyDown, uint16_t keyCode) {
-        inputDriver->sentUIKeyPresses(keyDown, keyCode);
     };
     
     onMousePress = [this](bool keyDown, GUIKIT::Mouse::Button button) {
-        inputDriver->sentUIMousePresses(keyDown, (DRIVER::Input::Button)button);
     };
     
     onMouseMove = [this](int deltaX, int deltaY) {
-        inputDriver->sentUIMouseMovement(deltaX, deltaY);
     };
 
     translate();

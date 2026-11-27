@@ -701,7 +701,10 @@ auto BinaryMonitor::performExit(Command& command) -> void {
 
 auto BinaryMonitor::performQuit(Command& command) -> void {
 
-    view->onClose();
+    if (!program->quitInProgress) {
+        program->quit();
+        GUIKIT::Application::quit();
+    }
 
     sendResponse(0, Type::QUIT, Error::OK, command.requestId, nullptr);
 

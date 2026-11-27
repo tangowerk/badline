@@ -707,7 +707,7 @@ auto Fileloader::insertFile( Emulator::Interface* emulator, Emulator::Interface:
     }
 
     if (!file->exists() || !file->getSize()) {
-        FileHelper::errorOpen(file, nullptr, emuView ? emuView->message : view->message);
+        FileHelper::errorOpen(file, nullptr, emuView ? emuView->message : appMessage);
         return false;
     }
 
@@ -718,7 +718,7 @@ auto Fileloader::insertFile( Emulator::Interface* emulator, Emulator::Interface:
             auto emuView = EmuConfigView::TabWindow::getView( emulator );
 
             if (!item || (item->info.size == 0) )
-                return FileHelper::errorOpen( file, item, emuView ? emuView->message : view->message );
+                return FileHelper::errorOpen( file, item, emuView ? emuView->message : appMessage );
 
             emuThread->lock(true);
             if (emuView && emuView->mediaLayout)
@@ -812,10 +812,12 @@ auto Fileloader::autoload(Emulator::Interface* emulator, Emulator::Interface::Me
             FileHelper::updateSaveIdent(emulator, fSetting);
     }
 
-    if (mediaGroup->isTape())
-        view->updateTapeIcons(Emulator::Interface::TapeMode::Play);
+    if (view) {
+        if (mediaGroup->isTape())
+            view->updateTapeIcons(Emulator::Interface::TapeMode::Play);
 
-    view->setFocused(100);
+        view->setFocused(100);
+    }
 
     if (mediaGroup->isDrive()) {
         program->initAutoWarp(mediaGroup);

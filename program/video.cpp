@@ -26,7 +26,7 @@ auto Program::initVideo(bool driverChange) -> void {
     updateHDR();
     updateBFI();
 	    
-    if ( !videoDriver->init( view->getViewportHandle(driverChange) ) ) {
+    if ( !videoDriver->init( sdlWindow ? sdlWindow->handle() : 0 ) ) {
         delete videoDriver;
         videoDriver = new DRIVER::Video;
     }
@@ -50,8 +50,10 @@ auto Program::initVideo(bool driverChange) -> void {
             videoManager->reloadSettings(true);
     }
 
-    view->buildShader();
-    view->loadDragnDropOverlay();
+    if (view)
+        view->buildShader();
+    if (sdlWindow)
+        sdlWindow->loadDragnDropOverlay();
     videoDriver->setShaderProgressCallback( [](int pass, bool hasErrors) {
         if (program->quitInProgress)
             return;
@@ -126,13 +128,13 @@ auto Program::initVideo(bool driverChange) -> void {
 }
 
 auto Program::bufferScreenshot(uint8_t* _data, unsigned _size) -> void {
-    auto& screenShot = view->screenshot;
+    auto& screenShot = screenshot;
     unsigned useSize = _size * 3;
 
     if (!screenShot.bufferSize)
         screenShot.bufferSize = useSize;
     else if (screenShot.bufferSize != useSize) {
-        view->clearScreenshotBuffer();
+        screenshot.clearBuffer();
         screenShot.bufferSize = useSize;
     }
 
@@ -142,7 +144,7 @@ auto Program::bufferScreenshot(uint8_t* _data, unsigned _size) -> void {
 }
 
 auto Program::takeScreenshot(uint8_t* _data, unsigned _width, unsigned _height) -> void {
-    auto& screenShot = view->screenshot;
+    auto& screenShot = screenshot;
     screenShot.sharedMutex.lock();
     GUIKIT::Image::Encoded encoded;
     encoded.data = nullptr;
@@ -187,7 +189,7 @@ auto Program::takeScreenshot(uint8_t* _data, unsigned _width, unsigned _height) 
                             *desc++ = ((unsigned)*desc + (unsigned)*src++) >> 1;
                     }
                 }
-                view->clearScreenshotBuffer();
+                screenshot.clearBuffer();
             }
 
             encoded = image.generate(screenShot.type, _data, _width, _height);
@@ -303,8 +305,8 @@ auto Program::repeatLastFrame() -> void {
         }
     }
 
-    if (VideoManager::takeScreenShots && view && isPause) {
-        view->screenshot.pause = isPause;
+    if (VideoManager::takeScreenShots && isPause) {
+        screenshot.pause = isPause;
         isPause = 0;
     }
 }
@@ -322,7 +324,7 @@ auto Program::canExclusiveFullscreen() -> bool {
 auto Program::hintExclusiveFullscreen() -> void {
 
     if (canExclusiveFullscreen())
-        videoDriver->hintExclusiveFullscreen( true, view->getCustomFullscreenRefreshRate() );
+        videoDriver->hintExclusiveFullscreen( true, view ? view->getCustomFullscreenRefreshRate() : 0.0f );
     else
         videoDriver->hintExclusiveFullscreen( false );
 }
@@ -698,3 +700,70 @@ auto Program::updateBFI() -> void {
 
     videoDriver->setBFI(bfiFrames, strobeShader ? 0 : darkFrames);
 }
+
+auto Program::requestScreenshot() -> void {
+    if (!activeEmulator)
+        return;
+    videoDriver->waitRenderThread();
+    auto settings = Program::getSettings(activeEmulator);
+    auto _path = FileHelper::generatedFolder(activeEmulator, "screen_record_path", "recordings/screenshots", FileHelper::FLAG_CREATE);
+    auto _file = settings->get<std::string>("save_ident", "screenshot");
+    auto screenshotFormat = settings->get<std::string>("screen_record_format", "png");
+    bool withEffects = globalSettings->get<bool>("screenshot_with_effects", true);
+    bool mergeTwoFrames = globalSettings->get<bool>("screenshot_merge_frames", false);
+    unsigned unscaled = globalSettings->get<unsigned>("screenshot_unscaled", 0);
+    bool usePalete = settings->get<bool>("screen_palette", true);
+    unsigned screenGun = settings->get<unsigned>("screen_gun", 1, {1, 120});
+    unsigned screenGunEach = settings->get<unsigned>("screen_gun_each", 1, { 1, 60 });
+    bool delayScreenshot = settings->get<unsigned>("screen_shot_delay", false);
+
+    _path += _file + "_#ident#";
+
+    screenshot.sharedMutex.lock();
+    if (screenshotFormat == "bmp") {
+        screenshot.path = _path + ".bmp";
+        screenshot.type = GUIKIT::Image::Type::BMP;
+    } else if (screenshotFormat == "jpg") {
+        screenshot.path = _path + ".jpg";
+        screenshot.type = GUIKIT::Image::Type::JPG;
+    } else if (screenshotFormat == "tga") {
+        screenshot.path = _path + ".tga";
+        screenshot.type = GUIKIT::Image::Type::TGA;
+    } else if (screenshotFormat == "gif") {
+        screenshot.path = _path + ".gif";
+        screenshot.type = GUIKIT::Image::Type::GIF;
+    } else {
+        screenshot.path = _path + ".png";
+        screenshot.type = GUIKIT::Image::Type::PNG;
+    }
+
+    screenshot.writePalette = (unscaled > 0) && dynamic_cast<LIBC64::Interface*>(activeEmulator) &&
+        ((screenshot.type == GUIKIT::Image::Type::GIF) || ((screenshot.type == GUIKIT::Image::Type::BMP) && usePalete && !mergeTwoFrames));
+
+    screenshot.animatedGif = (screenshot.type == GUIKIT::Image::Type::GIF) && (unscaled > 0) && dynamic_cast<LIBC64::Interface*>(activeEmulator)
+        && ((screenGun > 1) || mergeTwoFrames);
+
+    screenshot.withEffects = withEffects;
+    screenshot.unscaled = unscaled;
+    screenshot.twoFrames = mergeTwoFrames;
+    screenshot.pause = 0;
+    screenshot.saveState = false;
+    screenshot.interval = screenGunEach;
+    screenshot.intervalPos = delayScreenshot ? (50 * 3) : 1;
+
+    if (screenshot.animatedGif) {
+        screenshot.gun = screenGun > 1 ? screenGun : 2;
+        VideoManager::takeScreenShots = screenshot.gun;
+    } else {
+        screenshot.gun = screenGun > 1 ? 1 : 0;
+        VideoManager::takeScreenShots = mergeTwoFrames ? 2 : 1;
+        if (screenGun)
+            VideoManager::takeScreenShots *= screenGun;
+
+        if (mergeTwoFrames)
+            screenshot.interval = 1;
+    }
+    screenshot.clearBuffer();
+    screenshot.sharedMutex.unlock();
+}
+

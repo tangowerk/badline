@@ -284,10 +284,10 @@ auto Autoloader::postProcessing() -> void {
             view->setForeground();
 
 		    view->setFocused(100 );
+		}
 
-			if (!cmd->debug && (mediaGroup->isTape() || mediaGroup->isDisk()) ) {
-                program->initAutoWarp(mediaGroup);
-			}
+		if (!cmd->noGui && !cmd->debug && (mediaGroup->isTape() || mediaGroup->isDisk()) ) {
+			program->initAutoWarp(mediaGroup);
 		}
     }
 }
@@ -308,7 +308,7 @@ auto Autoloader::loadFiles() -> void {
 
     if (!file->exists()) {
         if (ddControl.errorLevel == 0)
-            FileHelper::errorOpen(file, nullptr, view->message);
+            FileHelper::errorOpen(file, nullptr, appMessage);
 
         return loadFiles();
     }
@@ -471,7 +471,7 @@ auto Autoloader::loadFile( GUIKIT::File* file, GUIKIT::File::Item* item ) -> voi
 
 errorOpen:
 	if (ddControl.errorLevel == 0)
-		FileHelper::errorOpen(file, item, view->message);
+		FileHelper::errorOpen(file, item, appMessage);
 
 	return loadFiles();
 }
@@ -558,7 +558,7 @@ auto Autoloader::checkForSavestate( GUIKIT::File* file, GUIKIT::File::Item* item
         file = filePool->get( path );
         
         if (!file->open()) {
-            FileHelper::errorOpen(file, nullptr, view->message);
+            FileHelper::errorOpen(file, nullptr, appMessage);
             goto End;
         }
             
@@ -577,7 +577,7 @@ auto Autoloader::checkForSavestate( GUIKIT::File* file, GUIKIT::File::Item* item
         }
     }
     
-    view->message->error( trans->get("state_incompatible", {{"%ident%", file->getFile()}}) );
+    if (appMessage) appMessage->error( trans->get("state_incompatible", {{"%ident%", file->getFile()}}) );
     
 End:
     filePool->unloadOrphaned();

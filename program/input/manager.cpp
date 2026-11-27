@@ -1,5 +1,6 @@
 
 #include "manager.h"
+#include "../window/sdlWindow.h"
 #include "../program.h"
 #include "../view/view.h"
 #include "../config/config.h"
@@ -524,7 +525,7 @@ auto InputManager::alternateSort() -> void {
 auto InputManager::absoluteMouseToEmu() -> GUIKIT::Position {
 
     // absolute mouse position within viewport.
-    GUIKIT::Position absPos = view->viewport.getMousePosition();
+    GUIKIT::Position absPos = sdlWindow ? sdlWindow->mousePosition() : GUIKIT::Position(0, 0);
 
     DRIVER::Viewport& viewport = videoDriver->getViewport();
 
@@ -569,7 +570,7 @@ auto InputManager::initDriver() -> void {
 
     inputDriver = DRIVER::Input::create( getSelectedDriver() );
 
-    if ( !inputDriver->init( view->handle() ) ) {
+    if ( !inputDriver->init( sdlWindow ? sdlWindow->handle() : 0 ) ) {
         delete inputDriver;
         inputDriver = new DRIVER::Input;
     }

@@ -65,6 +65,8 @@ auto AudioManager::setSynchronize() -> void {
         synchronize = false;
     else if (view)
         synchronize = !view->isMaximumSpeed();
+    else
+        synchronize = !program->isMaximumSpeed();
 
     if (audioDriver->hasSynchronized() == synchronize)
         return;
@@ -90,7 +92,7 @@ auto AudioManager::setResampler() -> void {
     bool percent;
     unsigned speedProfile;
 
-    speedProfile = view->getSpeedBySelectedProfile(speed, percent);
+    speedProfile = view ? view->getSpeedBySelectedProfile(speed, percent) : program->getSpeedBySelectedProfile(speed, percent);
 
     if (speedProfile != 0) {
         if (percent) {
@@ -591,7 +593,7 @@ auto AudioManager::initDriver() -> void {
     audioManager->setSynchronize();
     audioManager->setRateControl();
 
-    if ( !audioDriver->init( view->handle() ) ) {
+    if ( !audioDriver->init( 0 ) ) {
         delete audioDriver;
         audioDriver = new DRIVER::Audio;
     }

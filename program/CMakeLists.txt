@@ -71,6 +71,8 @@ set(headers
         mcp/json.h
         mcp/screen.h
         mcp/server.h
+        video/screenshot.h
+        window/sdlWindow.h
 )
 
 set_source_files_properties(${PROJECT_NAME} ${headers}
@@ -141,6 +143,7 @@ set(srcs
         mcp/screen.cpp
         mcp/server.cpp
         mcp/tools.cpp
+        window/sdlWindow.cpp
         
         ${headers}
 )

@@ -187,10 +187,8 @@ struct Input {
     virtual auto mIsAcquired() -> bool { return false; }
 	virtual auto poll() -> std::vector<Hid::Device*> { return {}; }
     virtual auto setKeyboardCallback( KeyCallback* callback ) -> void {}
-    // mac only (at the moment)
-    virtual auto sentUIKeyPresses(bool keyDown, uint16_t keyCode) -> void {}
-    virtual auto sentUIMousePresses(bool keyDown, Button button) -> void {}
-    virtual auto sentUIMouseMovement(int deltaX, int deltaY) -> void {}
+    // SDL3: window events pumped on the UI thread (const SDL_Event*)
+    virtual auto handleEvent(const void* event) -> void {}
 	
 	virtual ~Input() = default;
     static auto create(const std::string& driver) -> Input*;

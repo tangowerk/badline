@@ -5,16 +5,14 @@
 #include "video/dragnDropOverlay.h"
 #include "video/splashScreen.h"
 
-#include "video/opengl3/glx.cpp"
+#include "video/opengl3/sdl.cpp"
 
 #ifdef DRV_OPENAL
 	#include "audio/openal.cpp"
 #endif
 
 #include "audio/pulseaudio.cpp"
-#include "input/udev.cpp"
-#include "input/xlib.cpp"
-#include "input/xcb.cpp"
+#include "input/sdl.cpp"
 
 namespace DRIVER {
 
@@ -31,7 +29,7 @@ auto Video::preferred() -> std::string {
 }
 
 auto Video::create(const std::string& driver) -> Video* {
-    if(driver == "OpenGL") return new GLX();
+    if(driver == "OpenGL") return new SDLGL();
 
     return new Video;
 }
@@ -63,16 +61,15 @@ auto Audio::create(const std::string& driver) -> Audio* {
 }
 
 auto Input::available() -> std::vector<std::string> {
-    return { "XCB/Udev", "Xlib/Udev" };
+    return { "SDL3" };
 }
 
 auto Input::preferred() -> std::string {
-    return "XCB/Udev";
+    return "SDL3";
 }
 
 auto Input::create(const std::string& driver) -> Input* {
-    if(driver == "XCB/Udev") return new XCBInput("udev");
-    if(driver == "Xlib/Udev") return new XInput("udev");
+    if(driver == "SDL3") return new SDLInput();
 
     return new Input;
 }

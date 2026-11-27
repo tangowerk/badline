@@ -256,7 +256,6 @@ auto View::build() -> void {
 	};
     
     onKeyPress = [this](bool keyDown, uint16_t keyCode) {
-        inputDriver->sentUIKeyPresses(keyDown, keyCode);
     };
 	
 	GUIKIT::BrowserWindow::onCall = []() {
@@ -381,11 +380,9 @@ auto View::build() -> void {
     };
 	
     viewport.onMouseRelease = [this](GUIKIT::Mouse::Button button) {
-        inputDriver->sentUIMousePresses(false, (DRIVER::Input::Button)button);
     };
     
 	viewport.onMousePress = [this](GUIKIT::Mouse::Button button) {
-        inputDriver->sentUIMousePresses(true, (DRIVER::Input::Button)button);
         
 	    if (button == GUIKIT::Mouse::Button::Left) {
 
@@ -928,12 +925,7 @@ auto View::updateWarpCheck() -> void {
 }
 
 auto View::togglePause() -> void {
-    if (!activeEmulator)
-        return;
-    program->isPause ^= 1;
-    audioDriver->clear();
-    if (!program->isPause)
-        statusHandler->resetFrameCounter();
+    program->togglePause();
 }
 
 auto View::loadImages() -> void {
@@ -2606,76 +2598,11 @@ auto View::clearRecentList(Emulator::Interface* emulator) -> void {
 }
 
 auto View::takeScreenshot() -> void {
-    videoDriver->waitRenderThread();
-    auto settings = Program::getSettings(activeEmulator);
-    auto _path = FileHelper::generatedFolder(activeEmulator, "screen_record_path", "recordings/screenshots", FileHelper::FLAG_CREATE);
-    auto _file = settings->get<std::string>("save_ident", "screenshot");
-    auto screenshotFormat = settings->get<std::string>("screen_record_format", "png");
-    bool withEffects = globalSettings->get<bool>("screenshot_with_effects", true);
-    bool mergeTwoFrames = globalSettings->get<bool>("screenshot_merge_frames", false);
-    unsigned unscaled = globalSettings->get<unsigned>("screenshot_unscaled", 0);
-    bool usePalete = settings->get<bool>("screen_palette", true);
-    unsigned screenGun = settings->get<unsigned>("screen_gun", 1, {1, 120});
-    unsigned screenGunEach = settings->get<unsigned>("screen_gun_each", 1, { 1, 60 });
-    bool delayScreenshot = settings->get<unsigned>("screen_shot_delay", false);
-
-    _path += _file + "_#ident#";
-
-    screenshot.sharedMutex.lock();
-    if (screenshotFormat == "bmp") {
-        screenshot.path = _path + ".bmp";
-        screenshot.type = GUIKIT::Image::Type::BMP;
-    } else if (screenshotFormat == "jpg") {
-        screenshot.path = _path + ".jpg";
-        screenshot.type = GUIKIT::Image::Type::JPG;
-    } else if (screenshotFormat == "tga") {
-        screenshot.path = _path + ".tga";
-        screenshot.type = GUIKIT::Image::Type::TGA;
-    } else if (screenshotFormat == "gif") {
-        screenshot.path = _path + ".gif";
-        screenshot.type = GUIKIT::Image::Type::GIF;
-    } else {
-        screenshot.path = _path + ".png";
-        screenshot.type = GUIKIT::Image::Type::PNG;
-    }
-
-    screenshot.writePalette = (unscaled > 0) && dynamic_cast<LIBC64::Interface*>(activeEmulator) &&
-        ((screenshot.type == GUIKIT::Image::Type::GIF) || ((screenshot.type == GUIKIT::Image::Type::BMP) && usePalete && !mergeTwoFrames));
-
-    screenshot.animatedGif = (screenshot.type == GUIKIT::Image::Type::GIF) && (unscaled > 0) && dynamic_cast<LIBC64::Interface*>(activeEmulator)
-        && ((screenGun > 1) || mergeTwoFrames);
-
-    screenshot.withEffects = withEffects;
-    screenshot.unscaled = unscaled;
-    screenshot.twoFrames = mergeTwoFrames;
-    screenshot.pause = 0;
-    screenshot.saveState = false;
-    screenshot.interval = screenGunEach;
-    screenshot.intervalPos = delayScreenshot ? (50 * 3) : 1;
-
-    if (screenshot.animatedGif) {
-        screenshot.gun = screenGun > 1 ? screenGun : 2;
-        VideoManager::takeScreenShots = screenshot.gun;
-    } else {
-        screenshot.gun = screenGun > 1 ? 1 : 0;
-        VideoManager::takeScreenShots = mergeTwoFrames ? 2 : 1;
-        if (screenGun)
-            VideoManager::takeScreenShots *= screenGun;
-
-        if (mergeTwoFrames)
-            screenshot.interval = 1;
-    }
-    clearScreenshotBuffer();
-    screenshot.sharedMutex.unlock();
+    program->requestScreenshot();
 }
 
 auto View::clearScreenshotBuffer() -> void {
-    for (auto ptr : screenshot.buffer) {
-        if (ptr)
-            delete[] ptr;
-    }
-    screenshot.buffer.clear();
-    screenshot.bufferSize = 0;
+    program->screenshot.clearBuffer();
 }
 
 auto View::setAudioRecordText() -> void {

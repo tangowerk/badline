@@ -605,7 +605,7 @@ auto Cmd::autoloadImages() -> void {
         return;
 end:
     if (!debug && !noDriver && !noGui && (startInFullscreen || (autoload && globalSettings->get<bool>("open_fullscreen", false)))) {
-        view->fullscreenOnStartUp.setEnabled();
+        startInFullscreen = true; // applied when the SDL window is created
     }
 
     if (!debug && !noGui && autoload && globalSettings->get<bool>("single_instance", false))

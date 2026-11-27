@@ -81,6 +81,7 @@ auto InputManager::fetch() -> void {
 	if(changed) {
 		hidDevices = curDevices;
 		bindHidsGlobal();
+		autoAssignJoypads();
 
 		for( auto emuView : emuConfigViews ) {
             if (emuView->inputLayout)

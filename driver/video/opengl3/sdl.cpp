@@ -1,28 +1,16 @@
 
 #include "../thread/renderThread.h"
 #include "gl3.cpp"
-#include <gdk/gdkx.h>
 
-#define GLX_CONTEXT_MAJOR_VERSION_ARB 0x2091
-#define GLX_CONTEXT_MINOR_VERSION_ARB 0x2092
+// OpenGL 3.2 core output into an SDL3 window (EGL on Wayland, GLX on X11 via SDL).
+// The window is created and owned by the program layer; init() receives the SDL_Window*.
 
 namespace DRIVER {
     
-struct GLX : public Video, GL3, RenderThread {
+struct SDLGL : public Video, GL3, RenderThread {
 
-    auto (*glXCreateContextAttribs)(Display*, GLXFBConfig, GLXContext, signed, const signed*) -> GLXContext = nullptr;
-    auto (*glXSwapInterval)(int) -> int = nullptr;
-    auto (*glXSwapIntervalEXT)(Display*, GLXDrawable, int) -> void = nullptr;
-
-    Display* display = nullptr;
-    signed screen = 0;
-    Window xwindow = 0;
-    Colormap colormap = 0;
-    GLXContext glxcontext = nullptr;
-    GLXWindow glxwindow = 0;
-    GLXFBConfig* fbConfig = nullptr;
-    XVisualInfo* vi = nullptr;
-    GdkWindow* handle;
+    SDL_Window* window = nullptr;
+    SDL_GLContext glcontext = nullptr;
     bool useVRR = false;
     bool useResizing = false;
     uint8_t options = 0;
@@ -71,86 +59,37 @@ struct GLX : public Video, GL3, RenderThread {
         settings.useShaderCache = state;
     }
 
-    struct {
-        bool doubleBuffer = false;
-        bool isDirect = false;
-    } glx;
+    auto setSwapInterval(bool on) -> void {
+        SDL_GL_SetSwapInterval(on ? 1 : 0);
+    }
+
+    auto swap() -> void {
+        SDL_GL_SwapWindow(window);
+    }
 
     auto init() -> bool {
         term();
 
-        display = GDK_WINDOW_XDISPLAY(handle);
-        if (!display)
+        if (!window)
             return false;
 
-        //window must be realized (appear onscreen)
-        while (XPending(display)) {
-            XEvent event;
-            XNextEvent(display, &event);
+        SDL_GL_ResetAttributes();
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+        SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+        SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+        SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+        SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 0);
+
+        glcontext = SDL_GL_CreateContext(window);
+        if (!glcontext) {
+            fprintf(stderr, "SDL_GL_CreateContext: %s\n", SDL_GetError());
+            return false;
         }
 
-		screen = DefaultScreen(display);
-
-        int glxMajor = 0, glxMinor = 0;
-        glXQueryVersion(display, &glxMajor, &glxMinor);
-        //require GLX 1.3+ API
-        if(glxMajor < 1 || (glxMajor == 1 && glxMinor < 3))
-            return false;
-
-        XWindowAttributes window_attributes;
-        XGetWindowAttributes(display, GDK_WINDOW_XID(handle), &window_attributes);
-
-        //let GLX determine the best Visual to use for GL output; provide a few hints
-        //note: some video drivers will override double buffering attribute
-        signed attributeList[] = {
-            GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
-            GLX_RENDER_TYPE, GLX_RGBA_BIT,
-            GLX_DOUBLEBUFFER, True,
-            GLX_RED_SIZE, 8,
-            GLX_GREEN_SIZE, 8,
-            GLX_BLUE_SIZE, 8,
-            None
-        };
-
-        signed fbCount;
-        fbConfig = glXChooseFBConfig(display, screen, attributeList, &fbCount);
-        if(!fbConfig || fbCount == 0)
-            return false;
-
-        vi = glXGetVisualFromFBConfig(display, fbConfig[0]);
-
-        //Window handle has already been realized, most likely with DefaultVisual.
-        //GLX requires that the GL output window has the same Visual as the GLX context.
-        //it is not possible to change the Visual of an already realized (created) window.
-        //therefore a new child window, using the same GLX Visual, must be created and binded to handle.
-        colormap = XCreateColormap(display, GDK_WINDOW_XID(handle), vi->visual, AllocNone);
-        XSetWindowAttributes attributes;
-        attributes.colormap = colormap;
-        attributes.border_pixel = 0;
-        xwindow = XCreateWindow(display, /* parent = */ GDK_WINDOW_XID(handle),
-        /* x = */ 0, /* y = */ 0, window_attributes.width, window_attributes.height,
-        /* border_width = */ 0, vi->depth, InputOutput, vi->visual,
-        CWColormap | CWBorderPixel, &attributes);
-        // XSetWindowBackground(display, xwindow, 0);
-        XMapWindow(display, xwindow);
-        XFlush(display);
-
-        glxcontext = glXCreateContext(display, vi, /* sharelist = */ 0, /* direct = */ GL_TRUE);
-        glXMakeCurrent(display, glxwindow = xwindow, glxcontext);
-
-        glXCreateContextAttribs = (GLXContext (*)(Display*, GLXFBConfig, GLXContext, signed, const signed*))glGetProcAddress("glXCreateContextAttribsARB");
-		
-        if(!glXSwapIntervalEXT) glXSwapIntervalEXT = (void (*)(Display*, GLXDrawable, int))glGetProcAddress("glXSwapIntervalEXT");
-
-        if(!glXSwapIntervalEXT) {
-            glXSwapInterval = (int (*)(int))glGetProcAddress("glXSwapIntervalMESA");
-            if(!glXSwapInterval) glXSwapInterval = (int (*)(int))glGetProcAddress("glXSwapIntervalSGI");
-        }
-
-        glXMakeCurrent(display, 0, nullptr);
-        glXDestroyContext(display, glxcontext);
-        glxcontext = (GLXContext)getContext(false);
-        glXMakeCurrent(display, glxwindow, glxcontext);
+        SDL_GL_MakeCurrent(window, glcontext);
 
         glGetIntegerv(GL_MAJOR_VERSION, &version.major);
         glGetIntegerv(GL_MINOR_VERSION, &version.minor);
@@ -165,16 +104,7 @@ struct GLX : public Video, GL3, RenderThread {
             }
         }
 
-        if(glXSwapIntervalEXT) glXSwapIntervalEXT(display, glXGetCurrentDrawable(), settings.synchronize ? 1 : 0);
-        else if(glXSwapInterval) glXSwapInterval(settings.synchronize ? 1 : 0);
-
-        //read attributes of frame buffer for later use, as requested attributes from above are not always granted
-        signed value = 0;
-        glXGetConfig(display, vi, GLX_DOUBLEBUFFER, &value);
-        glx.doubleBuffer = value;
-        glx.isDirect = glXIsDirect(display, glxcontext);
-        XFree(vi);
-        XSync(display, False);
+        setSwapInterval(settings.synchronize);
 
         RenderThread::reset();
         bool res = GL3::init();
@@ -182,23 +112,23 @@ struct GLX : public Video, GL3, RenderThread {
         return res;
     }
 
+    // shared context for the shader build worker; called while the main context is current
     auto getContext(bool shared = true) -> uintptr_t {
         GLUtility::sharedMutex.lock();
-        GLXContext context = nullptr;
+        SDL_GLContext prev = SDL_GL_GetCurrentContext();
+        SDL_Window* prevWindow = SDL_GL_GetCurrentWindow();
+        if (shared && !prev)
+            SDL_GL_MakeCurrent(window, glcontext);
 
-        if(glXCreateContextAttribs) {
-            signed attributes[] = {
-                    GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
-                    GLX_CONTEXT_MINOR_VERSION_ARB, (version.major == 3 && version.minor == 1) ? 1 : 2,
-                    None
-            };
+        SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, shared ? 1 : 0);
+        SDL_GLContext context = SDL_GL_CreateContext(window);
+        SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 0);
 
-            context = glXCreateContextAttribs(display, fbConfig[0], shared ? glxcontext : 0, true, attributes);
-        }
-
-        if(!context)
-            context = glXCreateContext(display, vi, 0, GL_TRUE);
-
+        // creating a context makes it current: restore the previous binding
+        if (prev)
+            SDL_GL_MakeCurrent(prevWindow, prev);
+        else
+            SDL_GL_MakeCurrent(window, nullptr);
         GLUtility::sharedMutex.unlock();
         return (uintptr_t)context;
     }
@@ -206,21 +136,23 @@ struct GLX : public Video, GL3, RenderThread {
     auto deleteContext(uintptr_t context) -> void {
         if(context) {
             GLUtility::sharedMutex.lock();
-            //glXMakeCurrent(display, 0, nullptr);
-            glXDestroyContext(display, (GLXContext)context);
+            if (SDL_GL_GetCurrentContext() == (SDL_GLContext)context)
+                SDL_GL_MakeCurrent(window, nullptr);
+            SDL_GL_DestroyContext((SDL_GLContext)context);
             GLUtility::sharedMutex.unlock();
         }
     }
 
+    // worker thread: bind without surface if possible (the window surface is bound by the renderer)
     auto makeContextCurrent(uintptr_t context) -> void {
         GLUtility::sharedMutex.lock();
-        glXMakeCurrent(display, glxwindow, (GLXContext)context);
+        if (!SDL_GL_MakeCurrent(nullptr, (SDL_GLContext)context))
+            SDL_GL_MakeCurrent(window, (SDL_GLContext)context);
         GLUtility::sharedMutex.unlock();
     }
 
-
     auto init(uintptr_t _handle) -> bool {
-        handle = (GdkWindow*)_handle;
+        window = (SDL_Window*)_handle;
         return init();
     }
     
@@ -229,8 +161,7 @@ struct GLX : public Video, GL3, RenderThread {
         resizeMutex.lock();
         settings.synchronize = state;
         makeCurrent();
-        if(glXSwapIntervalEXT) glXSwapIntervalEXT(display, glXGetCurrentDrawable(), settings.synchronize ? 1 : 0);
-        else if(glXSwapInterval) glXSwapInterval(settings.synchronize ? 1 : 0);
+        setSwapInterval(settings.synchronize);
         clearCurrent();
         resizeMutex.unlock();
     }
@@ -328,7 +259,7 @@ struct GLX : public Video, GL3, RenderThread {
         wait();
         makeCurrent();
         GL3::clear();
-        if(glx.doubleBuffer) glXSwapBuffers(display, glxwindow);
+        swap();
         clearCurrent();
     }
 
@@ -337,16 +268,13 @@ struct GLX : public Video, GL3, RenderThread {
     }
 
     auto resizeWindow(bool _force = false) -> void {
-        XWindowAttributes parent, child;
-        XGetWindowAttributes(display, GDK_WINDOW_XID(handle), &parent);
-        XGetWindowAttributes(display, xwindow, &child);
+        int w = 0, h = 0;
+        SDL_GetWindowSizeInPixels(window, &w, &h);
+        if (w <= 0 || h <= 0)
+            return;
 
-        if(child.width != parent.width || child.height != parent.height) {
-            XResizeWindow(display, xwindow, parent.width, parent.height);
-        }
-
-        unsigned _windowWidth = parent.width;
-        unsigned _windowHeight = parent.height;
+        unsigned _windowWidth = w;
+        unsigned _windowHeight = h;
 
         if (!_force) {
             if ( (_windowWidth == viewScreen.windowWidth) && (_windowHeight == viewScreen.windowHeight) )
@@ -386,10 +314,8 @@ struct GLX : public Video, GL3, RenderThread {
     auto prepareResizing() -> void {
         wait();
         makeCurrent();
-        if (settings.synchronize) {
-            if (glXSwapIntervalEXT) glXSwapIntervalEXT(display, glXGetCurrentDrawable(), 0);
-            else if (glXSwapInterval) glXSwapInterval(0);
-        }
+        if (settings.synchronize)
+            setSwapInterval(false);
         useVRR = false;
         clearCurrent();
     }
@@ -397,10 +323,8 @@ struct GLX : public Video, GL3, RenderThread {
     auto endResizing() -> void {
         wait();
         makeCurrent();
-        if (settings.synchronize) {
-            if (glXSwapIntervalEXT) glXSwapIntervalEXT(display, glXGetCurrentDrawable(), 1);
-            else if (glXSwapInterval) glXSwapInterval(1);
-        }
+        if (settings.synchronize)
+            setSwapInterval(true);
         useVRR = settings.vrr;
         clearCurrent();
     }
@@ -445,8 +369,6 @@ struct GLX : public Video, GL3, RenderThread {
         if (settings.bfiFrames)
             totalFrames = (options & OPT_Pause) ? 1 : (settings.bfiFrames + 1);
         render();
-        if (options & OPT_TakeScreenshot)
-            takeScreenshot();
 
         if (settings.bfiFrames && (settings.synchronize || useVRR) && !(options & (OPT_DisallowShader | OPT_Pause)))
             bfi();
@@ -471,12 +393,15 @@ struct GLX : public Video, GL3, RenderThread {
         if (progressVisible && progress.initialized)
             progress.show(viewport, 20, 20);
 
+        if ((options & OPT_TakeScreenshot) && subFrame == 1)
+            takeScreenshot(GL_BACK);
+
         if (useVRR) {
             glFinish();
             waitVRR();
-            if (glx.doubleBuffer) glXSwapBuffers(display, glxwindow);
+            swap();
         } else {
-            if (glx.doubleBuffer) glXSwapBuffers(display, glxwindow);
+            swap();
             if (settings.hardSync && settings.synchronize) glFinish();
         }
     }
@@ -509,9 +434,6 @@ struct GLX : public Video, GL3, RenderThread {
             totalFrames = (options & OPT_Pause) ? 1 : (settings.bfiFrames + 1);
         render();
 
-        if (options & OPT_TakeScreenshot)
-            takeScreenshot();
-
         if (settings.bfiFrames && (settings.synchronize || useVRR) && !(options & (OPT_DisallowShader | OPT_Pause)))
             bfi();
 
@@ -531,7 +453,7 @@ struct GLX : public Video, GL3, RenderThread {
                 glFinish();
                 waitVRR();
             }
-            if (glx.doubleBuffer) glXSwapBuffers(display, glxwindow);
+            swap();
         }
     }
 
@@ -539,24 +461,12 @@ struct GLX : public Video, GL3, RenderThread {
         wait();
         GL3::term();
 
-        deleteContext((uintptr_t)glxcontext);
-		//if(glxcontext) glXDestroyContext(display, glxcontext);
-		glxcontext = nullptr;
-
-        if(xwindow) XUnmapWindow(display, xwindow);
-		xwindow = 0;
-
-        if (glxwindow) XDestroyWindow(display, glxwindow);
-        glxwindow = 0;
-
-        if(colormap) XFreeColormap(display, colormap);
-		colormap = 0;
-
-//        if(display) XCloseDisplay(display);
-//		display = nullptr;
-        
-        glXSwapInterval = nullptr;
-        glXSwapIntervalEXT = nullptr;
+        if (glcontext) {
+            SDL_GL_MakeCurrent(window, nullptr);
+            SDL_GL_DestroyContext(glcontext);
+        }
+        glcontext = nullptr;
+        hasRendererContext = false;
     }
 
     auto makeCurrent(bool usePermanent = false) -> void {
@@ -569,7 +479,7 @@ struct GLX : public Video, GL3, RenderThread {
                 return;
         }
 
-        glXMakeCurrent(display, glxwindow, glxcontext);
+        SDL_GL_MakeCurrent(window, glcontext);
     }
 
     auto setAspectRatio(int mode, bool _integerScaling) -> void { // mode: 0: off, 1: TV, 2: Native
@@ -661,7 +571,7 @@ struct GLX : public Video, GL3, RenderThread {
     }
 
     auto clearCurrent() -> void {
-        glXMakeCurrent(display, 0, nullptr);
+        SDL_GL_MakeCurrent(window, nullptr);
         hasRendererContext = false;
     }
 
@@ -690,11 +600,11 @@ struct GLX : public Video, GL3, RenderThread {
 
     auto canHardSync() -> bool { return true; }
 
-    GLX() {
+    SDLGL() {
 
     }
 
-    ~GLX() {
+    ~SDLGL() {
         GL3::stopShaderBuilding();
         wait();
         RenderThread::enable(false);

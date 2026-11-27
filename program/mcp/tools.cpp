@@ -9,6 +9,7 @@
 #include "../media/fileloader.h"
 #include "../states/states.h"
 #include "../view/view.h"
+#include "../window/sdlWindow.h"
 #include "../view/status.h"
 #include "../video/manager.h"
 #include "../../emulation/libc64/system/system.h"
@@ -239,12 +240,8 @@ auto McpServer::registerTools() -> void {
             job.onUi = [pause](Job& job) {
                 if (!activeEmulator) return job.fail("No emulator running");
                 EmuLock lock;
-                if ((program->isPause != 0) != pause) {
-                    if (view)
-                        view->togglePause();
-                    else
-                        program->isPause = pause ? 1 : 0;
-                }
+                if ((program->isPause != 0) != pause)
+                    program->isPause = pause ? 1 : 0;
                 job.addText(pause ? "Paused" : "Running");
                 job.finish();
             };
@@ -690,14 +687,14 @@ auto McpServer::registerTools() -> void {
             unsigned scale = (unsigned)std::clamp<int64_t>(job.args.getInt("scale", 2), 1, 4);
 
             if (job.args.getBool("rendered")) {
-                if (cmd->noGui || !view || !videoDriver)
+                if (cmd->noGui || !sdlWindow || !videoDriver)
                     return job.fail("rendered=true needs a window");
                 job.text = tempDir() + "/screenshot-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".png";
                 job.phase = Job::Ui;
                 job.onUi = [](Job& job) {
                     if (!activeEmulator) return job.fail("No emulator running");
                     EmuLock lock;
-                    auto& screenshot = view->screenshot;
+                    auto& screenshot = program->screenshot;
                     screenshot.unscaled = 0;
                     screenshot.withEffects = true;
                     screenshot.pause = 0;
@@ -719,7 +716,7 @@ auto McpServer::registerTools() -> void {
                         std::this_thread::sleep_for(std::chrono::milliseconds(10));
                     std::vector<uint8_t> data;
                     {
-                        std::lock_guard<std::mutex> lock(view->screenshot.sharedMutex);
+                        std::lock_guard<std::mutex> lock(program->screenshot.sharedMutex);
                         readFile(job.text, data);
                     }
                     ::unlink(job.text.c_str());

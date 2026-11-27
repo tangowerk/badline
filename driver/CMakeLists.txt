@@ -4,10 +4,8 @@ add_library(driver STATIC)
 set(headers
         audio/openal.cpp
         audio/pulseaudio.cpp
-        input/udev.cpp
-        input/xcb.cpp
-        input/xlib.cpp
-        video/opengl3/glx.cpp
+        input/sdl.cpp
+        video/opengl3/sdl.cpp
 )
 
 set(headers ${headers}
@@ -52,9 +50,9 @@ SET_SOURCE_FILES_PROPERTIES(driver.cpp
         PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/deps/glslang;")
 
 SET_SOURCE_FILES_PROPERTIES(driver.cpp
-        PROPERTIES COMPILE_FLAGS "-DDRV_GLX -DDRV_PULSEAUDIO -DDRV_XLIB -DDRV_XCB -DDRV_UDEV")
+        PROPERTIES COMPILE_FLAGS "-DDRV_SDL -DDRV_PULSEAUDIO")
 
-set_property(SOURCE driver.cpp APPEND_STRING PROPERTY INCLUDE_DIRECTORIES "${GTK_INCLUDE_DIRS};")
+set_property(SOURCE driver.cpp APPEND_STRING PROPERTY INCLUDE_DIRECTORIES "${SDL3_INCLUDE_DIRS};")
 
 if(FREETYPE2_FOUND)
     set_property(SOURCE driver.cpp APPEND_STRING PROPERTY INCLUDE_DIRECTORIES "${FREETYPE2_INCLUDE_DIRS};")
@@ -70,13 +68,11 @@ if(OPENAL_FOUND)
     target_link_directories(driver PRIVATE ${OPENAL_LIBRARY_DIRS})
 endif()
 
-target_link_directories(driver PUBLIC ${X11_LIBRARY_DIRS})
-target_link_directories(driver PUBLIC ${XCB_LIBRARY_DIRS})
-target_link_libraries(driver PUBLIC ${X11_LIBRARIES})
-target_link_libraries(driver PUBLIC ${XCB_LIBRARIES})
+target_link_directories(driver PUBLIC ${SDL3_LIBRARY_DIRS})
+target_link_libraries(driver PUBLIC ${SDL3_LIBRARIES})
 
 # use -Wl,--verbose for detailed linker problems
-target_link_libraries(driver PUBLIC GL pulse udev)
+target_link_libraries(driver PUBLIC GL pulse)
 
 target_sources(driver PRIVATE ${srcs})
 

@@ -9,7 +9,7 @@
 #include "../emuconfig/layouts/configurations.h"
 
 auto FileHelper::errorOpen(GUIKIT::File* file, GUIKIT::File::Item* item, Message* message ) -> void {
-    message->error(trans->get( (file->isArchived() && !item) ? "archive_error" : "file_open_error", {
+    if (message) message->error(trans->get( (file->isArchived() && !item) ? "archive_error" : "file_open_error", {
         { "%path%", item ? item->info.name : file->getFile() }
     }));
 
@@ -17,7 +17,7 @@ auto FileHelper::errorOpen(GUIKIT::File* file, GUIKIT::File::Item* item, Message
 }
 
 auto FileHelper::errorOpen( const std::vector<std::string>& paths, bool warning ) -> void {
-    if ( paths.empty() || !view )
+    if ( paths.empty() || !appMessage )
         return;
 
     std::string transKey = "file_open_error";
@@ -31,9 +31,9 @@ auto FileHelper::errorOpen( const std::vector<std::string>& paths, bool warning 
     }
 
     if (warning)
-        view->message->warning(trans->get(transKey, { {replaceIdent, replace} }));
+        appMessage->warning(trans->get(transKey, { {replaceIdent, replace} }));
     else
-        view->message->error(trans->get(transKey, { {replaceIdent, replace} }));
+        appMessage->error(trans->get(transKey, { {replaceIdent, replace} }));
 }
 
 auto FileHelper::loadImageDataWhenOk( GUIKIT::File* file, unsigned fileId, Emulator::Interface::MediaGroup* group, uint8_t*& data ) -> bool {

@@ -149,8 +149,8 @@ auto MiscHelper::libraryMissing(std::string plugin) -> void {
 
     if (plugin == "CAPS") {
         static int informed = 0;
-        if (view && (informed < 20) ) {
-            view->message->error(trans->get("SPS plugin missing"));
+        if (appMessage && (informed < 20) ) {
+            appMessage->error(trans->get("SPS plugin missing"));
             ts = Chronos::getTimestampInMilliseconds();
             informed++;
         }

@@ -1,7 +1,8 @@
 
     #include <GL/gl.h>
-    #include <GL/glx.h>
-    #define glGetProcAddress(name) (*glXGetProcAddress)((const GLubyte*)(name))
+    #include <GL/glext.h>
+    #include <SDL3/SDL_video.h>
+    #define glGetProcAddress(name) SDL_GL_GetProcAddress(name)
 
 #include <unistd.h>
 
@@ -1108,14 +1109,15 @@ End:
         this->screenshotCallback = callback;
     }
 
-    auto takeScreenshot() -> void {
+    // EGL (Wayland) has no readable front buffer: SDL output reads the back buffer before swapping
+    auto takeScreenshot(GLenum readBuffer = GL_FRONT) -> void {
         if (!screenshotCallback)
             return;
 
         uint8_t* buffer = new uint8_t[viewport.width * viewport.height * 4];
 
         glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glReadBuffer(GL_FRONT);
+        glReadBuffer(readBuffer);
 
         glReadPixels(viewport.x, viewport.y, viewport.width, viewport.height, GL_RGB, GL_UNSIGNED_BYTE, buffer);
 

@@ -38,6 +38,7 @@
 #include "../emulation/libc64/interface.h"
 #include "../driver/driver.h"
 #include "video/manager.h"
+#include "video/screenshot.h"
 #include "debugger/debugger.h"
 #include "monitor/binaryMonitor.h"
 #include "tools/logger.h"
@@ -53,6 +54,13 @@ struct InputManager;
 struct Debugger;
 
 struct Program : Emulator::Interface::Bind {
+    ScreenshotState screenshot;
+    auto requestScreenshot() -> void;
+    auto togglePause() -> void;
+    static const unsigned SpeedProfiles = 13;
+    auto getSpeedBySelectedProfile(float& speed, bool& percent) -> unsigned;
+    auto getSpeed(unsigned pos, float& speed, bool& percent) -> void;
+    auto isMaximumSpeed() -> bool;
 	unsigned isPause = 0;
     bool quitInProgress = false;
     bool initialized = false;

@@ -10,6 +10,7 @@
 #include "../emuconfig/layouts/system.h"
 #include "../helper/fileHelper.h"
 #include "../helper/miscHelper.h"
+#include "../cmd/cmd.h"
 
 std::vector<States*> states;
 
@@ -113,8 +114,8 @@ auto States::save( std::string path ) -> void {
         }                            
     }
 
-    if (view && settings->get<bool>("save_screenshot", true)) {
-        auto& screenshot = view->screenshot;
+    if (!cmd->noGui && settings->get<bool>("save_screenshot", true)) {
+        auto& screenshot = program->screenshot;
         screenshot.unscaled = 1;
         screenshot.pause = 0;
         screenshot.twoFrames = false;

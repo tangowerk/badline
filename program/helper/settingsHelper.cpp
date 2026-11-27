@@ -64,7 +64,7 @@ auto SettingsHelper::saveSettings(bool onExit) -> void {
 
         if (!settings->save( path )) {
             if (!errorShown) {
-                view->message->warning(trans->get("cfg_not_save", {{"%path%", path}}));
+                appMessage->warning(trans->get("cfg_not_save", {{"%path%", path}}));
                 errorShown = true;
             }
         }
