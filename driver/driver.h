@@ -85,8 +85,9 @@ struct PacingSample {
     uint64_t displayNs;   // display time, 0 = unknown
     uint32_t flags;       // PACING_*
     uint32_t copy;        // 0 = first present of the picture
+    uint64_t targetNs;    // blend: predicted display time (vblank), 0 = none
 };
-enum { PACING_REPEAT = 1, PACING_REDRAW = 2, PACING_TIMING = 4, PACING_WAITED = 8, PACING_LOST = 16 };
+enum { PACING_REPEAT = 1, PACING_REDRAW = 2, PACING_TIMING = 4, PACING_WAITED = 8, PACING_LOST = 16, PACING_BLEND = 32 };
 enum { PACING_FEEDBACK_NONE = 0, PACING_FEEDBACK_WAIT = 1, PACING_FEEDBACK_TIMING = 2 };
 enum { PRESENT_MAILBOX = 0, PRESENT_FIFO = 1, PRESENT_IMMEDIATE = 2 };
 
@@ -97,6 +98,7 @@ struct PacingCaps {
     bool stalled = false; // a present wait timed out, nothing displayed since (hidden window)
     bool absoluteTime = false; // presents can carry target times (grid pacing)
     bool cadence = false; // grid presents shown at the grid cadence (VRR active)
+    bool blend = false;   // grid without VRR: phase-weighted frame blending per vblank
 };
 
 enum Options { OPT_HoldFrame = 1, OPT_Interlace = 2, OPT_DisallowShader = 4, OPT_TakeScreenshot = 8,
@@ -154,11 +156,12 @@ struct Video {
     // frame pacing (Vulkan, M-Pacing1): every new picture is presented `repeat` times; with
     // queueDepth d > 0 present N waits until present N-d is on screen (video master)
     virtual auto supportsPacing() -> bool { return false; }
-    virtual auto setPacing(unsigned repeat, unsigned queueDepth, int presentMode, uint64_t gridNs = 0) -> void {}
+    virtual auto setPacing(unsigned repeat, unsigned queueDepth, int presentMode, uint64_t gridNs = 0, uint64_t refreshNs = 0) -> void {}
     virtual auto pacingCaps() -> PacingCaps { return {}; }
     // copies the collected presents (oldest first); `clear` drops them afterwards
     virtual auto pacingSamples(std::vector<PacingSample>& out, bool clear) -> void {}
-    // true once after the renderer stalled or recovered (the pacing decision is re-evaluated)
+    // true once after the renderer stalled/recovered or its target time support changed
+    // (the pacing decision is re-evaluated)
     virtual auto pacingChanged() -> bool { return false; }
 
     virtual auto setVRR(bool state, float speed = 0.0) -> void {}

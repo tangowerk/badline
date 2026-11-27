@@ -7,6 +7,7 @@ use std::path::PathBuf;
 const SHADERS: &[&str] = &[
     "image.vert",
     "image.frag",
+    "blend.frag",
     "overlay.vert",
     "overlay.frag",
     "text.vert",

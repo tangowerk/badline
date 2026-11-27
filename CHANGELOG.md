@@ -4,6 +4,44 @@ All notable changes to Badline. Badline is a fork of
 [Denise](https://github.com/piciji/denise) 2.9 by PiCiJi; Denise's own history
 is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
+## Unreleased
+
+### Added
+
+- **Frame blending on Vulkan (M-Pacing3).** Without VRR and without an integer
+  multiple (e.g. PAL in a window on a 60 Hz display) every vblank now shows a
+  phase-weighted mix of the two C64 frames around its display time, mixed in
+  linear light, instead of the 5:6 judder. The emulation stays on the grid of
+  M-Pacing2 and presents one picture per predicted vblank with a target time;
+  the vblank grid is estimated from the present timestamps. Measured on a
+  60 Hz panel (PAL, 60 s): one present per vblank, every display within 0.02 ms
+  of its predicted vblank, no audio underruns. Costs about one C64 frame plus
+  half a refresh of latency (Lowest latency stays the alternative). After a
+  window/fullscreen switch, swapchain rebuild or refresh change a 2 s grid probe
+  checks for VRR first (then `grid_vrr` as before). A present that slipped by a
+  vblank (compositor hiccup) is caught up by leaving out one present.
+  MCP `pacing` reports the state `blend` and blend phase statistics;
+  `tests/pacing_check.py` checks them. `BADLINE_VK_BLEND=off` disables
+  blending, `=sharp` mixes only around the middle of the phase (comparison
+  variant); `BADLINE_VK_BLEND_OFFSET_US` overrides the target time offset.
+  Screenshots keep showing the unmixed picture.
+
+### Changed
+
+- The Vulkan FIFO swapchain uses one image more (minimum + 2) so a compositor
+  hiccup does not block the emulation thread in the acquire.
+
+### Fixed
+
+- Vulkan: a normal start stayed in the audio master fallback (old 5:6 judder,
+  no DRC) until a display or fullscreen change: the pacing was decided before
+  the swapchain reported target time support and never re-evaluated; it now is
+  once that support changes (Badline bug, M-Pacing2; fullscreen VRR hid it).
+- Vulkan: after a stall (hidden window) the renderer could stay in the audio
+  master fallback for good: the recovery polled only the latest present, which
+  is usually still queued; it now checks the first present after the stall
+  (Badline bug, M-Pacing1).
+
 ## 0.2.0 – 2026-11-27
 
 ### Added

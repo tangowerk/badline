@@ -13,8 +13,9 @@ VideoManager::Pacing VideoManager::pacing;
 // via DRC). Otherwise, with absolute present target times (M-Pacing2): grid -- each picture
 // waits for its slot of a steady grid at the emulated rate and is presented with that target time
 // (the grid clocks the emulation, audio follows via DRC); with VRR the display follows the grid,
-// without it the known judder remains (blending: M-Pacing3). No target times (X11 ...): audio
-// master + FIFO. Lowest latency: audio master, IMMEDIATE (tearing, hint set by Mesa) or MAILBOX.
+// without it (and a refresh above the emulated rate) the renderer blends (M-Pacing3): after a
+// short grid probe (VRR detection) every vblank shows a phase-weighted mix of two pictures.
+// No target times (X11 ...): audio master + FIFO. Lowest latency: audio master, IMMEDIATE (tearing, hint set by Mesa) or MAILBOX.
 auto VideoManager::setPacing() -> void {
     Pacing p;
     p.mode = globalSettings->get<unsigned>("pacing", 0u, {0u, 1u});
@@ -59,7 +60,8 @@ auto VideoManager::setPacing() -> void {
         fprintf(stderr, "badline pacing: state %d -> %d (repeat %u, refresh %.3f, stalled %d)\n",
             (int)pacing.state, (int)p.state, p.repeat, p.refresh, (int)p.stalled);
     pacing = p;
-    videoDriver->setPacing(p.repeat, p.queueDepth, presentMode, p.gridNs);
+    uint64_t refreshNs = p.refresh > 0.0 ? (uint64_t)std::llround(1e9 / p.refresh) : 0;
+    videoDriver->setPacing(p.repeat, p.queueDepth, presentMode, p.gridNs, refreshNs);
     setFrameRender(1);
 
     if (audioManager) {
@@ -73,7 +75,10 @@ auto VideoManager::setPacing() -> void {
 auto VideoManager::pacingStateName() -> std::string {
     switch (pacing.state) {
         case Pacing::VideoMaster: return "video_master";
-        case Pacing::Grid: return videoDriver->pacingCaps().cadence ? "grid_vrr" : "grid";
+        case Pacing::Grid: {
+            auto caps = videoDriver->pacingCaps();
+            return caps.blend ? "blend" : caps.cadence ? "grid_vrr" : "grid";
+        }
         case Pacing::AudioMaster: return "audio_master";
         case Pacing::LowestLatency: return "lowest_latency";
         case Pacing::Unthrottled: return "unthrottled";

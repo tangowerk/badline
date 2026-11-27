@@ -7,7 +7,8 @@ statistics, waits --seconds and evaluates them.
 
 Acceptance (SPEC "Decisions M-Pacing"): under video master 0 repeated/shortened/skipped
 C64 frames and no audio underflows/drops during the measurement. Grid with VRR (grid_vrr,
-SPEC "Decisions M-Pacing2"): every picture interval within 1 ms of the grid period.
+SPEC "Decisions M-Pacing2"): every picture interval within 1 ms of the grid period. Blend
+(SPEC "Decisions M-Pacing3"): one present per vblank, every phase error below 1 ms.
 --toggle-fullscreen (with --fullscreen, Hyprland): fullscreen -> window -> fullscreen in thirds
 of --seconds; the fullscreen phases must be clean from 1 s after each switch.
 
@@ -135,11 +136,19 @@ def main():
           f"{a.get('rate_adjust_max_percent')} %")
 
     g = v.get("grid")
-    if g:
+    # blending presents at the display rate: the grid intervals are meaningless then
+    if g and stats["state"] != "blend":
         print(f"grid {g.get('period_ms')} ms: {g.get('intervals')} intervals, {g.get('within_1ms')} within 1 ms, "
               f"longer {g.get('longer')} shorter {g.get('shorter')} skipped {g.get('skipped')}, "
               f"deviation avg {g.get('deviation_ms_avg')} max {g.get('deviation_ms_max')} ms")
         for o in g.get("outliers", [])[:10]:
+            print(f"  outlier {o}")
+    bl = v.get("blend")
+    if bl:
+        print(f"blend: {bl.get('presents')} presents, phase within 1 ms {bl.get('phase_within_1ms')}, "
+              f"error avg {bl.get('phase_error_ms_avg')} max {bl.get('phase_error_ms_max')} ms, "
+              f"intervals != 1 refresh {bl.get('intervals_not_one_refresh')}")
+        for o in bl.get("outliers", [])[:10]:
             print(f"  outlier {o}")
     audio_ok = a.get("underflows") == 0 and a.get("dropped_bytes") == 0
     if switches:
@@ -164,6 +173,10 @@ def main():
         # acceptance M-Pacing2: every picture interval within 1 ms of the grid period
         ok = (g and g.get("intervals", 0) > 0 and g.get("within_1ms") == g.get("intervals")
               and g.get("skipped") == 0 and audio_ok)
+    elif stats["state"] == "blend":
+        # acceptance M-Pacing3: one present per vblank, phase error < 1 ms
+        ok = (bl and bl.get("presents", 0) > 0 and bl.get("phase_within_1ms") == bl.get("presents")
+              and bl.get("intervals_not_one_refresh") == 0 and audio_ok)
     elif stats["state"] == "video_master":
         ok = (f.get("repeated") == 0 and f.get("shortened") == 0 and f.get("skipped") == 0 and audio_ok)
     else:

@@ -180,7 +180,10 @@ mapped by key position.
 C64 rate (PAL on 100 Hz, NTSC on 60/120 Hz) the display clocks the emulation.
 Otherwise frames are presented at exact target times, which a VRR display
 follows (on Hyprland VRR is used in fullscreen with `misc:vrr = 2`, or for
-every window with `1`); without VRR such rates still judder.
+every window with `1`). Without VRR each display refresh shows a mix of the
+two C64 frames around it, weighted by time (frame blending: even motion with
+slight ghosting, about one frame more latency; `BADLINE_VK_BLEND=off` turns it
+off).
 
 **Testing**: `tests/mcp_smoke.py` runs every MCP tool against a fresh instance
 (`--headless` for the headless variant, `--renderer vulkan` for the Vulkan

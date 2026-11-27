@@ -343,6 +343,8 @@ pub const REC_REDRAW: u32 = 2;
 pub const REC_TIMING: u32 = 4;
 pub const REC_WAITED: u32 = 8;
 pub const REC_LOST: u32 = 16;
+/// phase-weighted blend present (M-Pacing3), `target_ns` = predicted vblank
+pub const REC_BLEND: u32 = 32;
 
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
@@ -356,6 +358,8 @@ pub struct Record {
     pub display_ns: u64,
     pub flags: u32,
     pub copy: u32,
+    /// blend: predicted display time (vblank) the mix was computed for; 0 = none
+    pub target_ns: u64,
 }
 
 const MAX_PENDING: usize = 64;
@@ -384,6 +388,12 @@ pub struct Feedback {
     grid_last: (u64, u64),
     /// recent picture intervals, true = within CADENCE_TOLERANCE of the grid period
     grid_hits: VecDeque<bool>,
+    /// vblank estimate from the display times (blending)
+    pub vsync: Vsync,
+    /// blend presents displayed one vblank or more after their predicted vblank, in a row
+    pub blend_late: u32,
+    /// only blend presents after this id count for `blend_late` (after a resync)
+    pub blend_watch_from: u64,
 }
 
 /// picture intervals looked at for the cadence decision (~1 s at 50 fps)
@@ -408,6 +418,9 @@ impl Feedback {
             grid_period: 0,
             grid_last: (0, 0),
             grid_hits: VecDeque::new(),
+            vsync: Vsync::default(),
+            blend_late: 0,
+            blend_watch_from: 0,
         }
     }
 
@@ -508,6 +521,12 @@ impl Feedback {
         }
     }
 
+    /// forget the cadence history (new VRR probe)
+    pub fn reset_cadence(&mut self) {
+        self.grid_last = (0, 0);
+        self.grid_hits.clear();
+    }
+
     /// most of the recent pictures were displayed one grid period after their predecessor:
     /// the display follows the target times (VRR, or a refresh equal to the grid)
     pub fn cadence(&self) -> bool {
@@ -532,6 +551,14 @@ impl Feedback {
 
     fn finish(&mut self, rec: Record) {
         self.track_cadence(&rec);
+        if rec.display_ns != 0 && rec.flags & (REC_LOST | REC_TIMING) == REC_TIMING {
+            // Mesa only offers PRESENT_STAGE_LOCAL, equal to CLOCK_MONOTONIC (as the grid assumes)
+            self.vsync.observe(rec.display_ns);
+            if rec.flags & REC_BLEND != 0 && rec.target_ns != 0 && rec.present_id > self.blend_watch_from {
+                let late = rec.display_ns as f64 - rec.target_ns as f64 > self.vsync.period() / 2.0;
+                self.blend_late = if late { self.blend_late + 1 } else { 0 };
+            }
+        }
         if self.done.len() >= MAX_DONE {
             self.done.pop_front();
         }
@@ -651,5 +678,75 @@ impl Feedback {
             *o = r;
         }
         n
+    }
+}
+
+/// Vblank estimate (M-Pacing3) from the display times of presents, which land on vblanks
+/// without VRR: the latest display time is the phase, the period is refined over a baseline of
+/// up to 10 s (the nominal refresh from SDL is only accurate to ~0.1 %).
+#[derive(Default)]
+pub struct Vsync {
+    /// nominal refresh period (ns, from the program), 0 = unknown
+    pub nominal: u64,
+    period: f64,
+    base: u64,
+    last: u64,
+}
+
+/// accepted deviation of the measured period from the nominal one
+const VSYNC_TOLERANCE: f64 = 0.01;
+
+impl Vsync {
+    pub fn set_nominal(&mut self, ns: u64) {
+        if self.nominal != ns {
+            *self = Vsync { nominal: ns, ..Default::default() };
+        }
+    }
+
+    /// forget the measurements (new probe: VRR presents are off the vblank grid)
+    pub fn reset(&mut self) {
+        *self = Vsync { nominal: self.nominal, ..Default::default() };
+    }
+
+    pub fn observe(&mut self, t: u64) {
+        if self.nominal == 0 {
+            return;
+        }
+        if self.last == 0 || t <= self.last || t - self.last > 1_000_000_000 {
+            // first sample or a gap: restart from the nominal period
+            self.base = t;
+            self.last = t;
+            self.period = self.nominal as f64;
+            return;
+        }
+        let span = (t - self.base) as f64;
+        let k = (span / self.period).round();
+        if span > 500e6 && k >= 1.0 {
+            let p = span / k;
+            if (p / self.nominal as f64 - 1.0).abs() < VSYNC_TOLERANCE {
+                self.period = p;
+            }
+        }
+        if span > 10e9 {
+            self.base = t;
+        }
+        self.last = t;
+    }
+
+    pub fn valid(&self) -> bool {
+        self.last != 0 && self.period > 0.0
+    }
+
+    pub fn period(&self) -> f64 {
+        self.period
+    }
+
+    /// first predicted vblank at or after `t`
+    pub fn next_at(&self, t: u64) -> u64 {
+        if t <= self.last {
+            return self.last;
+        }
+        let k = ((t - self.last) as f64 / self.period).ceil();
+        self.last + (k * self.period).round() as u64
     }
 }

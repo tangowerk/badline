@@ -16,7 +16,8 @@
 namespace DRIVER {
 
 static_assert((int)BVK_REC_REPEAT == (int)PACING_REPEAT && (int)BVK_REC_REDRAW == (int)PACING_REDRAW && (int)BVK_REC_TIMING == (int)PACING_TIMING
-    && (int)BVK_REC_WAITED == (int)PACING_WAITED && (int)BVK_REC_LOST == (int)PACING_LOST, "BvkPresent flags");
+    && (int)BVK_REC_WAITED == (int)PACING_WAITED && (int)BVK_REC_LOST == (int)PACING_LOST
+    && (int)BVK_REC_BLEND == (int)PACING_BLEND, "BvkPresent flags");
 static_assert((int)BVK_FEEDBACK_TIMING == (int)PACING_FEEDBACK_TIMING && (int)BVK_FEEDBACK_WAIT == (int)PACING_FEEDBACK_WAIT, "feedback");
 static_assert((int)BVK_PRESENT_FIFO == (int)PRESENT_FIFO && (int)BVK_PRESENT_MAILBOX == (int)PRESENT_MAILBOX
     && (int)BVK_PRESENT_IMMEDIATE == (int)PRESENT_IMMEDIATE, "present modes");
@@ -39,12 +40,15 @@ struct SDLVK : public Video, Freetype {
     unsigned repeat = 1;
     unsigned queueDepth = 0;
     uint64_t gridNs = 0;     // target time grid period (0 = off)
+    uint64_t refreshNs = 0;  // display refresh period from SDL (0 = unknown)
     uint64_t frameSeq = 0;
     // presents for the MCP `pacing` tool (~2 min at 100 Hz x 2 copies)
     std::deque<PacingSample> samples;
     static constexpr size_t MaxSamples = 24000;
     bool stalled = false;
-    std::atomic<bool> stallChanged{false};
+    bool absoluteTime = false;
+    // stall/recovery or target time support changed: the program re-evaluates the pacing
+    std::atomic<bool> capsChanged{false};
     float mvp[16];
 
     std::vector<uint32_t> buffer;
@@ -106,7 +110,7 @@ struct SDLVK : public Video, Freetype {
             return false;
         }
         bvk_set_present_mode(vk, presentMode);
-        bvk_set_pacing(vk, repeat, queueDepth, gridNs);
+        bvk_set_pacing(vk, repeat, queueDepth, gridNs, refreshNs);
         samples.clear();
         ftInitialized = true;
         reportedError = false;
@@ -131,7 +135,7 @@ struct SDLVK : public Video, Freetype {
 
     // VSync off (warp): MAILBOX first, the emulation is not held at display rate
     auto synchronize(bool state) -> void {
-        setPacing(repeat, queueDepth, state ? BVK_PRESENT_FIFO : BVK_PRESENT_MAILBOX, gridNs);
+        setPacing(repeat, queueDepth, state ? BVK_PRESENT_FIFO : BVK_PRESENT_MAILBOX, gridNs, refreshNs);
     }
 
     auto hasSynchronized() -> bool { return presentMode == BVK_PRESENT_FIFO; }
@@ -140,15 +144,16 @@ struct SDLVK : public Video, Freetype {
 
     auto supportsPacing() -> bool { return true; }
 
-    auto setPacing(unsigned _repeat, unsigned _queueDepth, int _presentMode, uint64_t _gridNs = 0) -> void {
+    auto setPacing(unsigned _repeat, unsigned _queueDepth, int _presentMode, uint64_t _gridNs = 0, uint64_t _refreshNs = 0) -> void {
         std::lock_guard<std::recursive_mutex> lock(mutex);
         gridNs = _gridNs;
+        refreshNs = _refreshNs;
         repeat = std::max(1u, _repeat);
         queueDepth = _queueDepth;
         presentMode = _presentMode;
         if (vk) {
             bvk_set_present_mode(vk, presentMode);
-            bvk_set_pacing(vk, repeat, queueDepth, gridNs);
+            bvk_set_pacing(vk, repeat, queueDepth, gridNs, refreshNs);
         }
     }
 
@@ -164,11 +169,12 @@ struct SDLVK : public Video, Freetype {
             caps.stalled = c.stalled != 0;
             caps.absoluteTime = c.absolute_time != 0;
             caps.cadence = c.cadence != 0;
+            caps.blend = c.blend != 0;
         }
         return caps;
     }
 
-    auto pacingChanged() -> bool { return stallChanged.exchange(false); }
+    auto pacingChanged() -> bool { return capsChanged.exchange(false); }
 
     auto pacingSamples(std::vector<PacingSample>& out, bool clear) -> void {
         std::lock_guard<std::recursive_mutex> lock(mutex);
@@ -187,7 +193,7 @@ struct SDLVK : public Video, Freetype {
             for (unsigned i = 0; i < n; i++) {
                 if (samples.size() >= MaxSamples)
                     samples.pop_front();
-                samples.push_back({buf[i].frame, buf[i].submit_ns, buf[i].display_ns, buf[i].flags, buf[i].copy});
+                samples.push_back({buf[i].frame, buf[i].submit_ns, buf[i].display_ns, buf[i].flags, buf[i].copy, buf[i].target_ns});
             }
             if (n < 64)
                 break;
@@ -321,7 +327,13 @@ struct SDLVK : public Video, Freetype {
         bvk_pacing_caps(vk, &caps);
         if ((caps.stalled != 0) != stalled) {
             stalled = caps.stalled != 0;
-            stallChanged = true;
+            capsChanged = true;
+        }
+        // target times are known only once the swapchain exists, i.e. after the pacing was
+        // first decided at startup (without this re-evaluation the start stayed audio master)
+        if ((caps.absolute_time != 0) != absoluteTime) {
+            absoluteTime = caps.absolute_time != 0;
+            capsChanged = true;
         }
         if (res == BVK_ERROR) {
             if (!reportedError)

@@ -354,6 +354,51 @@ auto pacingStats(const std::vector<DRIVER::PacingSample>& all, double refreshNs,
         g.set("gaps", gaps);
         out.set("grid", g);
     }
+
+    // blend (M-Pacing3): each present was mixed for a predicted vblank; the phase error is its
+    // display time minus that vblank, consecutive blend presents should be one refresh apart
+    std::vector<const DRIVER::PacingSample*> blends;
+    for (auto* p : shown)
+        if ((p->flags & DRIVER::PACING_BLEND) && p->targetNs)
+            blends.push_back(p);
+    if (!blends.empty()) {
+        Json b = Json::object();
+        unsigned within = 0, notOne = 0;
+        double errMax = 0, errSum = 0;
+        Json outliers = Json::array();
+        for (size_t i = 0; i < blends.size(); i++) {
+            double err = (double)(int64_t)(blends[i]->displayNs - blends[i]->targetNs) / 1e6;
+            errSum += std::abs(err);
+            errMax = std::max(errMax, std::abs(err));
+            bool ok = std::abs(err) < 1.0;
+            if (ok)
+                within++;
+            if (i > 0) {
+                long periods = std::lround((double)(int64_t)(blends[i]->displayNs - blends[i - 1]->displayNs) / refreshNs);
+                if (periods != 1) {
+                    notOne++;
+                    ok = false;
+                }
+            }
+            if (!ok && outliers.items.size() < 20000) {
+                Json o = Json::object();
+                o.set("t", round3((double)(blends[i]->displayNs - blends.front()->displayNs) / 1e9));
+                o.set("phase_error_ms", round3(err));
+                if (i > 0)
+                    o.set("interval_ms", round3((double)(int64_t)(blends[i]->displayNs - blends[i - 1]->displayNs) / 1e6));
+                o.set("present_to_display_ms", round3((double)((int64_t)blends[i]->displayNs - (int64_t)blends[i]->submitNs) / 1e6));
+                o.set("display_ns", blends[i]->displayNs);
+                outliers.push(o);
+            }
+        }
+        b.set("presents", (unsigned)blends.size());
+        b.set("phase_within_1ms", within);
+        b.set("phase_error_ms_avg", round3(errSum / blends.size()));
+        b.set("phase_error_ms_max", round3(errMax));
+        b.set("intervals_not_one_refresh", notOne);
+        b.set("outliers", outliers);
+        out.set("blend", b);
+    }
     return out;
 }
 
@@ -498,10 +543,11 @@ auto McpServer::registerTools() -> void {
         "Frame pacing of the Vulkan renderer. 'status' (default): pacing decision (video_master = display "
         "clocks the emulation, each picture presented 'repeat' times; grid / grid_vrr = pictures presented at "
         "target times of a steady grid at the emulated rate, grid_vrr when the display follows it (VRR); "
+        "blend = grid without VRR, every vblank shows a phase-weighted mix of two pictures; "
         "audio_master; lowest_latency; "
         "unthrottled), refresh/emulation rates, present feedback. 'reset' clears the collected presents and "
         "audio counters; 'stats' evaluates the presents since the last reset (display intervals in refresh "
-        "periods, pictures shown longer/shorter than expected, skipped pictures, audio DRC/xruns). "
+        "periods, pictures shown longer/shorter than expected, skipped pictures, blend phase errors, audio DRC/xruns). "
         "'set_mode' changes the setting pacing (auto | lowest_latency).",
         R"({"type":"object","properties":{)"
         R"("action":{"type":"string","enum":["status","reset","stats"],"default":"status"},)"

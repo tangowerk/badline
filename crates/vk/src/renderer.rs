@@ -109,6 +109,8 @@ struct DeviceChoice {
 
 struct Pipelines {
     image: vk::Pipeline,
+    /// two pictures mixed in linear light (frame blending)
+    blend: vk::Pipeline,
     overlay: vk::Pipeline,
     text: vk::Pipeline,
 }
@@ -153,6 +155,8 @@ pub struct Renderer {
     grid: Grid,
     /// target time of the next present (0 = as soon as possible)
     target_time: u64,
+    /// blend: predicted vblank of the next present (recorded for the stats)
+    blend_target: u64,
     /// emulator frame sequence of the last render with a new picture
     last_frame: u64,
     /// last present id on the current swapchain (0: none yet)
@@ -172,7 +176,14 @@ pub struct Renderer {
     pipelines: Pipelines,
     frames: Vec<PerFrame>,
     current: usize,
-    picture: Option<Texture>,
+    /// emulator pictures, alternating: `pictures[cur]` is the latest, the other one its
+    /// predecessor (frame blending)
+    pictures: [Option<Texture>; 2],
+    cur: usize,
+    /// frame blending state (M-Pacing3)
+    blend: Blend,
+    /// weight of the latest picture for the next present (1.0 = latest only, no blending)
+    weight: f32,
     atlas: Option<Texture>,
     text: Option<Texture>,
     pending: [Option<PendingTexture>; 2],
@@ -521,12 +532,17 @@ impl Renderer {
             layout: vk::PipelineLayout::null(),
             pipelines: Pipelines {
                 image: vk::Pipeline::null(),
+                blend: vk::Pipeline::null(),
                 overlay: vk::Pipeline::null(),
                 text: vk::Pipeline::null(),
             },
             frames: Vec::new(),
             current: 0,
-            picture: None,
+            pictures: [None, None],
+            cur: 0,
+            blend: Blend::new(),
+            weight: 1.0,
+            blend_target: 0,
             atlas: None,
             text: None,
             pending: [None, None],
@@ -702,7 +718,8 @@ impl Renderer {
             let push = [vk::PushConstantRange::default()
                 .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
                 .size(PUSH_SIZE)];
-            let set_layouts = [self.set_layout];
+            // set 1: predecessor picture of the blend pipeline
+            let set_layouts = [self.set_layout, self.set_layout];
             self.layout = d
                 .create_pipeline_layout(
                     &vk::PipelineLayoutCreateInfo::default()
@@ -750,6 +767,7 @@ impl Renderer {
         };
         let image_vs = module(include_bytes!(concat!(env!("OUT_DIR"), "/image.vert.spv")))?;
         let image_fs = module(include_bytes!(concat!(env!("OUT_DIR"), "/image.frag.spv")))?;
+        let blend_fs = module(include_bytes!(concat!(env!("OUT_DIR"), "/blend.frag.spv")))?;
         let overlay_vs = module(include_bytes!(concat!(env!("OUT_DIR"), "/overlay.vert.spv")))?;
         let overlay_fs = module(include_bytes!(concat!(env!("OUT_DIR"), "/overlay.frag.spv")))?;
         let text_vs = module(include_bytes!(concat!(env!("OUT_DIR"), "/text.vert.spv")))?;
@@ -827,12 +845,13 @@ impl Renderer {
         let result = (|| -> Result<Pipelines> {
             Ok(Pipelines {
                 image: build(image_vs, image_fs, vk::PrimitiveTopology::TRIANGLE_STRIP, false, false)?,
+                blend: build(image_vs, blend_fs, vk::PrimitiveTopology::TRIANGLE_STRIP, false, false)?,
                 overlay: build(overlay_vs, overlay_fs, vk::PrimitiveTopology::TRIANGLE_LIST, true, true)?,
                 text: build(text_vs, text_fs, vk::PrimitiveTopology::TRIANGLE_STRIP, true, false)?,
             })
         })();
         unsafe {
-            for m in [image_vs, image_fs, overlay_vs, overlay_fs, text_vs, text_fs] {
+            for m in [image_vs, image_fs, blend_fs, overlay_vs, overlay_fs, text_vs, text_fs] {
                 d.destroy_shader_module(m, None);
             }
         }
@@ -1122,7 +1141,9 @@ impl Renderer {
             return Ok(false);
         }
 
-        let mut count = caps.min_image_count + 1;
+        // FIFO: blending keeps up to three presents queued (targets up to ~1.5 refreshes ahead);
+        // one image more absorbs compositor hiccups instead of blocking the acquire
+        let mut count = caps.min_image_count + if self.present_pref == BVK_PRESENT_FIFO { 2 } else { 1 };
         if caps.max_image_count > 0 {
             count = count.min(caps.max_image_count);
         }
@@ -1178,6 +1199,12 @@ impl Renderer {
         self.feedback.flush();
         self.feedback.setup_swapchain(self.device.handle(), swapchain);
         self.images = unsafe { self.swapchain_fn.get_swapchain_images(swapchain) }.map_err(vkerr("swapchain images"))?;
+        if self.debug_slow {
+            eprintln!(
+                "badline vulkan: swapchain {}x{} {:?}, {} images (min {})",
+                extent.width, extent.height, present_mode, self.images.len(), caps.min_image_count
+            );
+        }
         for &image in &self.images {
             let view = unsafe {
                 self.device.create_image_view(
@@ -1196,6 +1223,8 @@ impl Renderer {
             self.render_done.push(sem);
         }
         self.swapchain_dirty = false;
+        // window <-> fullscreen, monitor change: VRR may have changed
+        self.blend.request_probe("swapchain", self.debug_slow);
         Ok(true)
     }
 
@@ -1208,12 +1237,17 @@ impl Renderer {
         }
     }
 
-    pub fn set_pacing(&mut self, repeat: u32, queue_depth: u32, period_ns: u64) {
+    pub fn set_pacing(&mut self, repeat: u32, queue_depth: u32, period_ns: u64, refresh_ns: u64) {
         self.repeat = repeat.clamp(1, 8);
         self.queue_depth = queue_depth.min(3);
         if self.grid.period != period_ns {
             self.grid = Grid::new();
             self.grid.period = period_ns;
+            self.blend.request_probe("grid period", self.debug_slow);
+        }
+        if self.feedback.vsync.nominal != refresh_ns {
+            self.feedback.vsync.set_nominal(refresh_ns);
+            self.blend.request_probe("refresh", self.debug_slow);
         }
         self.feedback.set_grid(self.grid.period);
     }
@@ -1225,7 +1259,12 @@ impl Renderer {
 
     /// grid presents are displayed at the grid cadence (VRR follows the emulation)
     pub fn grid_cadence(&self) -> bool {
-        self.feedback.cadence()
+        !self.blend.active && self.feedback.cadence()
+    }
+
+    /// grid without VRR: every vblank shows a phase-weighted mix (M-Pacing3)
+    pub fn blending(&self) -> bool {
+        self.blend.active
     }
 
     pub fn present_api(&self) -> PresentApi {
@@ -1275,14 +1314,16 @@ impl Renderer {
     unsafe fn render_inner(&mut self, f: &BvkFrame) -> Result<Rendered> {
         // recovered once a present is displayed again (polled without waiting); no time based
         // retry: every stall/recover flip re-evaluates the pacing in the program
-        // (only presents made after the stall count: older ones may have been shown before)
+        // (only presents made after the stall count: older ones may have been shown before).
+        // The first present after the stall is checked: the latest one is usually still queued
+        // (FIFO latency above the picture interval), polling it could miss the recovery forever
+        let probe_id = (self.stall_id + 1).max(self.swapchain_first_id);
         if self.stalled
             && self.swapchain != vk::SwapchainKHR::null()
-            && self.swapchain_last_id > self.stall_id
-            && self.swapchain_last_id >= self.swapchain_first_id
-            && self.present_done(self.swapchain_last_id, 0)
+            && self.swapchain_last_id >= probe_id
+            && self.present_done(probe_id, 0)
         {
-            self.feedback.waited(self.swapchain_last_id, timing::now_ns());
+            self.feedback.waited(probe_id, timing::now_ns());
             self.stalled = false;
         }
         let new_frame = f.frame_seq != 0 && f.frame_seq != self.last_frame;
@@ -1294,11 +1335,23 @@ impl Renderer {
         // time; redraws (paused emulation) go out at once. The wait also clocks the emulation
         // when a rebuilt swapchain lost the target time support (presented as soon as possible)
         self.target_time = 0;
+        self.weight = 1.0;
         if new_frame && self.grid.period > 0 && !self.stalled && self.present_pref == BVK_PRESENT_FIFO {
             let slot = self.grid.next_slot();
+            let prev_slot = std::mem::replace(&mut self.blend.slot, slot);
             if self.absolute_time() {
                 self.target_time = slot;
+                if self.update_blend(timing::now_ns()) {
+                    return unsafe { self.render_blend(f, flags, prev_slot, slot) };
+                }
+            } else {
+                self.blend.active = false;
             }
+        } else if new_frame {
+            // video master, stalled, warp ...: probe again once the grid is back
+            self.blend.request_probe("no grid", self.debug_slow);
+            self.blend.active = false;
+            self.blend.probe_until = 0;
         }
         let first = unsafe { self.render_once(f, 0, flags) }?;
         self.target_time = 0;
@@ -1311,6 +1364,112 @@ impl Renderer {
         copy.screenshot = std::ptr::null_mut();
         for n in 1..self.repeat {
             unsafe { self.render_once(&copy, n, timing::REC_REPEAT) }?;
+        }
+        Ok(first)
+    }
+
+    /// grid frame: blending decision. A probe (grid presents for VRR detection from the cadence)
+    /// runs after swapchain rebuilds and pacing/refresh changes; without VRR the pictures are
+    /// blended afterwards. Only with a refresh above the emulated rate (one vblank at least per
+    /// picture).
+    fn update_blend(&mut self, now: u64) -> bool {
+        let refresh = self.feedback.vsync.nominal;
+        let b = &mut self.blend;
+        if !b.enabled || refresh == 0 || refresh >= self.grid.period {
+            b.active = false;
+            b.probe_until = 0;
+            return false;
+        }
+        if b.probe_pending {
+            b.probe_pending = false;
+            b.active = false;
+            b.probe_until = now + BLEND_PROBE_NS;
+            self.feedback.reset_cadence();
+            self.feedback.vsync.reset();
+            if self.debug_slow {
+                eprintln!("badline vulkan: blend probe");
+            }
+        }
+        if b.probe_until != 0 {
+            if self.feedback.cadence() {
+                // VRR follows the grid
+                b.probe_until = 0;
+                b.active = false;
+            } else if now >= b.probe_until {
+                b.probe_until = 0;
+                b.active = self.feedback.vsync.valid();
+                // no display times yet: probe again
+                b.probe_pending = !b.active;
+            }
+            if b.probe_until == 0 && self.debug_slow {
+                eprintln!(
+                    "badline vulkan: blend probe done: {} (vblank {:.4} ms)",
+                    if b.active { "blend" } else { "grid" },
+                    self.feedback.vsync.period() / 1e6
+                );
+            }
+        }
+        b.active
+    }
+
+    /// one present per vblank V in [slot, slot + period), mixing the predecessor (slot - period)
+    /// and this picture with weight (V - slot) / period (content of time V - period). Hyprland
+    /// shows a timed commit at the first vblank clearly after its target (measured 2026-11-27 on
+    /// eDP-1: targets from V to V + 12 ms are displayed at V + R; earlier ones partly at V, and
+    /// then two commits of one batch can land in the same vblank and one is dropped), so the
+    /// target is V + R/2 and the present is displayed at V + R. Costs about one picture period
+    /// plus half a refresh of latency compared with the grid.
+    unsafe fn render_blend(&mut self, f: &BvkFrame, flags: u32, prev_slot: u64, slot: u64) -> Result<Rendered> {
+        let period = self.grid.period;
+        // grid restarted (late frame, pause): no predecessor on the same time line
+        let continuous = prev_slot != 0 && slot.wrapping_sub(prev_slot) == period;
+        let vs = &self.feedback.vsync;
+        let refresh = vs.period().round() as u64;
+        let mut vblanks = [0u64; 8];
+        let mut n = 0;
+        let mut v = vs.next_at(slot);
+        while v < slot + period && n < vblanks.len() {
+            vblanks[n] = v;
+            n += 1;
+            v = vs.next_at(v + 1);
+        }
+        // one present per vblank leaves FIFO no slack: once a present slipped by a vblank
+        // (compositor hiccup), all later ones stay late. Leaving out one present (not the first,
+        // it uploads the picture) lets the queue catch up.
+        if self.feedback.blend_late >= BLEND_LATE_RESYNC && n >= 2 {
+            n -= 1;
+            self.feedback.blend_late = 0;
+            self.feedback.blend_watch_from = self.present_counter + n as u64;
+            if self.debug_slow {
+                eprintln!("badline vulkan: blend presents late by a vblank, one left out");
+            }
+        }
+        let mut first = Rendered::Skipped;
+        for (i, &vblank) in vblanks[..n].iter().enumerate() {
+            let mut frame = *f;
+            if i > 0 {
+                frame.frame = std::ptr::null();
+                frame.screenshot = std::ptr::null_mut();
+            }
+            // screenshots show the raw picture
+            let raw = !continuous || !frame.screenshot.is_null();
+            let phase = (vblank - slot) as f64 / period as f64;
+            self.weight = if raw { 1.0 } else { self.blend.shape(phase) };
+            self.target_time = vblank + self.blend.offset.unwrap_or(refresh / 2);
+            self.blend_target = vblank + refresh;
+            let copy_flags = flags | timing::REC_BLEND | if i > 0 { timing::REC_REPEAT } else { 0 };
+            let r = unsafe { self.render_once(&frame, i as u32, copy_flags) };
+            self.weight = 1.0;
+            self.target_time = 0;
+            self.blend_target = 0;
+            let r = r?;
+            if i == 0 {
+                let skipped = matches!(r, Rendered::Skipped);
+                first = r;
+                if skipped {
+                    break;
+                }
+            }
         }
         Ok(first)
     }
@@ -1331,18 +1490,19 @@ impl Renderer {
 
         // everything that can fail or wait happens before the acquire: an acquired image must
         // be presented, its semaphore must be waited on
+        // a new picture goes into the other texture, the current one stays as predecessor
         let upload = !f.frame.is_null() && f.frame_width > 0 && f.frame_height > 0;
+        let next = if upload { self.cur ^ 1 } else { self.cur };
         if upload
-            && self
-                .picture
+            && self.pictures[next]
                 .as_ref()
                 .is_none_or(|t| t.width != f.frame_width || t.height != f.frame_height)
         {
             unsafe { self.device.device_wait_idle() }.map_err(vkerr("wait idle"))?;
-            if let Some(t) = self.picture.take() {
+            if let Some(t) = self.pictures[next].take() {
                 self.destroy_texture(t);
             }
-            self.picture = Some(self.create_texture(f.frame_width, f.frame_height, vk::Format::B8G8R8A8_UNORM)?);
+            self.pictures[next] = Some(self.create_texture(f.frame_width, f.frame_height, vk::Format::B8G8R8A8_UNORM)?);
         }
         self.prepare_textures()?;
 
@@ -1371,10 +1531,17 @@ impl Renderer {
         // must not hang there (the frame is dropped instead). Once stalled, do not wait at all,
         // otherwise every frame costs the timeout (~10 fps while hidden)
         let timeout = if self.stalled { 0 } else { 100_000_000 };
+        let t_acquire = timing::now_ns();
         let acquired = unsafe {
             self.swapchain_fn
                 .acquire_next_image(self.swapchain, timeout, frame.acquired, vk::Fence::null())
         };
+        if self.debug_slow {
+            let dt = timing::now_ns() - t_acquire;
+            if dt > 5_000_000 {
+                eprintln!("badline vulkan: acquire took {:.1} ms (copy {copy})", dt as f64 / 1e6);
+            }
+        }
         let index = match acquired {
             Ok((i, suboptimal)) => {
                 if suboptimal {
@@ -1398,6 +1565,7 @@ impl Renderer {
             }
         };
 
+        self.cur = next;
         let res = unsafe { self.record_and_submit(f, &mut frame, index, &prep, copy, flags) };
         self.frames[fi] = frame;
         res?;
@@ -1517,7 +1685,7 @@ impl Renderer {
             .map_err(vkerr("begin command buffer"))?;
 
             if upload {
-                let tex = self.picture.as_mut().unwrap();
+                let tex = self.pictures[self.cur].as_mut().unwrap();
                 record_upload(&d, cmd, tex, frame.staging.as_ref().unwrap().buffer, 0, f.frame_width);
             }
             let mut offset = 0u64;
@@ -1576,17 +1744,30 @@ impl Renderer {
                 max_depth: 1.0,
             };
 
-            if let Some(tex) = self.picture.as_ref().filter(|t| t.ready && f.show_frame != 0) {
+            if let Some(tex) = self.pictures[self.cur].as_ref().filter(|t| t.ready && f.show_frame != 0) {
                 d.cmd_set_viewport(cmd, 0, &[picture_vp]);
-                d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.image);
-                let set = tex.sets[(f.linear != 0) as usize];
-                d.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.layout, 0, &[set], &[]);
+                let filter = (f.linear != 0) as usize;
+                let prev = self.pictures[self.cur ^ 1]
+                    .as_ref()
+                    .filter(|p| self.weight < 1.0 && p.ready && p.width == tex.width && p.height == tex.height);
+                let mut push = [0f32; 17];
+                push[..16].copy_from_slice(&f.mvp);
+                push[16] = self.weight;
+                if let Some(prev) = prev {
+                    d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.blend);
+                    let sets = [tex.sets[filter], prev.sets[filter]];
+                    d.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.layout, 0, &sets, &[]);
+                } else {
+                    d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.image);
+                    let set = tex.sets[filter];
+                    d.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.layout, 0, &[set], &[]);
+                }
                 d.cmd_push_constants(
                     cmd,
                     self.layout,
                     vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
                     0,
-                    as_bytes(&f.mvp),
+                    as_bytes(&push),
                 );
                 d.cmd_draw(cmd, 4, 1, 0, 0);
             }
@@ -1784,6 +1965,7 @@ impl Renderer {
                     display_ns: 0,
                     flags,
                     copy,
+                    target_ns: self.blend_target,
                 }, timed);
                 self.feedback.poll(self.device.handle(), self.swapchain);
             }
@@ -1823,7 +2005,8 @@ impl Renderer {
         let d = &self.device;
         unsafe {
             let _ = d.device_wait_idle();
-            for t in [self.picture.take(), self.atlas.take(), self.text.take()].into_iter().flatten() {
+            let [p0, p1] = std::mem::take(&mut self.pictures);
+            for t in [p0, p1, self.atlas.take(), self.text.take()].into_iter().flatten() {
                 self.destroy_texture(t);
             }
             let frames = std::mem::take(&mut self.frames);
@@ -1835,7 +2018,7 @@ impl Renderer {
                 d.destroy_semaphore(f.acquired, None);
             }
             let d = &self.device;
-            for p in [self.pipelines.image, self.pipelines.overlay, self.pipelines.text] {
+            for p in [self.pipelines.image, self.pipelines.blend, self.pipelines.overlay, self.pipelines.text] {
                 d.destroy_pipeline(p, None);
             }
             d.destroy_pipeline_layout(self.layout, None);
@@ -1987,5 +2170,60 @@ impl Grid {
         self.next += self.period;
         timing::sleep_until(slot - self.lead);
         slot
+    }
+}
+
+/// VRR probe after swapchain rebuilds/pacing changes (VRR settles 0.4-0.9 s after entering
+/// fullscreen; the cadence needs ~1 s of pictures)
+const BLEND_PROBE_NS: u64 = 2_000_000_000;
+
+/// blend presents in a row displayed a vblank late before one present is left out
+const BLEND_LATE_RESYNC: u32 = 3;
+
+/// Frame blending (M-Pacing3, SPEC "Decisions M-Pacing3")
+struct Blend {
+    /// BADLINE_VK_BLEND=off disables it (grid with judder instead)
+    enabled: bool,
+    /// BADLINE_VK_BLEND=sharp: mix only around the middle of the phase, nearest picture otherwise
+    sharp: bool,
+    /// target time after the vblank V (BADLINE_VK_BLEND_OFFSET_US, default half a refresh)
+    offset: Option<u64>,
+    probe_pending: bool,
+    /// end of the running probe (0 = none)
+    probe_until: u64,
+    active: bool,
+    /// grid slot of the latest picture
+    slot: u64,
+}
+
+impl Blend {
+    fn new() -> Self {
+        let mode = std::env::var("BADLINE_VK_BLEND").unwrap_or_default();
+        let offset = std::env::var("BADLINE_VK_BLEND_OFFSET_US")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(|us| us * 1000);
+        Blend {
+            enabled: mode != "off",
+            sharp: mode == "sharp",
+            offset,
+            probe_pending: true,
+            probe_until: 0,
+            active: false,
+            slot: 0,
+        }
+    }
+
+    fn request_probe(&mut self, why: &str, log: bool) {
+        if log && (!self.probe_pending || self.active) {
+            eprintln!("badline vulkan: blend probe requested ({why})");
+        }
+        self.probe_pending = true;
+    }
+
+    /// weight of the latest picture for a phase in [0, 1)
+    fn shape(&self, phase: f64) -> f32 {
+        let w = if self.sharp { ((phase - 0.25) * 2.0).clamp(0.0, 1.0) } else { phase };
+        w as f32
     }
 }
