@@ -61,7 +61,7 @@ struct Program : Emulator::Interface::Bind {
     auto getSpeedBySelectedProfile(float& speed, bool& percent) -> unsigned;
     auto getSpeed(unsigned pos, float& speed, bool& percent) -> void;
     auto isMaximumSpeed() -> bool;
-	unsigned isPause = 0;
+	unsigned isPause = 0; // bits: 1 user/MCP pause, 2 focus loss, 4 overlay open
     bool quitInProgress = false;
     bool initialized = false;
     static bool focused;

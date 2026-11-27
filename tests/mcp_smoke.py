@@ -269,7 +269,7 @@ def run(client, tmp, headless=False):
                 "savestate_load", "type_text", "key", "joystick", "run_frames", "wait_for_text",
                 "read_screen", "screenshot", "breakpoint_set", "breakpoint_list", "breakpoint_delete",
                 "continue", "break", "step", "registers", "memory_read", "memory_write", "load_memory",
-                "disassemble", "cpu_history", "chip_state", "quit"}
+                "disassemble", "cpu_history", "chip_state", "quit", "overlay"}
     check("tools/list", expected <= tools, str(expected - tools))
     unknown = client.rpc("tools/call", {"name": "nope", "arguments": {}})
     check("unknown tool -> error", "error" in unknown)
@@ -374,6 +374,100 @@ def run(client, tmp, headless=False):
     check("wait_for_text timeout -> isError", r["isError"] and "Timeout" in text_of(r))
 
 
+def run_overlay(client, headless):
+    print("overlay")
+
+    def ov(**args):
+        r = client.call("overlay", **args)
+        if r["isError"]:
+            return None, text_of(r)
+        return json.loads(text_of(r)), ""
+
+    def focused(state):
+        return next((w for w in state["widgets"] if w.get("focused")), None)
+
+    st, err = ov()
+    check("overlay state closed", st is not None and st["open"] is False, err)
+    _, err = ov(action="nav", keys=["down"])
+    check("nav while closed -> isError", "closed" in err, err)
+    client.call("resume")
+    st, err = ov(action="open")
+    check("overlay open", st and st["open"] and st["page"] == "resume" and st["zone"] == "sidebar", err or str(st))
+    check("logical height >= 360", st and st["logical_size"]["height"] >= 360, str(st and st["logical_size"]))
+    s = jtext(client.call("status"))
+    check("overlay pauses emulation", s.get("paused") is True and s.get("overlay_open") is True, str(s))
+    client.call("resume")
+    s = jtext(client.call("status"))
+    check("resume keeps the overlay pause", s.get("paused") is True, str(s))
+
+    st, _ = ov(action="nav", keys=["down"])
+    check("sidebar down -> media", st["page"] == "media" and st["preview"] is True, st["page"])
+    media = st["widgets"][0]
+    check("media list shows drives", media["kind"] == "list" and "Drive 8" in media["value"], str(media))
+
+    st, _ = ov(action="page", page="video")
+    st, _ = ov(action="nav", keys=["right"])
+    w = focused(st)
+    check("enter content focuses first widget", st["zone"] == "content" and w and w["label"] == "Shader", str(w))
+    st, _ = ov(action="nav", keys=["right"])
+    check("choice right", focused(st)["value"] == "CRT", str(focused(st)))
+    st, _ = ov(action="nav", keys=["down", "ok"])
+    check("toggle ok", focused(st)["kind"] == "toggle" and focused(st)["value"] == "off", str(focused(st)))
+    st, _ = ov(action="nav", keys=["down", "down", "right"])
+    check("slider right", focused(st)["label"] == "Brightness" and focused(st)["value"] == "105%", str(focused(st)))
+    st, _ = ov(action="nav", keys=["back"])
+    check("back -> sidebar", st["zone"] == "sidebar" and st["page"] == "video")
+
+    audio = next(e for e in st["sidebar"] if e["id"] == "audio")
+    x, y, w_, h = map(int, audio["rect"].split(","))
+    st, _ = ov(action="click", x=x + 4, y=y + h // 2)
+    check("click sidebar -> audio", st["page"] == "audio", st["page"])
+    slider = st["widgets"][0]
+    x, y, w_, h = map(int, slider["rect"].split(","))
+    st, _ = ov(action="wheel", x=x + w_ // 2, y=y + h // 2, dy=1)
+    check("wheel on slider", st["widgets"][0]["value"] == "85%", str(st["widgets"][0]))
+
+    ov(action="page", page="input")
+    st, _ = ov(action="nav", keys=["ok", "down", "down", "down", "ok"])
+    w = focused(st)
+    check("text field editing", w and w["kind"] == "text" and w.get("editing"), str(w))
+    ov(action="nav", keys=["backspace", "backspace", "backspace"])
+    ov(action="text", text="F10")
+    st, _ = ov(action="nav", keys=["ok"])
+    w = focused(st)
+    check("text field applied", w["value"] == "F10" and not w.get("editing"), str(w))
+
+    st, _ = ov(action="page", page="quit")
+    st, _ = ov(action="nav", keys=["ok"])
+    check("quit asks", st["dialog"] and st["dialog"]["selected"] == "No", str(st["dialog"]))
+    st, _ = ov(action="nav", keys=["ok"])
+    check("quit No keeps running", st["dialog"] is None and st["open"])
+
+    if not headless:
+        r = client.call("screenshot", rendered=True)
+        img = [c for c in r["content"] if c["type"] == "image"]
+        ok = not r["isError"] and img
+        if ok:
+            w_, h = png_size(base64.b64decode(img[0]["data"]))
+            ok = h >= 360
+        check("rendered screenshot with overlay", ok, text_of(r))
+
+    st, _ = ov(action="page", page="reset")
+    st, _ = ov(action="nav", keys=["ok", "ok"])
+    check("soft reset closes the overlay", st["open"] is False, str(st["open"]))
+    s = jtext(client.call("status"))
+    check("emulation runs after close", s.get("paused") is False, str(s))
+    r = client.call("wait_for_text", text="READY.", timeout=10, warp=True)
+    check("READY. after overlay reset", not r["isError"], text_of(r))
+
+    ov(action="open")
+    client.call("pause")
+    ov(action="close")
+    s = jtext(client.call("status"))
+    check("user pause survives overlay close", s.get("paused") is True, str(s))
+    client.call("resume")
+
+
 def run_headless_checks(client):
     print("headless")
     st = jtext(client.call("status"))
@@ -410,6 +504,7 @@ def main():
         with tempfile.TemporaryDirectory() as tmp:
             run(client, tmp, args.headless)
             run_debug(client)
+            run_overlay(client, args.headless)
             if args.headless:
                 run_headless_checks(client)
                 cfg_before = os.path.getmtime(cfg) if os.path.exists(cfg) else None

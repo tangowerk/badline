@@ -45,6 +45,7 @@
 #include "debugger/dmaDebugger.h"
 #include "mcp/server.h"
 #include "window/sdlWindow.h"
+#include "overlay/overlay.h"
 #include "firmware/roms.h"
 #include <chrono>
 #include <thread>
@@ -210,6 +211,14 @@ auto Program::finishStartup() -> void {
     for (auto& m : startupMessages)
         std::fprintf(stderr, "%s\n", m.c_str());
 
+    if (!cmd->debug) {
+        overlay = new Overlay;
+        if (!overlay->init()) {
+            delete overlay;
+            overlay = nullptr;
+        }
+    }
+
     if (cmd->mcp && !mcpServer) {
         mcpServer = new McpServer;
         if (!mcpServer->start(cmd->mcpPort)) {
@@ -350,7 +359,7 @@ auto Program::setMemoryPattern(Emulator::Interface* emulator) -> void {
 }
 
 auto Program::power( Emulator::Interface* emulator, bool regular ) -> void {
-    isPause = 0;
+    isPause &= 4; // an open overlay keeps the emulation paused
     bool emuSwap = activeEmulator != emulator;
     powerOff();
     

@@ -30,6 +30,12 @@ struct SDLGL : public Video, GL3, RenderThread {
         return splashScreen.isVisible();
     }
 
+    auto setOverlay(std::shared_ptr<const OverlayFrame> frame) -> void {
+        overlay.set(frame);
+    }
+
+    auto hasOverlay() -> bool { return overlay.initialized; }
+
     auto setDragnDropOverlayCallback(DnDOverlayCallback callback) -> void {
         dndOverlay.callback = callback;
     }
@@ -346,6 +352,7 @@ struct SDLGL : public Video, GL3, RenderThread {
         makeCurrent();
         GL3::updateMainTexture( threadEnabled ? getLastBufferToRender() : nullptr );
         GL3::_redraw(options);
+        overlay.show(viewScreen.windowWidth, viewScreen.windowHeight);
 #ifdef DRV_FREETYPE
         screenText.showText(viewport);
 #endif
@@ -384,6 +391,8 @@ struct SDLGL : public Video, GL3, RenderThread {
 
         if (splashScreen.enable)
             updateSplashScreen();
+
+        overlay.show(viewScreen.windowWidth, viewScreen.windowHeight);
 
         if (dndOverlay.enabled())
             dndOverlay.show(viewport);

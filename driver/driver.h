@@ -9,6 +9,7 @@
 #include <vector>
 #include <functional>
 #include <cstdint>
+#include <memory>
 
 #include "tools/hid.h"
 #include "tools/shaderpass.h"
@@ -64,6 +65,19 @@ struct AppData {
     float flags = 0.0; // free to use
 };
 
+// Overlay UI drawn on top of the picture: glyph atlas (R8) + textured quads.
+// Built by the program layer (UI thread), drawn by the render thread.
+struct OverlayFrame {
+    std::shared_ptr<const std::vector<uint8_t>> atlas;
+    unsigned atlasWidth = 0;
+    unsigned atlasHeight = 0;
+    unsigned atlasId = 0; // changes when the atlas content changes
+    // 6 vertices per quad, each: x, y (window pixels, origin top left), u, v, r, g, b, a
+    std::vector<float> vertices;
+    unsigned width = 0; // window pixel size the vertices were built for
+    unsigned height = 0;
+};
+
 enum Options { OPT_HoldFrame = 1, OPT_Interlace = 2, OPT_DisallowShader = 4, OPT_TakeScreenshot = 8,
                 OPT_DisallowFilter = 0x10, OPT_Pause = 0x20, OPT_Rewind = 0x40, OPT_RGB10 = 0x80 };
 enum Rotation { ROT_0, ROT_90, ROT_180, ROT_270 };
@@ -113,6 +127,10 @@ struct Video {
     virtual auto setDragnDropOverlaySlots(unsigned slots) -> void {}
     virtual auto enableDragnDropOverlay(bool state) -> void {}
     virtual auto sendDragnDropOverlayCoordinates(int x, int y) -> int { return 0; }
+
+    // nullptr hides the overlay; thread-safe
+    virtual auto setOverlay(std::shared_ptr<const OverlayFrame> frame) -> void {}
+    virtual auto hasOverlay() -> bool { return false; }
 
     virtual auto showSplashScreen(unsigned frames, SplashscreenCallback callback) -> void {}
     virtual auto hideSplashScreen() -> void {}

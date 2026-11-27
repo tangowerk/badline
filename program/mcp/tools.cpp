@@ -11,6 +11,7 @@
 #include "../view/view.h"
 #include "../window/sdlWindow.h"
 #include "../firmware/roms.h"
+#include "../overlay/overlay.h"
 #include "../view/status.h"
 #include "../video/manager.h"
 #include "../../emulation/libc64/system/system.h"
@@ -185,6 +186,7 @@ auto McpServer::registerTools() -> void {
                 if (!requireEmu(job)) return;
                 Json s = Json::object();
                 s.set("paused", program->isPause != 0);
+                s.set("overlay_open", overlay && overlay->isOpen());
                 s.set("debugger_stopped", cpuStopped());
                 if (cpuStopped())
                     s.set("stop", stopStatus());
@@ -249,8 +251,10 @@ auto McpServer::registerTools() -> void {
             job.onUi = [pause](Job& job) {
                 if (!activeEmulator) return job.fail("No emulator running");
                 EmuLock lock;
-                if ((program->isPause != 0) != pause)
-                    program->isPause = pause ? 1 : 0;
+                if (pause)
+                    program->isPause |= 1;
+                else
+                    program->isPause &= ~1u;
                 job.addText(pause ? "Paused" : "Running");
                 job.finish();
             };
@@ -258,7 +262,7 @@ auto McpServer::registerTools() -> void {
     };
     addTool("pause", "Pause the emulation. The last frame stays visible. run_frames/wait_for_text still step while paused.",
         R"({"type":"object","properties":{}})", pauseTool(true));
-    addTool("resume", "Resume the emulation.", R"({"type":"object","properties":{}})", pauseTool(false));
+    addTool("resume", "Resume the emulation (an open overlay keeps it paused until closed).", R"({"type":"object","properties":{}})", pauseTool(false));
 
     // ------------------------------------------------------------ warp
     addTool("warp", "Switch warp mode (unthrottled speed, no audio) on or off.",
@@ -760,6 +764,66 @@ auto McpServer::registerTools() -> void {
                     return job.fail(error);
                 job.addImage(png);
                 job.addText(std::to_string(w) + "x" + std::to_string(h));
+                job.finish();
+            };
+        });
+
+    // ------------------------------------------------------------ overlay
+    addTool("overlay",
+        "Drive the overlay UI (F12 menu; pauses the emulation while open). action: "
+        "'state' (default) describes it, 'open', 'close', 'toggle', "
+        "'nav' presses keys (keys: up, down, left, right, ok, back, pageup, pagedown, home, end, backspace, delete), "
+        "'text' types into the text field being edited, 'click' / 'move' / 'wheel' use logical x/y (see rects in the state), "
+        "'page' selects a sidebar page by id. Every call returns the overlay state. "
+        "Visible in screenshot rendered=true only; also works headless (no drawing).",
+        R"({"type":"object","properties":{)"
+        R"("action":{"type":"string","enum":["state","open","close","toggle","nav","text","click","move","wheel","page"],"default":"state"},)"
+        R"("keys":{"type":"array","items":{"type":"string"}},)"
+        R"("text":{"type":"string"},"page":{"type":"string"},)"
+        R"("x":{"type":"integer"},"y":{"type":"integer"},"clicks":{"type":"integer","minimum":1,"maximum":2,"default":1},)"
+        R"("dy":{"type":"integer","description":"wheel steps, positive = up"}}})",
+        [](Job& job) {
+            auto action = job.args.getString("action", "state");
+            std::vector<Overlay::Nav> navs;
+            if (action == "nav") {
+                auto& keys = job.args["keys"];
+                if (!keys.isArray() || keys.items.empty())
+                    return job.fail("'keys' (array of key names) required");
+                for (auto& k : keys.items) {
+                    Overlay::Nav n;
+                    if (!k.isString() || !Overlay::navFromName(k.string, n))
+                        return job.fail("unknown key '" + k.string + "'");
+                    navs.push_back(n);
+                }
+            } else if (action == "text" && !job.args["text"].isString())
+                return job.fail("'text' required");
+            else if ((action == "click" || action == "move" || action == "wheel") && (!job.args["x"].isNumber() || !job.args["y"].isNumber()))
+                return job.fail("'x' and 'y' (logical coordinates) required");
+            else if (action == "page" && !job.args["page"].isString())
+                return job.fail("'page' (sidebar id) required");
+            else if (action != "state" && action != "open" && action != "close" && action != "toggle" && action != "nav"
+                && action != "text" && action != "click" && action != "move" && action != "wheel" && action != "page")
+                return job.fail("unknown action '" + action + "'");
+
+            job.phase = Job::Ui;
+            job.onUi = [action, navs](Job& job) {
+                if (!overlay) return job.fail("Overlay not available (fonts missing?)");
+                if (action != "state" && action != "open" && action != "toggle" && !overlay->isOpen())
+                    return job.fail("Overlay is closed (use action 'open')");
+                int x = (int)job.args.getInt("x"), y = (int)job.args.getInt("y");
+                if (action == "open") overlay->open();
+                else if (action == "close") overlay->close();
+                else if (action == "toggle") overlay->toggle();
+                else if (action == "nav") { for (auto n : navs) overlay->nav(n); }
+                else if (action == "text") overlay->textInput(job.args.getString("text"));
+                else if (action == "click") { overlay->pointer(x, y, 0); overlay->pointer(x, y, (int)std::clamp<int64_t>(job.args.getInt("clicks", 1), 1, 2)); }
+                else if (action == "move") overlay->pointer(x, y, 0);
+                else if (action == "wheel") overlay->wheel(x, y, (int)job.args.getInt("dy", 1));
+                else if (action == "page" && !overlay->selectPage(job.args.getString("page")))
+                    return job.fail("unknown page '" + job.args.getString("page") + "'");
+                Json state;
+                overlay->describe(state);
+                job.addText(state.dump());
                 job.finish();
             };
         });

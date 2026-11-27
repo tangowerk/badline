@@ -32,6 +32,7 @@ namespace DRIVER {
 namespace DRIVER {
 #include "dragndropOverlay.h"
 #include "splashScreen.h"
+#include "overlay.h"
 
 #define UNIFORM_VERTEX_BLOCK_BINDING 1
 #define UNIFORM_FRAGMENT_BLOCK_BINDING 0
@@ -77,6 +78,7 @@ struct GL3 {
     Viewport viewport;
     GLDragndropOverlay dndOverlay;
     GLSplashScreen splashScreen;
+    GLOverlay overlay;
     OpenGLProgress progress;
 #ifdef DRV_FREETYPE
         GlScreenText screenText;
@@ -368,6 +370,10 @@ struct GL3 {
 
         if (!splashScreen.init())
             splashScreen.term();
+
+        overlay.term();
+        if (!overlay.init())
+            overlay.term();
 
 #ifdef DRV_FREETYPE
         if (!screenText.init()) {
@@ -1110,9 +1116,18 @@ End:
     }
 
     // EGL (Wayland) has no readable front buffer: SDL output reads the back buffer before swapping
+    // with a visible overlay the whole window is captured, otherwise the picture area
     auto takeScreenshot(GLenum readBuffer = GL_FRONT) -> void {
         if (!screenshotCallback)
             return;
+
+        Viewport viewport = this->viewport;
+        if (overlay.visible() && viewScreen.windowWidth && viewScreen.windowHeight) {
+            viewport.x = 0;
+            viewport.y = 0;
+            viewport.width = viewScreen.windowWidth;
+            viewport.height = viewScreen.windowHeight;
+        }
 
         uint8_t* buffer = new uint8_t[viewport.width * viewport.height * 4];
 

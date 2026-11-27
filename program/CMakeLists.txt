@@ -74,6 +74,9 @@ set(headers
         video/screenshot.h
         window/sdlWindow.h
         firmware/roms.h
+        overlay/font.h
+        overlay/ui.h
+        overlay/overlay.h
 )
 
 set_source_files_properties(${PROJECT_NAME} ${headers}
@@ -146,6 +149,9 @@ set(srcs
         mcp/tools.cpp
         window/sdlWindow.cpp
         firmware/roms.cpp
+        overlay/font.cpp
+        overlay/ui.cpp
+        overlay/overlay.cpp
         
         ${headers}
 )
@@ -173,5 +179,13 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${CURL_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC ${CURL_LIBRARIES})
 
 target_sources(${PROJECT_NAME} PUBLIC ${srcs} )
+
+# overlay UI: glyph atlas from the C64 fonts
+if(NOT FREETYPE2_FOUND)
+    message(FATAL_ERROR "freetype2 is required (overlay UI)")
+endif()
+target_include_directories(${PROJECT_NAME} PRIVATE ${FREETYPE2_INCLUDE_DIRS} ${SDL3_INCLUDE_DIRS})
+target_link_directories(${PROJECT_NAME} PUBLIC ${FREETYPE2_LIBRARY_DIRS})
+target_link_libraries(${PROJECT_NAME} PUBLIC ${FREETYPE2_LIBRARIES})
 
 target_link_libraries(${PROJECT_NAME} PUBLIC guikit driver coreC64 icons)

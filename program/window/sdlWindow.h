@@ -60,6 +60,7 @@ private:
     bool hasFocus = false;
     bool captured = false;
     bool cursorHidden = false;
+    bool textInput = false;
     uint64_t lastMouseMove = 0;
     std::atomic<int> mouseX{0};
     std::atomic<int> mouseY{0};

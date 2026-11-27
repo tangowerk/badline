@@ -10,6 +10,7 @@
 #include "../view/status.h"
 #include "../firmware/roms.h"
 #include "../firmware/manager.h"
+#include "../overlay/overlay.h"
 #include <thread>
 
 SdlWindow* sdlWindow = nullptr;
@@ -125,8 +126,19 @@ auto SdlWindow::pumpEvents() -> void {
 
     updateMouseCapture();
 
-    // hide an idle cursor over the picture
-    bool idle = (SDL_GetTicks() - lastMouseMove) > 2000;
+    // text fields of the overlay need SDL text input (layout aware characters)
+    bool wantText = overlay && overlay->wantsTextInput();
+    if (wantText != textInput) {
+        textInput = wantText;
+        if (wantText) SDL_StartTextInput(window);
+        else SDL_StopTextInput(window);
+    }
+
+    if (overlay)
+        overlay->tick();
+
+    // hide an idle cursor over the picture (not over the overlay)
+    bool idle = (SDL_GetTicks() - lastMouseMove) > 2000 && !(overlay && overlay->isOpen());
     if (idle && !cursorHidden && !captured) {
         SDL_HideCursor();
         cursorHidden = true;
@@ -134,7 +146,8 @@ auto SdlWindow::pumpEvents() -> void {
 }
 
 auto SdlWindow::updateMouseCapture() -> void {
-    bool want = inputDriver->mIsAcquired() && hasFocus;
+    // the overlay needs a free pointer
+    bool want = inputDriver->mIsAcquired() && hasFocus && !(overlay && overlay->isOpen());
     if (want == captured)
         return;
     captured = want;
@@ -220,6 +233,15 @@ auto SdlWindow::handleEvent(SDL_Event& ev) -> void {
         case SDL_EVENT_DROP_COMPLETE:
             handleDrop(ev);
             break;
+    }
+
+    // the overlay takes keys, mouse and pad buttons while open (and its toggle key always)
+    if (overlay) {
+        float density = SDL_GetWindowPixelDensity(window);
+        if (overlay->handleEvent(ev, density > 0.0f ? density : 1.0f))
+            return;
+        if (overlay->isOpen() && (ev.type == SDL_EVENT_MOUSE_MOTION || ev.type == SDL_EVENT_KEY_DOWN || ev.type == SDL_EVENT_KEY_UP))
+            return;
     }
 
     // keyboard, mouse and joystick state for the emulation
