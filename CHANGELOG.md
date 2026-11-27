@@ -37,6 +37,10 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ### Changed
 
+- **Project goals** updated in the README: Badline now develops independently
+  of Denise (no more upstream cherry-picks); priorities are compatibility with
+  C64 software first, host performance second, lean code third, with parts
+  rewritten in Rust where that helps.
 - The `data/data` folder is no longer installed while it is empty; installed
   builds still look there for ROMs from distribution packages.
 - README, NOTICE and the release packaging list no longer mention the removed

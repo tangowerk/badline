@@ -38,15 +38,22 @@ project is about.
   binary monitor, run it headless and unthrottled in CI, drive it from scripts
   or AI agents.
 
-**Goals**
+**Goals** (in order of priority)
 
-1. Keep the C64 core close to upstream Denise so accuracy fixes can be
-   cherry-picked – the core is not ours to reinvent.
-2. Replace the GTK GUI with a fast **in-window overlay** (keyboard/gamepad
-   driven, C64 look) – no native dialogs.
-3. Bring the debuggers into the overlay as a **split view** with a VICE-style
-   **text monitor**, while keeping MCP and the binary monitor for external tools.
-4. Stay small and Linux-native: Wayland first, SDL3, no Windows/macOS code paths.
+1. **Maximum compatibility** with C64 software. Real hardware is the
+   reference; where no hardware results exist, VICE x64sc is. Accuracy is never
+   traded for speed – there is one accurate core and no "fast mode".
+2. **Maximum performance** of the host side: low CPU load at real speed, low
+   input latency, high warp throughput, fast start-up and a small memory
+   footprint.
+3. **Lean, resource-friendly code**: Badline now develops independently of
+   Denise; inherited code is questioned, fixed and optimized along these
+   priorities, and parts are rewritten in **Rust** where that serves them.
+
+Along the way: a fast **in-window overlay** instead of native dialogs, the
+debuggers as an overlay **split view** with a VICE-style **text monitor**, and
+MCP and the binary monitor for external tools. Linux-native: Wayland first,
+SDL3, no Windows/macOS code paths.
 
 **Non-goals**: Amiga emulation (removed), other Commodore machines, Windows/macOS.
 
