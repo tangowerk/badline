@@ -6,6 +6,8 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ## Unreleased
 
+## 0.1.1 – 2026-11-27
+
 ### Removed
 
 - **SuperCPU** (65816 accelerator) and **Final ChessCard** (65C02) support,
@@ -37,6 +39,9 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ### Changed
 
+- SDL3 is built by the new `tools/build_sdl3.sh` (version + patches, rebuilt
+  when they change). Dev builds use `builds/sdl3` automatically when it exists;
+  without it CMake warns and falls back to the system SDL3.
 - **Project goals** updated in the README: Badline now develops independently
   of Denise (no more upstream cherry-picks); priorities are compatibility with
   C64 software first, host performance second, lean code third, with parts
@@ -45,6 +50,17 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
   builds still look there for ROMs from distribution packages.
 - README, NOTICE and the release packaging list no longer mention the removed
   parts (LAME, cgif, koko-aio, SuperCPU ROM).
+
+### Fixed
+
+- Overlay menu in narrow windows (e.g. a tiled window): the scale factor now
+  also keeps at least 480 logical pixels of width, so the Media page tabs no
+  longer run off the right edge.
+- Drag and drop of files from Wayland sources that also offer plain text
+  (e.g. the Guppy file manager): SDL 3.4.18 requested the text variant and
+  silently dropped plain paths. Badline now builds against an SDL3 with a small
+  patch that keeps the file list (`tools/patches/`); the release tarball ships
+  this SDL3.
 
 ## 0.1.0 – 2026-11-27
 

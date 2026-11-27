@@ -23,6 +23,7 @@ const auto FadeTime = std::chrono::milliseconds(120);
 const int SidebarWidth = 112;
 const int EntryHeight = 16;
 const int MinLogicalHeight = 360;
+const int MinLogicalWidth = 480; // narrow (tiled) windows: pages need this much room
 
 // default window size of SdlWindow (headless layout)
 const int DefaultWidth = 384 * 3;
@@ -649,7 +650,7 @@ auto Overlay::setSize(int width, int height) -> void {
         return;
     pixelWidth = width;
     pixelHeight = height;
-    scaleFactor = std::max(1, height / MinLogicalHeight);
+    scaleFactor = std::max(1, std::min(height / MinLogicalHeight, width / MinLogicalWidth));
     logicalWidth = width / scaleFactor;
     logicalHeight = height / scaleFactor;
     offsetX = (width - logicalWidth * scaleFactor) / 2;

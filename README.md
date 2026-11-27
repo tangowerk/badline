@@ -136,18 +136,21 @@ workflow).
 Requirements (Arch Linux package names; other distributions are similar):
 
 ```
-cmake gcc pkgconf sdl3 curl gtk3 libpulse freetype2 fontconfig libx11 libxrandr
+cmake gcc pkgconf git ninja curl gtk3 libpulse freetype2 fontconfig libx11 libxrandr
 optional: openal
 ```
 
 ```sh
+tools/build_sdl3.sh          # once: patched SDL3 in builds/sdl3 (picked up by CMake)
 cmake -B builds/release -DCMAKE_BUILD_TYPE=Release
 cmake --build builds/release --parallel
 ./builds/release/program/badline
 ```
 
 The build directory links the `data/` resources into `builds/release/share/badline`,
-so the binary runs straight from the build tree. `cmake --install builds/release`
+so the binary runs straight from the build tree. Without `builds/sdl3` the system
+SDL3 is used (package `sdl3`); file drops from some Wayland sources then fail (see
+`tools/patches/`). `cmake --install builds/release`
 installs to `/usr/local` (binary, data, desktop file, icons; MIME types with `-DINSTALL_FILE_ASSOCIATIONS=1`).
 
 ---

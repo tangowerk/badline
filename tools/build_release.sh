@@ -7,11 +7,10 @@
 #
 #   tools/build_release.sh [--deps] [--sdl-prefix DIR]
 #     --deps          install the apt build dependencies first (needs sudo)
-#     --sdl-prefix    where SDL3 is built/installed (default: builds/sdl3, reused if present)
+#     --sdl-prefix    where SDL3 is built/installed (default: builds/sdl3, see tools/build_sdl3.sh)
 
 set -euo pipefail
 
-SDL_VERSION=3.4.18
 root="$(cd "$(dirname "$0")/.." && pwd)"
 sdlPrefix="$root/builds/sdl3"
 installDeps=0
@@ -41,17 +40,8 @@ if [ "$installDeps" = 1 ]; then
         libpipewire-0.3-dev libasound2-dev libudev-dev libdbus-1-dev libibus-1.0-dev
 fi
 
-# SDL3 from source
-if [ ! -f "$sdlPrefix/lib/pkgconfig/sdl3.pc" ]; then
-    src="$sdlPrefix-src"
-    rm -rf "$src"
-    git clone --depth 1 --branch "release-$SDL_VERSION" https://github.com/libsdl-org/SDL.git "$src"
-    cmake -S "$src" -B "$src/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX="$sdlPrefix" -DCMAKE_INSTALL_LIBDIR=lib \
-        -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF -DSDL_STATIC=OFF
-    cmake --build "$src/build"
-    cmake --install "$src/build"
-fi
+# SDL3 from source (patched, see tools/patches)
+"$root/tools/build_sdl3.sh" --prefix "$sdlPrefix"
 
 # Badline
 build="$root/builds/dist"

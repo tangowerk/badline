@@ -13,15 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: SDL3 version
-        id: sdl
-        run: echo "version=$(sed -n 's/^SDL_VERSION=//p' tools/build_release.sh)" >> "$GITHUB_OUTPUT"
-
       - name: Cache SDL3
         uses: actions/cache@v4
         with:
           path: builds/sdl3
-          key: sdl3-${{ steps.sdl.outputs.version }}-ubuntu-24.04
+          key: sdl3-${{ hashFiles('tools/build_sdl3.sh', 'tools/patches/sdl3-*.patch') }}-ubuntu-24.04
 
       - name: Build tarball
         run: tools/build_release.sh --deps

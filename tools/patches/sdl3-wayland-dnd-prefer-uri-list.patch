@@ -1,0 +1,18 @@
+diff --git i/src/video/wayland/SDL_waylandevents.c w/src/video/wayland/SDL_waylandevents.c
+index c779a63..bcbd977 100644
+--- i/src/video/wayland/SDL_waylandevents.c
++++ w/src/video/wayland/SDL_waylandevents.c
+@@ -2791,8 +2791,11 @@ static void data_device_handle_enter(void *data, struct wl_data_device *wl_data_
+         for (size_t i = 0; i < mime_count; ++i) {
+             if (Wayland_data_offer_has_mime(data_device->drag_offer, text_mime_types[i])) {
+                 data_device->has_mime_text = true;
+-                data_device->mime_type = text_mime_types[i];
+-                wl_data_offer_accept(id, serial, text_mime_types[i]);
++                // keep the file list: the drop handler parses mime_type as URIs when has_mime_file is set
++                if (!data_device->has_mime_file) {
++                    data_device->mime_type = text_mime_types[i];
++                    wl_data_offer_accept(id, serial, text_mime_types[i]);
++                }
+                 break;
+             }
+         }
