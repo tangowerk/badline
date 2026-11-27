@@ -87,8 +87,7 @@ auto Autoloader::postProcessing() -> void {
             if (group->isExpansion()) return 1;
             if (group->isDisk()) return 2;
             if (group->isTape()) return 3;
-            if (group->isHardDisk()) return 4;
-            return 5;
+            return 4;
         };
 
         return getPrio(lhs) < getPrio(rhs);

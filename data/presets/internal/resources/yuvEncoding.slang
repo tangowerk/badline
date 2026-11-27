@@ -36,7 +36,7 @@ layout(std140, set = 0, binding = 0) uniform UBO
 #pragma parameter phaseErrorPAL         "  Phase Error PAL"         22.5 -45 45 0.5
 #pragma parameter phaseErrorNTSC        "  Phase Error NTSC"        0 -45 45 0.5
 #pragma parameter empty0                " "                         0 0 0.001 0.001
-#pragma parameter Glitches_head         "[VIC-II Glitches (ignore for Amiga)]" 0 0 0.001 0.001
+#pragma parameter Glitches_head         "[VIC-II Glitches]" 0 0 0.001 0.001
 #pragma parameter vic_glitches          "  enable next 5 options"   0 0 1 1
 #pragma parameter glitch_aec            "    AEC"                   10.5 0 25 0.1
 #pragma parameter glitch_ba             "    BA"                    10.5 0 25 0.1

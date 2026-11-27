@@ -40,13 +40,6 @@ auto FileHelper::loadImageDataWhenOk( GUIKIT::File* file, unsigned fileId, Emula
     if (!file || !file->exists() || !file->getSize())
         return false;
 
-    // non archived hard disk images will be loaded in chunks when needed
-    if (group->isHardDisk() && !file->isArchived() ) {
-        data = nullptr;
-        auto items = file->scanArchive();
-        return !items.empty();
-    }
-
     data = file->archiveData( fileId );
 
     return data != nullptr;

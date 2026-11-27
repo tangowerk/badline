@@ -4,7 +4,6 @@ add_library(cia OBJECT)
 set(headers
         ../cia/base.h
         ../cia/m6526.h
-        ../cia/m8520.h
         ../cia/register.cpp
 )
 
