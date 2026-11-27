@@ -4,7 +4,7 @@ All notable changes to Badline. Badline is a fork of
 [Denise](https://github.com/piciji/denise) 2.9 by PiCiJi; Denise's own history
 is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
-## Unreleased
+## 0.2.0 – 2026-11-27
 
 ### Added
 
