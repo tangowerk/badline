@@ -998,7 +998,6 @@ auto View::loadImages() -> void {
     ledGreenRoundImage.loadPng((uint8_t*)Icons::ledGreenRound, sizeof(Icons::ledGreenRound));
     ledRedRoundImage.loadPng((uint8_t*) Icons::ledRedRound, sizeof (Icons::ledRedRound));
     ledOffRoundImage.loadPng((uint8_t*)Icons::ledOffRound, sizeof(Icons::ledOffRound));
-    recordAudioImage.loadPng((uint8_t*)Icons::recordAudio, sizeof(Icons::recordAudio));
 }
 
 auto View::buildMenu() -> void {
@@ -1252,28 +1251,6 @@ auto View::buildMenu() -> void {
         };
         sM.debugger->append( *sM.debuggerMem );
 
-        if ( dynamic_cast<LIBC64::Interface*>(emulator)) {
-            sM.debuggerSCPU = new GUIKIT::MenuItem;
-            sM.debuggerSCPU->onActivate = [emulator]() {
-                emuThread->lock();
-                program->openDebugger(emulator, DebuggerTheme::SCPU);
-                emuThread->unlock();
-            };
-            sM.debugger->append( *sM.debuggerSCPU );
-
-            sM.debuggerMemSCPU = new GUIKIT::MenuItem;
-            sM.debuggerMemSCPU->onActivate = [emulator]() {
-                emuThread->lock();
-                program->openDebugger(emulator, DebuggerTheme::MemorySCPU);
-                emuThread->unlock();
-            };
-            sM.debugger->append( *sM.debuggerMemSCPU );
-
-        } else {
-            sM.debuggerMemSCPU = nullptr;
-            sM.debuggerSCPU = nullptr;
-        }
-
         sM.debuggerVideo = new GUIKIT::MenuItem;
         sM.debuggerVideo->onActivate = [emulator]() {
             emuThread->lock();
@@ -1520,21 +1497,6 @@ auto View::buildMenu() -> void {
 
     miscMenu.append(*GUIKIT::MenuSeparator::getInstance());
 
-    recordAudio.onActivate = [this]() {    
-        toggleRecord();
-    };
-    recordAudio.setIcon(recordAudioImage);
-    miscMenu.append(recordAudio);
-
-    recordAudioSettings.onActivate = [this]() {
-        auto emuView = EmuConfigView::TabWindow::getView(activeEmulator, true);
-        emuView->show(EmuConfigView::TabWindow::Layout::Audio);
-        if (emuView->audioLayout)
-            emuView->audioLayout->selectViewAudioRecord();
-    };
-    miscMenu.append(recordAudioSettings);
-
-    miscMenu.append(*GUIKIT::MenuSeparator::getInstance());
 
     miscMenu.append(copyItem);
 
@@ -2201,12 +2163,6 @@ auto View::translate() -> void {
 
         sysMenu.debuggerDma->setText(getReadable( DebuggerTheme::DMA ));
 
-        if (sysMenu.debuggerMemSCPU)
-            sysMenu.debuggerMemSCPU->setText(getReadable( DebuggerTheme::MemorySCPU ));
-
-        if (sysMenu.debuggerSCPU)
-            sysMenu.debuggerSCPU->setText(getReadable( DebuggerTheme::SCPU ));
-
         if (dynamic_cast<LIBC64::Interface*>(sysMenu.emulator)) {
             for (auto& debuggerDrive : sysMenu.debuggerDrives) {
                 debuggerDrive.cpu->setText( getReadable( DebuggerTheme::Drive8CPU ) );
@@ -2242,8 +2198,6 @@ auto View::translate() -> void {
     recordWithEffects.setText(trans->getA("including effects"));
     recordScreenSettings.setText(trans->getA("screenshot settings") + "...");
 
-    recordAudio.setText(trans->getA("record audio"));
-    recordAudioSettings.setText(trans->getA("record audio settings") + "...");
 
     recordScaled.setText(trans->getA("scaled"));
     recordUnscaled.setText(trans->getA("unscaled"));
@@ -2328,8 +2282,6 @@ auto View::translate() -> void {
 
     if (savePathWindow)
         savePathWindow->setTitle( trans->getA("disksaves") );
-
-    setAudioRecordText();
 }
 
 auto View::updateScreenshotUI() -> void {
@@ -2605,16 +2557,6 @@ auto View::clearScreenshotBuffer() -> void {
     program->screenshot.clearBuffer();
 }
 
-auto View::setAudioRecordText() -> void {
-    if (!audioManager)
-        return;
-
-    if(!audioManager->record.run())
-        recordAudio.setText(trans->getA("record audio start"));
-    else
-        recordAudio.setText(trans->getA("record audio stop"));
-}
-
 auto View::updateFPSMenu() -> void {
     auto _settings = Program::getSettings( activeEmulator );
     auto decimals = _settings->get<unsigned>("fps_decimal_point", 1, {0u, 3u});
@@ -2799,8 +2741,6 @@ auto View::getReadable(DebuggerTheme theme, Emulator::Interface* emulator) -> st
             return "";
         case DebuggerTheme::CPU:
             return "CPU";
-        case DebuggerTheme::SCPU:
-            return "SCPU";
         case DebuggerTheme::Drive8CPU:
             return emulator ? "Drive8 CPU" : "CPU";
         case DebuggerTheme::Drive9CPU:
@@ -2811,8 +2751,6 @@ auto View::getReadable(DebuggerTheme theme, Emulator::Interface* emulator) -> st
             return emulator ? "Drive11 CPU" : "CPU";
         case DebuggerTheme::Memory:
             return "Memory";
-        case DebuggerTheme::MemorySCPU:
-            return "Memory SCPU";
         case DebuggerTheme::Drive8Memory:
             return emulator ? "Drive8 Memory" : "Memory";
         case DebuggerTheme::Drive9Memory:
@@ -2875,19 +2813,4 @@ auto View::isAnalogDeviceConnected( ) -> bool {
     }
 
     return false;
-}
-
-auto View::toggleRecord() -> void {
-    auto emuView = EmuConfigView::TabWindow::getView(activeEmulator);
-    if (emuView && emuView->audioLayout) {
-        emuView->audioLayout->toggleRecord();
-    } else if (audioManager) {
-        emuThread->lock();
-        std::string errorText;
-        if (!audioManager->record.toggle(activeEmulator, errorText))
-            statusHandler->setMessage(errorText, true);
-
-        setAudioRecordText();
-        emuThread->unlock();
-    }
 }

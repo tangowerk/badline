@@ -53,16 +53,8 @@ CpuDebugger::CPU::WatcherLayout::WatcherLayout() {
 }
 
 CpuDebugger::CPU::State::Flags::Flags(Debugger* debugger) {
-    int i;
-    const char* ident;
-
-    if (debugger->getTheme() == DebuggerTheme::SCPU) {
-        i = sizeof(LIBC64::DebuggerSnapshot::flagIdent65816);
-        ident = &LIBC64::DebuggerSnapshot::flagIdent65816[0];
-    } else {
-        i = sizeof(LIBC64::DebuggerSnapshot::flagIdent);
-        ident = &LIBC64::DebuggerSnapshot::flagIdent[0];
-    }
+    int i = sizeof(LIBC64::DebuggerSnapshot::flagIdent);
+    const char* ident = &LIBC64::DebuggerSnapshot::flagIdent[0];
 
     flag.resize( i );
 
@@ -142,8 +134,6 @@ CpuDebugger::CPU::State::State(Debugger* debugger)
     unsigned elements;
     if (debugger->isDriveCpu())
         elements = 3;
-    else if (debugger->getTheme() == DebuggerTheme::SCPU)
-        elements = 5;
     else
         elements = 4;
 
@@ -201,13 +191,8 @@ auto CpuDebugger::buildTheme() -> GUIKIT::Layout* {
     watcherHelper.debugger = this;
     watcherHelper.watcherList = &cpu->watcher.list;
 
-    if (getTheme() == DebuggerTheme::SCPU) {
-        for (const Emulator::Interface::DebuggerIdent& debuggerException : LIBC64::DebuggerSnapshot::exceptions65816)
-            cpu->watcher.excAdder.exceptionCombo.append( debuggerException.ident, (int)debuggerException.vector );
-    } else {
-        for (const Emulator::Interface::DebuggerIdent& debuggerException : LIBC64::DebuggerSnapshot::exceptions)
-            cpu->watcher.excAdder.exceptionCombo.append( debuggerException.ident, (int)debuggerException.vector );
-    }
+    for (const Emulator::Interface::DebuggerIdent& debuggerException : LIBC64::DebuggerSnapshot::exceptions)
+        cpu->watcher.excAdder.exceptionCombo.append( debuggerException.ident, (int)debuggerException.vector );
 
     cpu->instructionLayout.list.onClick = [this](unsigned row, unsigned column, GUIKIT::Position position) {
         auto& instructionList = cpu->instructionLayout.list;
@@ -444,15 +429,8 @@ auto CpuDebugger::updateTraceList() -> void {
     traceList.lockRedraw();
     traceList.reset();
 
-    unsigned flagSize;
-    const char* flagIdent;
-    if (getTheme() == DebuggerTheme::SCPU) {
-        flagSize = sizeof(LIBC64::DebuggerSnapshot::flagIdent65816);
-        flagIdent = &LIBC64::DebuggerSnapshot::flagIdent65816[0];
-    } else {
-        flagSize = sizeof(LIBC64::DebuggerSnapshot::flagIdent);
-        flagIdent = &LIBC64::DebuggerSnapshot::flagIdent[0];
-    }
+    unsigned flagSize = sizeof(LIBC64::DebuggerSnapshot::flagIdent);
+    const char* flagIdent = &LIBC64::DebuggerSnapshot::flagIdent[0];
 
     for (int i = 0; i < LIST_TRACES; i++) {
         std::string str;
@@ -572,7 +550,7 @@ auto CpuDebugger::prepareTheme(bool external) -> void {
 
     unsigned addr;
     LIBC64::DebuggerSnapshot& snap = *static_cast<LIBC64::DebuggerSnapshot*>(snapshot);
-    if (!isDriveCpu() && !(snap.superCpu && getTheme() == DebuggerTheme::SCPU) && !(!snap.superCpu && getTheme() == DebuggerTheme::CPU) )
+    if (!isDriveCpu() && (getTheme() != DebuggerTheme::CPU))
         return;
 
     if (isDriveCpu()) {
@@ -614,10 +592,8 @@ auto CpuDebugger::updateTheme() -> void {
 
     if (isDriveCpu())
         update6502( snap );
-    else if (!snap.superCpu && getTheme() == DebuggerTheme::CPU)
+    else if (getTheme() == DebuggerTheme::CPU)
         update6510( snap );
-    else if (snap.superCpu && getTheme() == DebuggerTheme::SCPU)
-        update65816( snap );
     else
         return;
 
@@ -714,36 +690,6 @@ auto CpuDebugger::update6510(LIBC64::DebuggerSnapshot& s) -> void {
     updateCpuFlags(&LIBC64::DebuggerSnapshot::flagIdent[0], s.flags);
 }
 
-auto CpuDebugger::update65816(LIBC64::DebuggerSnapshot& s) -> void {
-    int i = 0;
-    for (auto& reg : cpu->state.registers) {
-        switch (i++) {
-            case 0:
-                updateReg(reg->leftVal, s.pc);
-                updateReg(reg->rightVal, s.regS);
-                break;
-            case 1:
-                updateReg(reg->leftVal, s.regX);
-                updateReg(reg->rightVal, s.regY);
-                break;
-            case 2:
-                updateReg(reg->leftVal, s.regA);
-                updateReg(reg->rightVal, s.regD);
-                break;
-            case 3:
-                updateReg(reg->leftVal, s.pbr);
-                updateReg(reg->rightVal, s.dbr);
-                break;
-            case 4:
-                updateReg(reg->leftVal, s.modeE);
-                break;
-        }
-    }
-
-    updateControl( s.vPos, s.hPos );
-    updateCpuFlags(&LIBC64::DebuggerSnapshot::flagIdent65816[0], s.flags);
-}
-
 auto CpuDebugger::translateTheme() -> void {
     bool showTips = showTipsItem.checked();
 
@@ -765,14 +711,12 @@ auto CpuDebugger::translateTheme() -> void {
         } else if (i == 2) {
             reg->left.setText( "A" );
             if (!isDriveCpu())
-                reg->right.setText( getTheme() == DebuggerTheme::SCPU ? "D" : "I/O" );
+                reg->right.setText( "I/O" );
         } else if (i == 3) {
             if (!isDriveCpu()) {
-                reg->left.setText( getTheme() == DebuggerTheme::SCPU ? "PBR" : "POR" );
-                reg->right.setText( getTheme() == DebuggerTheme::SCPU ? "DBR" : "DDR" );
+                reg->left.setText( "POR" );
+                reg->right.setText( "DDR" );
             }
-        } else if (i == 4) {
-            reg->left.setText( getTheme() == DebuggerTheme::SCPU ? "M-E" : "" );
         }
 
         i++;

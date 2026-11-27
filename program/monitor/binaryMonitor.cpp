@@ -3,7 +3,6 @@
 
 #include "../../emulation/libc64/system/debuggerSnapshot.h"
 #include "../../guikit/api.h"
-#include "../helper/miscHelper.h"
 #include "../tools/buffer.h"
 #include "../thread/emuThread.h"
 #include "../program.h"
@@ -749,8 +748,6 @@ auto BinaryMonitor::getMem(Command& command) -> void {
         return;
     }
 
-    bool hasSCPUActive = MiscHelper::hasSuperCpuActive();
-    uint8_t bank = command.body[0];
 
     unsigned startAddress = copyBufferToInt<uint16_t>(&command.body[1]);
     unsigned endAddress = copyBufferToInt<uint16_t>(&command.body[3]);
@@ -792,9 +789,6 @@ auto BinaryMonitor::getMem(Command& command) -> void {
                 action = DebuggerAction::MemIO;
             else if (bankType == 4)
                 action = DebuggerAction::MemCART;
-        } else if (hasSCPUActive) {
-            startAddress |= bank << 16;
-            endAddress |= bank << 16;
         }
     }
 
@@ -901,21 +895,6 @@ auto BinaryMonitor::initRegs() -> void {
         {"00", rZero, 8},
         {"01", rOne, 8},
         {"Fl", rFlags, 8},
-        {"LIN", rRaster, 16},
-        {"CYC", rCycle, 16},
-    };
-
-    regs65816 = {
-        {"PBR", rPBR, 8},
-        {"PC", rPC, 16},
-        {"A", rA, 16},
-        {"X", rX, 16},
-        {"Y", rY, 16},
-        {"SP", rSP, 16},
-        {"D", rD, 16},
-        {"DBR", rDBR, 8},
-        {"Fl", rFlags, 8},
-        {"E", rModeE, 1},
         {"LIN", rRaster, 16},
         {"CYC", rCycle, 16},
     };
@@ -1036,10 +1015,6 @@ auto BinaryMonitor::sendRegisters(unsigned requestId, uint8_t space) -> void {
             case rPC: value = snapD ? snapD->pcEdge : snapshot->pcEdge; break;
             case rSP: value = snapD ? snapD->regS : snapshot->regS; break;
             case rFlags: value = snapD ? snapD->flags : snapshot->flags; break;
-            case rD: value = snapshot->regD; break;
-            case rPBR: value = snapshot->pbr; break;
-            case rDBR: value = snapshot->dbr; break;
-            case rModeE: value = snapshot->modeE; break;
             case rRaster: value = snapshot->vPos; break;
             case rCycle: value = snapshot->hPos; break;
             case rZero: value = snapshot->por; break;
@@ -1113,11 +1088,6 @@ auto BinaryMonitor::setRegisters(Command& command) -> void {
             case rPC: snapD ? snapD->pc = value : snapshot->pc = value; break;
             case rSP: snapD ? snapD->regS = value : snapshot->regS; break;
             case rFlags: snapD ? snapD->flags = value : snapshot->flags = value; break;
-
-            case rD: snapshot->regD = value; break;
-            case rPBR: snapshot->pbr = value; break;
-            case rDBR: snapshot->dbr = value; break;
-            case rModeE: snapshot->modeE = value; break;
             default: break;
         }
 
@@ -1138,7 +1108,7 @@ auto BinaryMonitor::setRegisters(Command& command) -> void {
 auto BinaryMonitor::getRegList(uint8_t space) -> std::vector<Reg>* {
     switch (space) {
         case 0: // main CPU
-            return MiscHelper::hasSuperCpuActive() ? &regs65816 : &regs6510;
+            return &regs6510;
         case 1: // drive 8
         case 2: // drive 9
         case 3: // drive 10

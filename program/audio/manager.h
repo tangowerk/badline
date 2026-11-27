@@ -3,18 +3,9 @@
 
 #include "resampler/data.h"
 #include "resampler/cosine.h"
-#include "dsp/base.h"
 #include "../program.h"
 #include "../../emulation/interface.h"
-#include "record/handler.h"
 #include "mixer/drive.h"
-
-namespace DSP {
-    struct Bass;
-    struct Echo;
-    struct Reverb;
-    struct Panning;
-}
 
 #define MAX_AUDIO_BUF_SIZE (2048 * 21)
 
@@ -27,20 +18,13 @@ struct AudioManager {
     unsigned bufferSize = 0;
     float buffer[MAX_AUDIO_BUF_SIZE];
     float volumeAdjust;
-    std::vector<DSP::Base*> dsps;
     
     int16_t outBuffer[65536];
     float outBufferFloat[65536];
     Resampler::Cosine cosine;
     Resampler::Data rData;
-    AudioRecord::Handler record;
     Mixer::Drive drive;
     GUIKIT::Timer muteTimer;
-
-    DSP::Bass* bass;
-    DSP::Echo* echo;
-    DSP::Reverb* reverb;
-    DSP::Panning* panning;
 
     bool mixDriveSounds = false;
 
@@ -99,8 +83,6 @@ struct AudioManager {
     auto process( int16_t sampleLeft, int16_t sampleRight ) -> void;
     auto flush() -> void;
     
-    auto setAudioDsp() -> void;
-        
     auto setLatency() -> void;
     auto setFrequency() -> void;     
     auto setSynchronize() -> void;
@@ -117,7 +99,6 @@ struct AudioManager {
     auto calcStatistics( float adjust ) -> void;
     auto power() -> void;
     auto powerOff() -> void;
-    auto applyDsp() -> void;
     auto applyInterference() -> void;
 
     auto checkIfUINeedsAnUpdate() -> void;

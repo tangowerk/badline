@@ -123,7 +123,6 @@ auto States::save( std::string path ) -> void {
         screenshot.path = path + ".png";
         screenshot.saveState = true;
         screenshot.writePalette = false;
-        screenshot.animatedGif = false;
         screenshot.gun = 0;
         screenshot.interval = 1;
         screenshot.intervalPos = 1;

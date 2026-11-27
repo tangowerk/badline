@@ -10,8 +10,6 @@
 #include "../expansionPort/geoRam/geoRam.h"
 #include "../expansionPort/acia/acia.h"
 #include "../expansionPort/fastloader/fastloader.h"
-#include "../expansionPort/finalChessCard/chessCard.h"
-#include "../expansionPort/superCpu/superCpu.h"
 #include "../expansionPort/trilogicExpert/expert.h"
 
 namespace LIBC64 {
@@ -85,19 +83,6 @@ auto System::setExpansion( Interface::ExpansionId id ) -> void {
         case Interface::ExpansionIdFastloader:
             expansionPort = fastloader;
             break;
-        case Interface::ExpansionIdFinalChessCard:
-            expansionPort = finalChessCard;
-            break;
-        case Interface::ExpansionIdSuperCpu:
-            expansionPort = superCpu;
-            superCpu->setExpander(nullptr);
-            break;
-        case Interface::ExpansionIdSuperCpuReu:
-            expansionPort = superCpu;
-            superCpu->setExpander(reu);
-            reu->setExpander(nullptr);
-            reu->vicII = vicII;
-            break;
         case Interface::ExpansionIdExpert:
             expansionPort = expert;
             break;
@@ -132,8 +117,6 @@ auto System::createExpansions() -> void {
 	geoRam = new GeoRam(this);
 	acia = new Acia(this);
 	fastloader = new Fastloader(this);
-    finalChessCard = new FinalChessCard(this);
-    superCpu = new SuperCpu(this, sysTimer, cia1, cia2, sidManager, traps);
     expert = new Expert(this);
     noExpansion = new ExpansionPort(this);
 
@@ -145,7 +128,6 @@ auto System::createExpansions() -> void {
     setExpansionCallbacks( expert );
     setExpansionCallbacks( easyFlash3 );
     setExpansionCallbacks( acia );
-    setExpansionCallbacks( finalChessCard );
 }
 
 auto System::destroyExpansions() -> void {
@@ -159,8 +141,6 @@ auto System::destroyExpansions() -> void {
 	delete gmod2;
 	delete geoRam;
 	delete acia;
-    delete finalChessCard;
-    delete superCpu;
     delete expert;
     delete noExpansion;	
 }
@@ -234,10 +214,7 @@ auto System::setExpansionCallbacks( ExpansionPort* expansionPtr ) -> void {
         else
             irqIncomming &= ~4;
 
-        if (expansionPort->id == Interface::ExpansionId::ExpansionIdSuperCpuReu)
-            superCpu->observeIrq(irqIncomming != 0);
-        else
-            cpu.setIrq(irqIncomming != 0);
+        cpu.setIrq(irqIncomming != 0);
     };
 
     expansionPtr->dmaCall = [this](bool state) {
@@ -246,10 +223,7 @@ auto System::setExpansionCallbacks( ExpansionPort* expansionPtr ) -> void {
         else
             rdyIncomming &= ~2;      
         
-        if (expansionPort->id == Interface::ExpansionId::ExpansionIdSuperCpuReu)
-            superCpu->observeRdy(rdyIncomming != 0);
-        else
-            cpu.setRdy( rdyIncomming != 0 );
+        cpu.setRdy( rdyIncomming != 0 );
     };
     
     if (expansionPtr->id == Interface::ExpansionIdReu)

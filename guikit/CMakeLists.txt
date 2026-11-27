@@ -75,7 +75,7 @@ if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 SET_SOURCE_FILES_PROPERTIES(tools/encode/images.cpp
-        PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/deps/stb;${CMAKE_SOURCE_DIR}/deps/cgif")
+        PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/deps/stb")
 
 set_source_files_properties(guikit ${headers}
         PROPERTIES HEADER_FILE_ONLY TRUE)
@@ -89,8 +89,8 @@ target_sources(guikit PRIVATE
         ${headers}
 )
 
-# the libraries lha and gif are built in "deps/CMakeLists.txt"
-target_link_libraries(guikit PRIVATE lha gif)
+# the library lha is built in "deps/CMakeLists.txt"
+target_link_libraries(guikit PRIVATE lha)
 
 target_link_libraries(guikit PUBLIC fontconfig Xrandr ${X11_LIBRARIES})
 

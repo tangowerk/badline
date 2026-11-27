@@ -29,7 +29,7 @@ struct Interface : Emulator::Interface {
         ModelIdCycleAccurateVideo, ModelIdDiskThread, ModelIdDiskOnDemand, ModelIdD64AccuracyDeprecated,
         ModelIdReuRam, ModelIdGeoRam, ModelIdIntensifyPseudoStereo,
     	ModelIdEmulateDriveMechanics, ModelIdDriveStepperDelay, ModelIdDriveAcceleration, ModelIdDriveDeceleration,
-    	ModelIdSuperCpuRam, ModelIdTrackZeroSensor, ModelId2Mhz,
+    	ModelIdTrackZeroSensor, ModelId2Mhz,
         ModelIdSidUsbPico, ModelIdSidUsbPicoBufferSize, ModelIdSidUsbPicoDiffSize,
         ModelIdDisableSpriteCollisions, ModelIdDisableSpriteCharacterCollisions,
     };
@@ -39,16 +39,14 @@ struct Interface : Emulator::Interface {
         MediaGroupIdExpansionGame = 3, MediaGroupIdExpansionEasyFlash = 4, MediaGroupIdExpansionEasyFlash3 = 5,
         MediaGroupIdExpansionFreezer = 6, MediaGroupIdExpansionRetroReplay = 7,        
         MediaGroupIdExpansionGeoRam = 8, MediaGroupIdExpansionReu = 9, MediaGroupIdExpansionRS232 = 10, MediaGroupIdExpansionFastloader = 11,
-    	MediaGroupIdExpansionFinalChessCard = 12, MediaGroupIdExpansionSuperCpu = 13,
-        MediaGroupIdExpansionExpert = 14, MediaGroupIdExpansionGmod2 = 15,
+        MediaGroupIdExpansionExpert = 14, MediaGroupIdExpansionGmod2 = 15, // 12, 13: removed, do not reuse
     };
     
     enum ExpansionId {
         ExpansionIdNone = 0, ExpansionIdGame = 1, ExpansionIdEasyFlash = 2, ExpansionIdEasyFlash3 = 3,
         ExpansionIdFreezer = 4, ExpansionIdRetroReplay = 5, ExpansionIdGeoRam = 6, ExpansionIdReu = 7,
         ExpansionIdReuRetroReplay = 8, ExpansionIdRS232 = 9, ExpansionIdFastloader = 10,
-        ExpansionIdFinalChessCard = 11, ExpansionIdSuperCpu = 12, ExpansionIdSuperCpuReu = 13,
-        ExpansionIdExpert = 14, ExpansionIdGmod2 = 15,
+        ExpansionIdExpert = 14, ExpansionIdGmod2 = 15, // 11 - 13: removed, do not reuse (persisted in settings)
     };
     
     enum CartridgeId {
@@ -229,7 +227,6 @@ struct Interface : Emulator::Interface {
     auto disassemble(DebuggerTheme theme, unsigned addr, unsigned& bytes) -> std::string;
     auto disassembleData(DebuggerTheme theme, unsigned addr, unsigned bytes) -> std::string;
     auto disassembleTrace(DebuggerTheme theme, unsigned i, uint16_t& flags) -> std::string;
-	auto getMemoryDumpBank(uint8_t bank, uint8_t* dump) -> void;
 	auto getMemoryDumpPage(DebuggerTheme theme, uint8_t page, uint8_t* dump) -> void;
     auto getMemory(DebuggerTheme theme, DebuggerAction action, unsigned startAddr, unsigned endAddr, uint8_t* dump) -> void;
     auto getDmaDump() -> uint8_t*;

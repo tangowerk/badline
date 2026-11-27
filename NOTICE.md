@@ -24,15 +24,12 @@ released under the same license.
 | reSID by Dag Lem | `emulation/libc64/sid` | GPL-2.0-or-later |
 | libresidfp by Leandro Nini (https://github.com/libsidplayfp/libresidfp) | `deps/libresidfp` | GPL-2.0-or-later |
 | VIC-II cycle emulation, based on the VICE implementation (https://vice-emu.sourceforge.io) | `emulation/libc64/vicII` | GPL-2.0-or-later |
-| SuperCPU 64 ROM V0.07 by SOCI/Singular (from VICE) | `data/data/scpu64` | GPL-2.0-or-later |
-| koko-aio shader presets (https://github.com/kokoko3k/koko-aio-slang) | `data/presets/bezel` | GPL-3.0 |
 | Cosine and sinc resamplers from RetroArch (https://github.com/libretro/RetroArch) | `program/audio` | GPL-3.0 |
 | Chamberlin filter from Hoxs64 (https://www.hoxs64.net) | `emulation/libc64/sid` | see source |
 | P64 by BeRo, fpaq0 by Matt Mahoney | `emulation/libc64/disk` | see source |
 | glslang (Khronos) | `deps/glslang` | BSD-3-Clause and others, see `deps/glslang/LICENSE.txt` |
 | SPIRV-Cross (Khronos) | `deps/SPIRV-Cross` | Apache-2.0, see `deps/SPIRV-Cross/LICENSE` |
 | cpp-httplib by Yuji Hirose | `deps/httplib.h` | MIT |
-| cgif by Daniel Löbl | `deps/cgif` | MIT, see `deps/cgif/LICENSE.txt` |
 | lhasa (LHA decoder) by Simon Howard | `deps/lha` | ISC |
 | stb_image_write / stb_image_resize2 by Sean Barrett | `deps/stb` | MIT or public domain |
 | C64 Pro / C64 Pro Mono fonts, C64 TrueType v1.2.1 by Style (https://style64.org/c64-truetype) | `data/fonts` | Style license, not GPL – see `data/fonts/C64_TrueType-LICENSE.txt` |

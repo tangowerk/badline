@@ -1,10 +1,6 @@
 
 #include "manager.h"
 #include "../cmd/cmd.h"
-#include "dsp/bass.h"
-#include "dsp/echo.h"
-#include "dsp/reverb.h"
-#include "dsp/panning.h"
 #include "../view/status.h"
 #include "../view/view.h"
 #include "../tools/chronos.h"
@@ -30,20 +26,11 @@ AudioManager::AudioManager() : drive(*this) {
         muteTimer.setEnabled(false);
         setVolume();
     };
-
-    bass = new DSP::Bass;
-    echo = new DSP::Echo;
-    reverb = new DSP::Reverb;
-    panning = new DSP::Panning;
 }
 
 AudioManager::~AudioManager() {
     
     delete[] rData.out;
-    delete bass;
-    delete echo;
-    delete reverb;
-    delete panning;
 }
 
 auto AudioManager::setLatency() -> void {
@@ -274,75 +261,6 @@ auto AudioManager::setDriveSounds( bool init ) -> void {
         activeEmulator->enableTapeSounds(mixTapeSounds);
 }
 
-auto AudioManager::setAudioDsp() -> void {
-    
-    if (!activeEmulator)
-        return;
-
-    dsps.clear();
-    
-    stat = activeEmulator->getStatsForSelectedRegion();
-    
-    auto settings = Program::getSettings( activeEmulator );
-
-    bool useBass = settings->get<bool>("audio_bass", false );
-    
-    if (useBass) {
-        bass->setMono( !stat.stereoSound );
-        bass->init( 
-            (float)audioDriver->getFrequency(),
-            (float)settings->get<unsigned>("audio_bass_freq", 200, {20, 200} ),
-            (float)settings->get<unsigned>("audio_bass_gain", 10, {0, 40} ),
-            settings->get<float>("audio_bass_clipping", 0.4, {0.0, 1.0} )
-        );
-        
-        dsps.push_back( (DSP::Base*)bass );
-    }
-
-    bool useEcho = settings->get<bool>("audio_echo", false );
-
-    if (useEcho) {
-        echo->setMono( !stat.stereoSound );
-        echo->init(
-            (float)audioDriver->getFrequency(),
-            settings->get<unsigned>("audio_echo_delay", 200, {0, 1000} ),
-            settings->get<float>("audio_echo_feedback", 0.5, {0.0, 1.0} ),
-            settings->get<float>("audio_echo_amp", 0.2, {0.0, 1.0} )
-        );
-
-        dsps.push_back( (DSP::Base*)echo );
-    }
-
-    bool useReverb = settings->get<bool>("audio_reverb", false );
-    
-    if (useReverb) {
-        reverb->setMono( !stat.stereoSound );
-        reverb->init( 
-            (float)audioDriver->getFrequency(),
-            settings->get<float>("audio_reverb_drytime", 0.43, {0.0, 1.0} ),
-            settings->get<float>("audio_reverb_wettime", 0.4, {0.0, 1.0} ),
-            settings->get<float>("audio_reverb_damping", 0.8, {0.0, 1.0} ),
-            settings->get<float>("audio_reverb_roomwidth", 0.56, {0.0, 1.0} ),
-            settings->get<float>("audio_reverb_roomsize", 0.56, {0.0, 1.0} )
-        );
-        
-        dsps.push_back( (DSP::Base*)reverb );
-    }  
-    
-    bool usePanning = settings->get<bool>("audio_panning", false );
-    
-    if (usePanning) {
-        panning->init(
-            settings->get<float>("audio_panning_left0", 1.0, {0.0, 1.0} ),
-            settings->get<float>("audio_panning_left1", 0.0, {0.0, 1.0} ),
-            settings->get<float>("audio_panning_right0", 0.0, {0.0, 1.0} ),
-            settings->get<float>("audio_panning_right1", 1.0, {0.0, 1.0} )
-        );
-            
-        dsps.push_back( (DSP::Base*)panning );
-    }
-}
-
 auto AudioManager::setRateControl() -> void {
 
     dynamicRateControl = allowDrc && globalSettings->get<bool>("dynamic_rate_control", false);
@@ -362,7 +280,6 @@ auto AudioManager::power() -> void {
     setSynchronize();
     setResampler();
     setBufferSize();
-    setAudioDsp();
     setVolume();
     setInterference();
     setDriveSounds();
@@ -377,33 +294,7 @@ auto AudioManager::power() -> void {
 }
 
 auto AudioManager::powerOff() -> void {
-    record.finish();
     drive.reset();
-}
-
-auto AudioManager::applyDsp() -> void {
-
-    DSP::Data dspInput;
-    DSP::Data dspOutput;
-    
-    dspOutput.samples = nullptr;
-    dspOutput.frames = 0;
-
-    dspInput.samples = rData.out;
-    dspInput.frames = rData.outputFrames;
-    
-    for( auto dsp : dsps ) {
-                
-        dsp->process( &dspOutput, &dspInput );
-
-        dspInput.samples = dspOutput.samples;
-        dspInput.frames = dspOutput.frames;
-    }
-
-    if (dspOutput.frames) {
-        rData.out = dspOutput.samples;
-        rData.outputFrames = dspOutput.frames;
-    }
 }
 
 auto AudioManager::process( int16_t sampleLeft, int16_t sampleRight ) -> void {
@@ -470,9 +361,6 @@ auto AudioManager::flush( ) -> void {
 
     cosine.process();
 
-    if (dsps.size())
-        applyDsp();
-
     if (mixDriveSounds)
         drive.mixSound(rData.out, rData.outputFrames << 1);
 
@@ -481,8 +369,6 @@ auto AudioManager::flush( ) -> void {
         for (unsigned i = 0; i < (rData.outputFrames << 1); i++ )
             outBufferFloat[i] = *(rData.out + i);
 
-        record.write( (uint8_t*) outBufferFloat, rData.outputFrames );
-
         // 4 byte per channel, 8 byte per audio frame
         audioDriver->addSamples( (uint8_t*) outBufferFloat, rData.outputFrames << 3);
 
@@ -490,8 +376,6 @@ auto AudioManager::flush( ) -> void {
 
         for (unsigned i = 0; i < (rData.outputFrames << 1); i++)
             outBuffer[i] = sclamp<16>( *(rData.out + i) * 32767.0 );
-
-        record.write( (uint8_t*) outBuffer, rData.outputFrames );
 
         // 2 byte per channel, 4 byte per audio frame
         audioDriver->addSamples( (uint8_t*) outBuffer, rData.outputFrames << 2);
@@ -600,7 +484,6 @@ auto AudioManager::initDriver() -> void {
     // driver initialization could use different frequency than user requested
     audioManager->setResampler();
     audioManager->resetDriveSounds();
-    audioManager->setAudioDsp();
 
     if (configView)
         configView->driversLayout->updateLatencySlider();

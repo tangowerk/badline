@@ -458,13 +458,12 @@ VideoScreenShotLayout::Format::Format(bool withPalete) {
     append(png, { 0u, 0u }, 10);
     append(jpg, { 0u, 0u }, 10);
     append(bmp, { 0u, 0u }, 10);
-    append(gif, { 0u, 0u }, 10);
     append(tga, { 0u, 0u }, 20);
 
     if (withPalete)
         append(palete, { 0u, 0u });
 
-    GUIKIT::RadioBox::setGroup(png, jpg, bmp, gif, tga);
+    GUIKIT::RadioBox::setGroup(png, jpg, bmp, tga);
 
     setAlignment(0.5);
 }
@@ -1565,10 +1564,6 @@ layScreenShot(dynamic_cast<LIBC64::Interface*>(tabWindow->emulator)) {
         _settings->set<std::string>("screen_record_format", "bmp");
     };
 
-    layScreenShot.format.gif.onActivate = [this]() {
-        _settings->set<std::string>("screen_record_format", "gif");
-    };
-
     layScreenShot.format.tga.onActivate = [this]() {
         _settings->set<std::string>("screen_record_format", "tga");
     };
@@ -2286,8 +2281,6 @@ auto PresentationLayout::translate() -> void {
     layScreenShot.format.png.setText(trans->getA("PNG"));
     layScreenShot.format.jpg.setText(trans->getA("JPG"));
     layScreenShot.format.bmp.setText(trans->getA("BMP"));
-    layScreenShot.format.gif.setText(trans->getA("GIF (*)"));
-    layScreenShot.format.gif.setTooltip(trans->getA("GIF tooltip"));
     layScreenShot.format.tga.setText(trans->getA("TGA"));
     layScreenShot.format.palete.setText(trans->getA("save palete"));
     layScreenShot.options.gun.name.setText(trans->getA("frames"));
@@ -2390,7 +2383,6 @@ auto PresentationLayout::loadSettings(bool init) -> void {
     if (screenshotFormat == "bmp") layScreenShot.format.bmp.setChecked();
     else if (screenshotFormat == "jpg") layScreenShot.format.jpg.setChecked();
     else if (screenshotFormat == "tga") layScreenShot.format.tga.setChecked();
-    else if (screenshotFormat == "gif") layScreenShot.format.gif.setChecked();
     else layScreenShot.format.png.setChecked();
 
     if (dynamic_cast<LIBC64::Interface*>(emulator))
@@ -2898,17 +2890,6 @@ auto PresentationLayout::copyCustomPresets() -> void {
     for (auto& file : files) {
        //  fprintf( stderr, "%s\n", file.c_str() );
         GUIKIT::File::xcopy(srcPath + file, targetPath + file );
-    }
-
-    // plugins
-    std::string pluginFolder = "bezel/koko-aio/config/plugins/";
-
-    if (GUIKIT::File::isDir( targetPath + pluginFolder )) {
-        GUIKIT::File::createDir( targetPath + pluginFolder + "enabled" );
-
-        GUIKIT::File::xcopy(targetPath + pluginFolder + "disabled/led1.txt", targetPath + pluginFolder + "enabled/led1.txt");
-        GUIKIT::File::xcopy(targetPath + pluginFolder + "disabled/led2.txt", targetPath + pluginFolder + "enabled/led2.txt");
-        GUIKIT::File::xcopy(targetPath + pluginFolder + "disabled/led3.txt", targetPath + pluginFolder + "enabled/led3.txt");
     }
 }
 

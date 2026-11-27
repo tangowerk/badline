@@ -48,8 +48,6 @@ struct GeoRam;
 struct Gmod2;
 struct RetroReplay;
 struct Reu;
-struct FinalChessCard;
-struct SuperCpu;
 struct M6510;
 struct IecBus;
 struct Prg;
@@ -143,8 +141,6 @@ struct System {
     RetroReplay* retroReplay;
     Expert* expert;
     Reu* reu;
-	FinalChessCard* finalChessCard;
-	SuperCpu* superCpu;
     M6510 cpu;
     VicIIBase* vicII;
     VicIICycle vicIICycle;
@@ -352,7 +348,6 @@ struct System {
 	auto debuggerStepOver(DebuggerTheme theme, bool subroutineOnly) -> void;
 	auto debuggerStepInto(DebuggerTheme theme) -> void;
 	auto debuggerStepOut(DebuggerTheme theme) -> bool;
-	auto getMemoryDumpBank(uint8_t bank, uint8_t* dump) -> void;
 	auto getMemoryDumpPage(DebuggerTheme theme, uint8_t page, uint8_t* dump) -> void;
     auto memoryDumpROM(uint16_t startAddr, uint16_t endAddr, uint8_t* dump) -> void;
     auto memoryDumpIO(uint16_t startAddr, uint16_t endAddr, uint8_t* dump) -> void;

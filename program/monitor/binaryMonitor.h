@@ -82,7 +82,6 @@ struct BinaryMonitor {
 
     enum {
         rA = 0, rX = 1, rY = 2, rPC = 3, rSP = 4, rFlags = 5,
-        rD = 0x23, rPBR = 0x24, rDBR = 0x25, rModeE = 0x29,
         rRaster = 0x35, rCycle = 0x36, rZero = 0x37, rOne = 0x38,
     };
 
@@ -93,7 +92,6 @@ struct BinaryMonitor {
     };
     std::vector<Reg> regs6510;
     std::vector<Reg> regs6502;
-    std::vector<Reg> regs65816;
 
     Socket* server = nullptr;
 

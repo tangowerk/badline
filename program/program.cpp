@@ -24,7 +24,6 @@
 #include "emuconfig/layouts/input.h"
 
 #include "debugger/cpuDebugger.h"
-#include "debugger/scpuDebugger.h"
 #include "debugger/drive8CpuDebugger.h"
 #include "debugger/drive9CpuDebugger.h"
 #include "debugger/drive10CpuDebugger.h"
@@ -37,7 +36,6 @@
 #include "debugger/drive9MemDebugger.h"
 #include "debugger/drive10MemDebugger.h"
 #include "debugger/drive11MemDebugger.h"
-#include "debugger/memScpuDebugger.h"
 #include "debugger/memDebugger.h"
 #include "debugger/ciaDebugger.h"
 #include "debugger/videoDebugger.h"
@@ -332,10 +330,8 @@ auto Program::initEmulator( Emulator::Interface* emulator ) -> void {
 
     MiscHelper::setRewind( emulator );
 
-    if (dynamic_cast<LIBC64::Interface*>( emulator )) {
+    if (dynamic_cast<LIBC64::Interface*>( emulator ))
         setMemoryPattern( emulator );
-        MiscHelper::initExpansionRom(emulator, "SuperCPU 1", "scpu64");
-    }
 }
 
 auto Program::getMemoryPatternFromConfig(Emulator::Interface* emulator, Emulator::Interface::MemoryPattern& pattern) -> void {
@@ -1136,7 +1132,6 @@ auto Program::createDebugger(Emulator::Interface* emulator, DebuggerTheme theme)
 
     switch (theme) {
         case DebuggerTheme::CPU: debugger = new CpuDebugger(emulator); break;
-        case DebuggerTheme::SCPU: debugger = new ScpuDebugger(emulator); break;
         case DebuggerTheme::Drive8CPU: debugger = new Drive8CpuDebugger(emulator); break;
         case DebuggerTheme::Drive9CPU: debugger = new Drive9CpuDebugger(emulator); break;
         case DebuggerTheme::Drive10CPU: debugger = new Drive10CpuDebugger(emulator); break;
@@ -1150,7 +1145,6 @@ auto Program::createDebugger(Emulator::Interface* emulator, DebuggerTheme theme)
         case DebuggerTheme::Drive10VIA: debugger = new Drive10ViaDebugger(emulator); break;
         case DebuggerTheme::Drive11VIA: debugger = new Drive11ViaDebugger(emulator); break;
         case DebuggerTheme::Memory: debugger = new MemDebugger(emulator); break;
-        case DebuggerTheme::MemorySCPU: debugger = new MemScpuDebugger(emulator); break;
         case DebuggerTheme::CIA: debugger = new CiaDebugger(emulator); break;
         case DebuggerTheme::Video: debugger = new VideoDebugger(emulator); break;
         case DebuggerTheme::SID: debugger = new SidDebugger(emulator); break;

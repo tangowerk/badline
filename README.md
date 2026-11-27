@@ -58,7 +58,7 @@ project is about.
 |---|---|
 | C64 emulation | Denise 2.9 core: cycle-exact VIC-II, reSID / libresidfp, CIA, drives with true drive emulation, tape, savestates, run-ahead |
 | Media | D64, G64, P64, D71, G71, D81, TAP, T64, PRG, CRT, REU images; archives |
-| Cartridges | EasyFlash, Retro Replay, Action Replay-type freezers, GMod, Final ChessCard, Trilogic Expert, REU, GeoRAM, SuperCPU and more (from Denise) |
+| Cartridges | EasyFlash, Retro Replay, Action Replay-type freezers, GMod, Trilogic Expert, REU, GeoRAM and more (from Denise) |
 | Window | SDL3, native Wayland (EGL) with X11 fallback, HiDPI, fullscreen (F11 / Alt+Enter), size remembered |
 | Video | OpenGL 3.2 renderer, slang shaders (internal presets), optional render thread, VSync |
 | Input | Keyboard (positional), mouse capture (middle button), gamepads with hotplug – the first pad drives joystick #1 |
@@ -73,8 +73,6 @@ project is about.
   settings have no UI yet (the old GTK dialogs are disconnected).
 - Keyboard layouts: mapping is positional; some symbols are wrong on non-US
   layouts (e.g. `"` on German keyboards). A dedicated milestone will fix this.
-- The bundled koko-aio bezel presets need the full koko-aio shader package;
-  the internal presets work out of the box.
 - No status bar (drive LEDs, track) until the overlay HUD arrives.
 - GTK is still linked and initialized internally (no window is shown) until
   the GTK layer is removed; an X display (XWayland) is therefore required.
@@ -117,7 +115,7 @@ Ubuntu 24.04 (needs glibc 2.39 or newer), SDL3 included. Unpack anywhere and
 run `bin/badline`; the other libraries come from the system, on Ubuntu/Debian:
 
 ```
-sudo apt install libgtk-3-0t64 libpulse0 libcurl4t64 libopenal1 libmp3lame0 \
+sudo apt install libgtk-3-0t64 libpulse0 libcurl4t64 libopenal1 \
                  libfreetype6 libfontconfig1 libgl1 libegl1
 ```
 
@@ -132,7 +130,7 @@ Requirements (Arch Linux package names; other distributions are similar):
 
 ```
 cmake gcc pkgconf sdl3 curl gtk3 libpulse freetype2 fontconfig libx11 libxrandr
-optional: openal lame
+optional: openal
 ```
 
 ```sh

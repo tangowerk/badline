@@ -17,7 +17,6 @@ struct ScreenshotState {
     unsigned pause = 0;
     bool writePalette = false;
     unsigned gun = 0;
-    bool animatedGif = false;
     std::vector<uint8_t*> buffer;
     unsigned bufferSize = 0;
     unsigned interval = 0;

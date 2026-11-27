@@ -1089,7 +1089,6 @@ auto MediaLayout::updateListing( Emulator::Interface::Media* media ) -> void {
 }
 
 auto MediaLayout::translate(NavElement& nav) -> void {   
-    bool isC64 = dynamic_cast<LIBC64::Interface*>(emulator);
     auto mediaGroup = nav.mediaGroup;
     auto mediaGroupLayout = dynamic_cast<MediaGroupLayout*>(nav.layout);
 
@@ -1111,13 +1110,6 @@ auto MediaLayout::translate(NavElement& nav) -> void {
         block->header.deviceName.setText( trans->get( block->media->name, {}, true ) );
         block->header.inUse.setText( trans->get( block->media->name, {}, true ) );
 
-        if ( isC64 && (block->media->group->id == LIBC64::Interface::MediaGroupIdExpansionFinalChessCard)) {
-            if (block->media->id > 3)
-                block->header.deviceName.setTooltip( trans->getA( "SRAM Battery tooltip" ) );
-            else if (block->media->id < 4)
-                block->selector.open.setTooltip( trans->getA( "Final Chesscard ROMS tooltip" ) );
-        }
-        
         if (mediaGroup->isExpansion() && !block->media->parent) {
             unsigned id = 0;
             for( auto& pcb : mediaGroup->expansion->pcbs ) {
@@ -1131,11 +1123,6 @@ auto MediaLayout::translate(NavElement& nav) -> void {
                 auto jumperBox = block->selector.jumpers[jumper.id];
 
                 jumperBox->setText( trans->get( jumper.name ) );
-
-                if ( isC64 && (block->media->group->id == LIBC64::Interface::MediaGroupIdExpansionSuperCpu)) {
-                    if (jumper.id == 2)
-                        jumperBox->setTooltip(trans->getA("SuperCPU DRAM Boost tooltip"));
-                }
             }        
         }
     } 

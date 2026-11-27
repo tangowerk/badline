@@ -4,6 +4,44 @@ All notable changes to Badline. Badline is a fork of
 [Denise](https://github.com/piciji/denise) 2.9 by PiCiJi; Denise's own history
 is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
+## Unreleased
+
+### Removed
+
+- **SuperCPU** (65816 accelerator) and **Final ChessCard** (65C02) support,
+  including the SCPU debugger views, the SuperCPU turbo hotkey, the 65816
+  registers in the binary monitor and the bundled free SuperCPU ROM. Configs
+  that still select one of them start without an expansion; savestates made
+  with one of them attached can no longer be loaded. Saved hotkey assignments
+  keep their slots.
+- **Audio DSP effects**: bass boost, echo, reverb and balance/stereo
+  separation.
+- **Audio recording** (MP3 via LAME, WAV), its menu entries, status bar
+  indicator and hotkey; LAME is no longer a build or runtime dependency.
+  Saved hotkey assignments keep their slots.
+- **GIF screenshots** (single and animated); PNG, JPG, BMP and TGA remain.
+  The bundled cgif library is gone.
+- The **koko-aio bezel presets** (6 MB): they only worked with the separate
+  koko-aio shader package. The internal presets remain.
+- Amiga leftovers: Amiga floppy sound samples (they were still installed),
+  the unused Amiga CIA (8520) source, an Amiga hint in a shader parameter.
+- Denise build leftovers: Travis CI configuration and the Flatpak manifest.
+- Unused parts of vendored libraries: SPIRV-Cross (tests, reference shaders,
+  HLSL/MSL backends; 4340 → 15 files), glslang (tests, HLSL frontend, build
+  files; 234 → 87 files), the Windows file of lha and two unused unity-build
+  files.
+- Four audio resamplers that were never compiled (cubic, hermite, linear,
+  precise cosine).
+- Dead hard-disk branches in file loading and autostart ordering (the C64 has
+  no hard-disk media).
+
+### Changed
+
+- The `data/data` folder is no longer installed while it is empty; installed
+  builds still look there for ROMs from distribution packages.
+- README, NOTICE and the release packaging list no longer mention the removed
+  parts (LAME, cgif, koko-aio, SuperCPU ROM).
+
 ## 0.1.0 – 2026-11-27
 
 First preview release. The C64 emulation is Denise's; this release reshapes
@@ -90,6 +128,13 @@ glibc 2.39+, SDL3 included; see `INSTALL.txt` inside) or build from source.
 - MCP calls never block on dialogs: messages during calls and at startup are
   captured and returned.
 - `tests/mcp_smoke.py`: smoke test for all MCP tools in window and headless mode.
+
+### Build and release
+
+- `tools/build_release.sh` builds a relocatable Linux tarball on Ubuntu 24.04
+  with SDL3 built from source and bundled.
+- The GitHub Actions workflow replaces Denise's Flatpak/macOS/Windows
+  pipeline: build check on every push, release with these notes on `v*` tags.
 
 ### ROMs
 

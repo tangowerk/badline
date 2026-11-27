@@ -61,7 +61,6 @@ struct StatusHandler {
     auto setMessage(const std::string& txt, bool warn = false, bool force = false, unsigned duration = 3) -> void;
     auto updateFPS( bool state ) -> void;
     auto updateVolume( bool state ) -> void;
-    auto updateAudioRecord( bool state ) -> void;
     auto updateTapeImage( GUIKIT::Image* image ) -> void;
 	auto hideTape() -> void;
     auto updateFrameCounter() -> void;
@@ -76,7 +75,6 @@ struct StatusHandler {
     auto setVolumeSlider(unsigned value) -> void;
     auto setVolumeSlider(Emulator::Interface* emulator) -> void;
     auto updateOnScreenFPS() -> void;
-    auto setExpansionClick() -> void;
     auto updateLEDState(Emulator::Interface::LedId ledId, uint8_t state) -> void;
     auto enableLEDs() -> void;
     auto enableLED(LEDState& ledState) -> void;

@@ -78,7 +78,7 @@ struct Image {
     bool alphaBlendApplied = false;
     int resourceId = -1; // win xp only 
     enum Format : unsigned { RGBA, BGRA, RGB } format;
-    enum class Type { PNG, JPG, TGA, BMP, GIF };
+    enum class Type { PNG, JPG, TGA, BMP };
 
     struct Encoded {
         uint8_t* data = nullptr;

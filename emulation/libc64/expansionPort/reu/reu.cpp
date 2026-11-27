@@ -2,7 +2,6 @@
 #include "../../system/system.h"
 #include "reu.h"
 #include "../retroReplay/retroReplay.h"
-#include "../superCpu/superCpu.h"
 
 namespace LIBC64 {
 
@@ -307,31 +306,13 @@ auto Reu::clock() -> void {
     }   
 }
 
-auto Reu::clockSCPU() -> void {
-    vicBaLow <<= 1;
-    vicBaLow |= vicBA();
-
-    if (!dma)
-        return;
-
-    switch (command & 3) {
-        case 0: stash<true>(); break;
-        case 1: fetch<true>(); break;
-        case 2: swap<true>(); break;
-        case 3: verify<true>(); break;
-    }
-}
-
-template<bool fromSCPU> inline auto Reu::verify() -> void {
+inline auto Reu::verify() -> void {
     if (vicBaLow & 1)
         return;
 
     busValue = readReu();
 
-    if constexpr (fromSCPU)
-        busValue2 = system->superCpu->readByteReu(bus.addr = hostAddr);
-    else
-        busValue2 = system->memoryCpu.read( bus.addr = hostAddr);
+    busValue2 = system->memoryCpu.read( bus.addr = hostAddr);
 
     if (steal) {
         steal = false;
@@ -359,7 +340,7 @@ template<bool fromSCPU> inline auto Reu::verify() -> void {
     decrementTransferLength(); 
 }
 
-template<bool fromSCPU> auto Reu::swap() -> void {
+auto Reu::swap() -> void {
     if (!swapRead) {
         if ((vicBaLow & 3) == 1) {
             if (transferLength == reg.transferLength)
@@ -369,23 +350,16 @@ template<bool fromSCPU> auto Reu::swap() -> void {
         if ((vicBaLow & 15) != 15) {
             busValue = readReu();
 
-            if constexpr (fromSCPU) {
-                busValue2 = system->superCpu->readByteReu(bus.addr = hostAddr);
-            } else {
-                if (((vicBaLow & 1) != 0) && system->isC64C())
-                    busValue2 = system->ram[bus.addr = hostAddr];
-                else
-                    busValue2 = system->memoryCpu.read(bus.addr = hostAddr);
-            }
+            if (((vicBaLow & 1) != 0) && system->isC64C())
+                busValue2 = system->ram[bus.addr = hostAddr];
+            else
+                busValue2 = system->memoryCpu.read(bus.addr = hostAddr);
         }
 
     } else {
         if (((vicBaLow & 1) == 0) || (transferLength == 1) ) {
             writeReu( busValue2 );
-            if constexpr (fromSCPU)
-                system->superCpu->writeByteReu(bus.addr = hostAddr, busValue);
-            else
-                system->memoryCpu.write( bus.addr = hostAddr, busValue);
+            system->memoryCpu.write( bus.addr = hostAddr, busValue);
             incrementAddresses();
             decrementTransferLength();
         }
@@ -394,7 +368,7 @@ template<bool fromSCPU> auto Reu::swap() -> void {
     swapRead ^= 1;
 }
 
-template<bool fromSCPU> inline auto Reu::fetch() -> void {
+inline auto Reu::fetch() -> void {
     if ((vicBaLow & 3) == 3) { // first BA cycle is usable for REU
         return;
     }
@@ -410,10 +384,7 @@ template<bool fromSCPU> inline auto Reu::fetch() -> void {
     
 	busFloating = busValue = readReu();
     
-    if constexpr (fromSCPU)
-        system->superCpu->writeByteReu( bus.addr = hostAddr, busValue );
-    else
-        system->memoryCpu.write( bus.addr = hostAddr, busValue );
+    system->memoryCpu.write( bus.addr = hostAddr, busValue );
     incrementAddresses();
 
 	if (transferLength == 1)
@@ -422,18 +393,14 @@ template<bool fromSCPU> inline auto Reu::fetch() -> void {
     decrementTransferLength();	
 }
 
-template<bool fromSCPU> inline auto Reu::stash() -> void {
+inline auto Reu::stash() -> void {
     if (vicBaLow & 1) // VIC needs this cycle
         return;
 
-    if constexpr (fromSCPU) {
-        busFloating = busValue = system->superCpu->readByteReu(bus.addr = hostAddr);
-    } else {
-        if (vicII->reuSprite0() && system->isC64C())
-            busFloating = busValue = system->ram[bus.addr = hostAddr];
-        else
-            busFloating = busValue = system->memoryCpu.read( bus.addr = hostAddr );
-    }
+    if (vicII->reuSprite0() && system->isC64C())
+        busFloating = busValue = system->ram[bus.addr = hostAddr];
+    else
+        busFloating = busValue = system->memoryCpu.read( bus.addr = hostAddr );
     writeReu( busValue );
     incrementAddresses();
     decrementTransferLength();

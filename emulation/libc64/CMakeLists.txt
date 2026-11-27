@@ -32,7 +32,6 @@ set(headers
         expansionPort/easyFlash/easyFlash.h
         expansionPort/easyFlash/easyFlash3.h
         expansionPort/fastloader/fastloader.h
-        expansionPort/finalChessCard/chessCard.h
         expansionPort/freezer/actionReplayMK2.h
         expansionPort/freezer/actionReplayMK3.h
         expansionPort/freezer/actionReplayMK4.h
@@ -72,7 +71,6 @@ set(headers
         expansionPort/retroReplay/retroReplay.h
         expansionPort/trilogicExpert/expert.h
         expansionPort/reu/reu.h
-        expansionPort/superCpu/superCpu.h
         expansionPort/uci/uci.h
         expansionPort/expansionPort.h
         input/controlPort/analogControl.h
@@ -211,8 +209,6 @@ target_sources(coreC64 PRIVATE
         expansionPort/trilogicExpert/expert.cpp
         expansionPort/gmod/gmod2.cpp
         expansionPort/fastloader/fastloader.cpp
-        expansionPort/finalChessCard/chessCard.cpp
-        expansionPort/superCpu/superCpu.cpp
         expansionPort/uci/uci.cpp
 
         system/clipboard.cpp
@@ -259,4 +255,4 @@ if(ltoSupported)
    set_target_properties(coreC64 PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
-target_link_libraries(coreC64 PRIVATE cia ciaNew cpu65c02 cpu65816 libresidfp)
+target_link_libraries(coreC64 PRIVATE cia ciaNew libresidfp)

@@ -652,8 +652,7 @@ auto System::power( bool softReset ) -> void {
     mhz2 &= ~0x80;
 
     mode <<= 3;
-    if (!dynamic_cast<SuperCpu*>(expansionPort))
-        mode |= 7; // charen = hiram = loram = 1 
+    mode |= 7; // charen = hiram = loram = 1 
     irqIncomming = 0;
     nmiIncomming = 0;
     rdyIncomming = 0;
@@ -754,7 +753,7 @@ auto System::power( bool softReset ) -> void {
         };
         keyBuffer->add( action );
 
-        if (!dynamic_cast<SuperCpu*>(expansionPort) && (mhz2 & 1) && (Drive::globalType == Drive::Type::D1571)) {
+        if ((mhz2 & 1) && (Drive::globalType == Drive::Type::D1571)) {
             action.callback = nullptr;
             action.mode = KeyBuffer::Mode::Input;
             action.buffer = { 'O','P','E','N',' ','1','5',',','8',',','1','5',',',' ','"','U','0','>','M','1','"',':','C','L','O','S','E',' ','1','5', '\r' };
@@ -829,7 +828,6 @@ auto System::initRam(uint8_t*& mem) -> void {
 }
 
 auto System::run() -> void {
-    bool haltMainCpu = expansionPort->haltMainCpu();
     leaveEmulation = false;
     runAhead.pos = 0;
     acia->connectionLock = false;
@@ -881,13 +879,7 @@ auto System::run() -> void {
 
     labelRunAhead:
 
-    if (haltMainCpu) {
-        while( !leaveEmulation ) {
-            superCpu->clock();
-            if (!diskSilence.idle && !secondDriveCable.cycleSyncing)
-                iecBus.syncDrives();
-        }
-    } else if (!mhz2) {
+    if (!mhz2) {
         while( !leaveEmulation ) {
             vicII->debugger.dmaLog ? cpu.process<false, true>() : cpu.process<false, false>();
 
@@ -1155,22 +1147,14 @@ auto System::copyText( ) -> std::string {
 }
 
 auto System::checkForAutoStarter() -> bool {
-    bool isSuperCpu = dynamic_cast<SuperCpu*>(expansionPort);
-
     if (!observer.enterRom) {
-        if (isSuperCpu) {
-            if (superCpu->executeKernalRom())
-                observer.enterRom = true;
-        } else if (memoryCpu.isLocation( cpu.pc >> 8, &readKernalRom ))
+        if (memoryCpu.isLocation( cpu.pc >> 8, &readKernalRom ))
             observer.enterRom = true;
 
         observer.memoryAccesses = 0;
     } else {
 
-        if (isSuperCpu) {
-            if (superCpu->executeHostRam())
-                observer.memoryAccesses++;
-        } else if (memoryCpu.isLocation( cpu.pc >> 8, &readRam ))
+        if (memoryCpu.isLocation( cpu.pc >> 8, &readRam ))
             observer.memoryAccesses++;
 
         if (observer.memoryAccesses > 2)
@@ -1433,12 +1417,6 @@ auto System::debuggerAdd(DebuggerTheme theme, DebuggerAction action, unsigned id
             else
                 cpu.debuggerAdd( action, ident, static_cast<uint16_t>(data0), static_cast<uint16_t>(data1) );
             break;
-        case DebuggerTheme::SCPU:
-            if (action == DebuggerAction::None)
-                debuggerSnapshot.themes |= (unsigned)theme;
-            else
-                superCpu->debuggerAdd(action, ident, data0, data1);
-            break;
         case DebuggerTheme::Drive8CPU:
         case DebuggerTheme::Drive9CPU:
         case DebuggerTheme::Drive10CPU:
@@ -1508,14 +1486,6 @@ auto System::debuggerRemove(DebuggerTheme theme, DebuggerAction action, std::opt
             else
                 cpu.debuggerRemove( action);
             break;
-        case DebuggerTheme::SCPU:
-            if (action == DebuggerAction::None)
-                debuggerSnapshot.themes &= ~(unsigned)theme;
-            else if (ident.has_value())
-                superCpu->debuggerRemove( action, ident.value_or(0));
-            else
-                superCpu->debuggerRemove( action );
-            break;
         case DebuggerTheme::Drive8CPU:
         case DebuggerTheme::Drive9CPU:
         case DebuggerTheme::Drive10CPU:
@@ -1546,8 +1516,6 @@ auto System::setWatchpointCondition(DebuggerTheme theme, DebuggerAction action, 
         default:
         case DebuggerTheme::CPU:
             return cpu.setWatchpointCondition( action, ident, hitCount, hitCountMode, expression, expressionMode );
-        case DebuggerTheme::SCPU:
-            return superCpu->setWatchpointCondition( action, ident, hitCount, hitCountMode, expression, expressionMode );
     }
 
     return false;
@@ -1563,11 +1531,7 @@ auto System::debuggerStepOver(DebuggerTheme theme, bool subroutineOnly) -> void 
             break;
         default:
         case DebuggerTheme::CPU:
-        case DebuggerTheme::SCPU:
-            if (expansionPort->haltMainCpu())
-                superCpu->debuggerStepOver(subroutineOnly);
-            else
-                cpu.debuggerStepOver(subroutineOnly);
+            cpu.debuggerStepOver(subroutineOnly);
             break;
     }
 }
@@ -1582,11 +1546,7 @@ auto System::debuggerStepInto(DebuggerTheme theme) -> void {
             break;
         default:
         case DebuggerTheme::CPU:
-        case DebuggerTheme::SCPU:
-            if (expansionPort->haltMainCpu())
-                superCpu->debuggerStepInto();
-            else
-                cpu.debuggerStepInto();
+            cpu.debuggerStepInto();
             break;
     }
 }
@@ -1601,18 +1561,10 @@ auto System::debuggerStepOut(DebuggerTheme theme) -> bool {
 
         default:
         case DebuggerTheme::CPU:
-        case DebuggerTheme::SCPU:
-            if (expansionPort->haltMainCpu())
-                return superCpu->debuggerStepOut();
             return cpu.debuggerStepOut();
     }
 
     return false;
-}
-
-auto System::getMemoryDumpBank(uint8_t bank, uint8_t* dump) -> void {
-    if (expansionPort->haltMainCpu())
-        dynamic_cast<SuperCpu*>(expansionPort)->memoryDumpBank(bank, dump);
 }
 
 auto System::getMemoryDumpPage(DebuggerTheme theme, uint8_t page, uint8_t* dump) -> void {
@@ -1626,11 +1578,7 @@ auto System::getMemoryDumpPage(DebuggerTheme theme, uint8_t page, uint8_t* dump)
 
         default:
         case DebuggerTheme::Memory:
-        case DebuggerTheme::MemorySCPU:
-            if (expansionPort->haltMainCpu())
-                superCpu->memoryDumpPage(page, dump);
-            else
-                memoryDump(page, dump);
+            memoryDump(page, dump);
     }
 }
 
@@ -1667,15 +1615,8 @@ auto System::getMemory(DebuggerTheme theme, DebuggerAction action, unsigned star
 
         default:
         case DebuggerTheme::CPU:
-        case DebuggerTheme::SCPU:
-        case DebuggerTheme::MemorySCPU:
-            if (expansionPort->haltMainCpu()) {
-                for (unsigned addr = startAddr; addr <= endAddr; addr++)
-                    *dump++ = superCpu->peekByte( addr & 0xffffff );
-            } else {
-                for (unsigned addr = startAddr; addr <= endAddr; addr++)
-                    *dump++ = memoryCpu.peek( addr );
-            }
+            for (unsigned addr = startAddr; addr <= endAddr; addr++)
+                *dump++ = memoryCpu.peek( addr );
             break;
     }
 }
@@ -1689,25 +1630,18 @@ auto System::debugPointReached(Emulator::Interface::DebuggerTheme theme, Emulato
 }
 
 auto System::updateDebuggerSnapshot() -> void {
-    debuggerSnapshot.superCpu = expansionPort->haltMainCpu();
     debuggerSnapshot.callbackAction = debugger.action;
     debuggerSnapshot.callbackAddress = debugger.addr;
     debuggerSnapshot.callbackTheme = debugger.theme;
     debuggerSnapshot.watcherIdents = debugger.watcherIdents;
-    debuggerSnapshot.codeMaybeModified = debuggerSnapshot.superCpu ? superCpu->hasModifiedCode() : cpu.hasModifiedCode();
+    debuggerSnapshot.codeMaybeModified = cpu.hasModifiedCode();
     unsigned _t = debuggerSnapshot.themes;
 
-    if (_t & ((unsigned)DebuggerTheme::CPU | (unsigned)DebuggerTheme::SCPU )) {
-        if (expansionPort->haltMainCpu())
-            superCpu->updateSnapshot(debuggerSnapshot);
-        else
-            cpu.updateSnapshot(debuggerSnapshot);
+    if (_t & (unsigned)DebuggerTheme::CPU) {
+        cpu.updateSnapshot(debuggerSnapshot);
     }
-    if (_t & ((unsigned)DebuggerTheme::Memory | (unsigned)DebuggerTheme::MemorySCPU )) {
-        if (expansionPort->haltMainCpu())
-            superCpu->updateMemorySnapshot( debuggerSnapshot );
-        else
-            updateMemorySnapshot(debuggerSnapshot);
+    if (_t & (unsigned)DebuggerTheme::Memory) {
+        updateMemorySnapshot(debuggerSnapshot);
     }
     if (_t & (unsigned)DebuggerTheme::CIA) {
         updateCiaDebuggerSnapshot(debuggerSnapshot);
@@ -1790,9 +1724,6 @@ auto System::disassemble(DebuggerTheme theme, unsigned addr, unsigned& bytes) ->
 
         default:
         case DebuggerTheme::CPU:
-        case DebuggerTheme::SCPU:
-            if (expansionPort->haltMainCpu())
-                return superCpu->disassemble(addr, bytes);
             return cpu.disassemble(addr, bytes);
     }
 
@@ -1809,9 +1740,6 @@ auto System::disassembleData(DebuggerTheme theme, unsigned addr, unsigned bytes)
 
         default:
         case DebuggerTheme::CPU:
-        case DebuggerTheme::SCPU:
-            if (expansionPort->haltMainCpu())
-                return superCpu->disassembleData(addr, bytes);
             return cpu.disassembleData( (uint16_t)addr, bytes );
     }
 
@@ -1828,9 +1756,6 @@ auto System::disassembleTrace(DebuggerTheme theme, unsigned i, uint8_t& flags) -
 
         default:
         case DebuggerTheme::CPU:
-        case DebuggerTheme::SCPU:
-            if (expansionPort->haltMainCpu())
-                return superCpu->disassembleTrace(i, flags);
             return cpu.disassembleTrace( i, flags );
     }
 

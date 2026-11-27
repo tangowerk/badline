@@ -59,7 +59,6 @@ dialogHeight("px")
 MediaGroupLayout::Block::Header::Header(Emulator::Interface::Media* media, Emulator::Interface* emulator) {
     auto group = media->group;
     bool IPMode = group->isExpansion() && group->expansion->isRS232();
-    bool staticField = (media->id == 0) && (media->group->id == LIBC64::Interface::MediaGroupIdExpansionSuperCpu) && dynamic_cast<LIBC64::Interface*>(emulator);
 
     deviceName.setFont(GUIKIT::Font::system("bold"));
     inUse.setFont(GUIKIT::Font::system("bold"));
@@ -73,15 +72,11 @@ MediaGroupLayout::Block::Header::Header(Emulator::Interface::Media* media, Emula
         append(*list, {0u, 0u}, 10);
     }
         
-    if (group->isWritable()) {
-        if ( (media->id < 4) && dynamic_cast<LIBC64::Interface*>(emulator) && (media->group->id == LIBC64::Interface::MediaGroupIdExpansionFinalChessCard));
-        else
-            append(writeprotect, {0u, 0u}, 10);
-    }
+    if (group->isWritable())
+        append(writeprotect, {0u, 0u}, 10);
 
     if (!IPMode) {
-        if (!staticField)
-            append(eject, {0u, 0u}, 10);
+        append(eject, {0u, 0u}, 10);
         append(fileName, {~0u, 0u});
     }
     setAlignment(0.5);
@@ -90,9 +85,8 @@ MediaGroupLayout::Block::Header::Header(Emulator::Interface::Media* media, Emula
 MediaGroupLayout::Block::Selector::Selector(Emulator::Interface::Media* media, Emulator::Interface* emulator) {
     auto group = media->group;
     bool IPMode = group->isExpansion() && group->expansion->isRS232();
-    bool staticField = (media->id == 0) && (media->group->id == LIBC64::Interface::MediaGroupIdExpansionSuperCpu) && dynamic_cast<LIBC64::Interface*>(emulator);
 
-    if (IPMode || staticField) {
+    if (IPMode) {
         edit = new GUIKIT::LineEdit;
         pathCombo = nullptr;
         append(*edit, { ~0u, 0u }, 10);
@@ -132,8 +126,6 @@ MediaGroupLayout::Block::Selector::Selector(Emulator::Interface::Media* media, E
             append(add, {0u, 0u}, 10);
 
         append(open, {0u, 0u});
-        if (staticField)
-            open.setEnabled(false);
     }
     
     setAlignment(0.5);
@@ -141,8 +133,6 @@ MediaGroupLayout::Block::Selector::Selector(Emulator::Interface::Media* media, E
     if (edit) {
         edit->setEditable(IPMode);
         edit->setDroppable(false);
-        if (staticField)
-            edit->setEnabled(false);
     } else if (pathCombo)
         pathCombo->setDroppable();
 }
@@ -401,10 +391,6 @@ auto MediaGroupLayout::build(unsigned previewFontSize) -> void {
         
         if ( !showOnlyConnectedDevices() ) {
             unsigned spacing = 2;
-            if (isC64 && (media->group->id == LIBC64::Interface::MediaGroupIdExpansionFinalChessCard)
-                && (media->id & 1))
-                spacing += 20;
-
             if (isC64 && (media->group->id == LIBC64::Interface::MediaGroupIdExpansionGmod2)
                 && (media->id == 2))
                 spacing += 20;

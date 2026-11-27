@@ -3,17 +3,8 @@ add_executable(${PROJECT_NAME})
 
 set(headers
         program.h
-        audio/dsp/base.h
-        audio/dsp/bass.h
-        audio/dsp/data.h
-        audio/dsp/echo.h
-        audio/dsp/panning.h
-        audio/dsp/reverb.h
         audio/mixer/drive.h
-        audio/record/handler.h
-        audio/record/wavWriter.h
         audio/resampler/cosine.h
-        audio/resampler/cosinePrecise.h
         audio/resampler/cosineSSE.h
         audio/resampler/data.h
         audio/resampler/sinc.h
@@ -120,15 +111,9 @@ set(srcs
         config/archiveViewer.cpp
         states/states.cpp
         audio/manager.cpp
-        audio/dsp/bass.cpp
-        audio/dsp/reverb.cpp
-        audio/dsp/echo.cpp
-        audio/dsp/panning.cpp
         audio/resampler/cosine.cpp
         audio/resampler/cosineSSE.cpp
         audio/resampler/sinc.cpp
-        audio/record/handler.cpp
-        audio/record/wavWriter.cpp
         audio/mixer/drive.cpp
         firmware/manager.cpp
         cmd/cmd.cpp
@@ -158,19 +143,6 @@ set(srcs
         ${headers}
 )
 
-if(LIBLAME_FOUND)
-    set(srcs ${srcs} audio/record/mp3Writer.cpp)
-
-    SET_SOURCE_FILES_PROPERTIES(audio/record/mp3Writer.cpp
-            PROPERTIES INCLUDE_DIRECTORIES "${LIBLAME_INCLUDE_DIRS};")
-    SET_SOURCE_FILES_PROPERTIES(audio/record/handler.cpp
-            PROPERTIES INCLUDE_DIRECTORIES "${LIBLAME_INCLUDE_DIRS};")
-
-    set_property(SOURCE audio/record/handler.cpp APPEND_STRING PROPERTY COMPILE_FLAGS " -DLIBLAME ")
-
-    target_link_directories(${PROJECT_NAME} PUBLIC ${LIBLAME_LIBRARY_DIRS})
-    target_link_libraries(${PROJECT_NAME} PUBLIC ${LIBLAME_LIBRARIES})
-endif()
 
 SET_SOURCE_FILES_PROPERTIES(program.cpp
         PROPERTIES COMPILE_FLAGS "-DAPP_NAME=\"\\\"${AppName}\\\"\" -DTRANSLATION_FOLDER=\"\\\"${translationFolder}/\\\"\" -DDATA_FOLDER=\"\\\"${dataFolder}/\\\"\" -DPRESET_FOLDER=\"\\\"${presetFolder}/\\\"\" -DIMAGES_FOLDER=\"\\\"${imagesFolder}/\\\"\" -DSOUND_FOLDER=\"\\\"${soundFolder}/\\\"\" ")

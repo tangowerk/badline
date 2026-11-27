@@ -261,7 +261,7 @@ auto Debugger::build() -> void {
 
 auto Debugger::appendDebuggerItems() -> void {
 std::vector<DebuggerTheme> themes = {
-        DebuggerTheme::CPU, DebuggerTheme::SCPU, DebuggerTheme::Memory, DebuggerTheme::MemorySCPU,
+        DebuggerTheme::CPU, DebuggerTheme::Memory,
         DebuggerTheme::CIA, DebuggerTheme::Video, DebuggerTheme::DMA, DebuggerTheme::SID,
         DebuggerTheme::Unspecified,
         DebuggerTheme::Drive8CPU, DebuggerTheme::Drive8Memory, DebuggerTheme::Drive8VIA,
@@ -602,10 +602,10 @@ auto Debugger::changeMemory(const std::string& addrStr, const std::string& valSt
             snapshot->codeMaybeModified = true;
 
         for (auto& debugger : program->getActiveDebuggers()) {
-            if (debugger->isDriveMem() || debugger->getTheme() == DebuggerTheme::Memory || debugger->getTheme() == DebuggerTheme::MemorySCPU)
+            if (debugger->isDriveMem() || debugger->getTheme() == DebuggerTheme::Memory)
                 (dynamic_cast<MemDebugger*>(debugger))->memChanged(false);
 
-            if (debugger->isDriveCpu() || debugger->getTheme() == DebuggerTheme::CPU || debugger->getTheme() == DebuggerTheme::SCPU) {
+            if (debugger->isDriveCpu() || debugger->getTheme() == DebuggerTheme::CPU) {
                 (dynamic_cast<CpuDebugger*>(debugger))->memChanged();
             }
         }
@@ -664,9 +664,6 @@ auto Debugger::openConditionView(DbgWatcher* watcher, GUIKIT::Position position)
 }
 
 auto Debugger::getCpuTheme() -> DebuggerTheme {
-    if (getTheme() == DebuggerTheme::SCPU)
-        return DebuggerTheme::SCPU;
-
     if (isDriveCpu())
         return getTheme();
 

@@ -32,7 +32,6 @@ auto InputManager::setHotkeys() -> void {
     hotkeys.push_back( {Hotkey::Id::RunAheadToggleMode, "runahead toggle mode"} );	
     
     hotkeys.push_back( {Hotkey::Id::ToggleCycleRenderer, "Toggle Cycle renderer"} );	
-    hotkeys.push_back( {Hotkey::Id::AudioRecord, "audio record"} );
 
     hotkeys.push_back( {Hotkey::Id::Freeze, "freeze button"} );
     hotkeys.push_back( {Hotkey::Id::Rotation, "image rotation"} );
@@ -112,7 +111,6 @@ auto InputManager::setCustomHotkeys() -> void {
 		customHotkeys.push_back( {Hotkey::Id::RewindTape, "tape_rewind_key", false} );
 		customHotkeys.push_back( {Hotkey::Id::ResetTapeCounter, "tape_counter_reset_key", false} );
         customHotkeys.push_back( {Hotkey::Id::EF3Menu, "ef3 menu button", false} );
-	    customHotkeys.push_back( {Hotkey::Id::ToggleSuperCpuTurbo, "SuperCPU Turbo", false} );
         customHotkeys.push_back( {Hotkey::Id::Toggle2MHzCpuTurbo, "toggle 2 MHz Turbo", false });
 	    customHotkeys.push_back( {Hotkey::Id::PrioDoubleAssignment, "Allow Keyset Joystick", false });
 	}
@@ -160,13 +158,6 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
 
         } break;
 
-        case Hotkey::Id::AudioRecord: {
-            if (!activeEmulator)
-                break;
-
-            if (view)
-                view->toggleRecord();
-        } break;
         case Hotkey::Id::RunAheadDown:
         case Hotkey::Id::RunAheadUp: {
             if (!activeEmulator)
@@ -751,10 +742,6 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             emuThread->lock();
             if (activeEmulator)
                 activeEmulator->customCartridgeButton();
-            break;
-
-        case Hotkey::ToggleSuperCpuTurbo:
-            statusHandler->setExpansionClick();
             break;
 
         case Hotkey::Toggle2MHzCpuTurbo: {

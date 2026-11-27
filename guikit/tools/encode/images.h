@@ -5,7 +5,7 @@ struct ImageEncoder {
 
     ~ImageEncoder();
 
-    enum class Type { PNG, JPG, TGA, BMP, GIF };
+    enum class Type { PNG, JPG, TGA, BMP };
 
     struct Chunk {
         uint8_t* data;
@@ -23,10 +23,6 @@ struct ImageEncoder {
     auto encodeWithColorTable(Type type, std::vector<uint32_t>& colorTable, const std::vector<uint8_t*>& srcs, unsigned width, unsigned height, unsigned delay) -> bool;
 
     auto encodeBMPWithColorTable(std::vector<uint32_t>& colorTable, const uint8_t* src, unsigned width, unsigned height) -> bool;
-
-    auto encodeGIFWithColorTable(std::vector<uint32_t>& colorTable, const std::vector<uint8_t*>& srcs, unsigned width, unsigned height, unsigned delay) -> bool;
-
-    auto encodeGIF(const uint8_t* src, unsigned width, unsigned height) -> bool;
 
     auto mergeChunks() -> void;
 

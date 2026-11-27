@@ -156,16 +156,6 @@ auto Program::takeScreenshot(uint8_t* _data, unsigned _width, unsigned _height) 
         image.scaleLinear(200, 150);
         encoded = image.generate(GUIKIT::Image::Type::PNG);
 
-    } else if (screenShot.animatedGif) {
-        bufferScreenshot(_data, _width * _height);
-
-        if (!--screenShot.gun) {            
-            for (auto& pal : activeVideoManager->palette->paletteColors)
-                colorTable.push_back(pal.rgb);
-
-            encoded = image.generate(screenShot.type, colorTable, screenShot.buffer, _width, _height, screenShot.interval);
-        }
-
     } else if (screenShot.twoFrames && !screenShot.buffer.size()) {
         bufferScreenshot(_data, _width * _height);
 
@@ -199,17 +189,13 @@ auto Program::takeScreenshot(uint8_t* _data, unsigned _width, unsigned _height) 
     if (encoded.data) {
         GUIKIT::File file;
         std::string _replace = std::to_string(Chronos::getTimestampInSecondsReal());
-        if (screenShot.gun && !screenShot.animatedGif)
+        if (screenShot.gun)
             _replace += "_" + std::to_string(screenShot.gun++);
 
         std::string _path = screenShot.path;
 
         GUIKIT::String::replace(_path, "#ident#", _replace);
 
-        if ((encoded.type == GUIKIT::Image::Type::PNG) && (encoded.type != screenShot.type)) {
-            // request GIF, but image has more than 256 colors -> write as PNG
-            GUIKIT::String::replace(_path, ".gif", ".png");
-        }
         file.setFile(_path);
         file.open(GUIKIT::File::Mode::Write);
         file.write(encoded.data, encoded.size);
@@ -729,19 +715,13 @@ auto Program::requestScreenshot() -> void {
     } else if (screenshotFormat == "tga") {
         screenshot.path = _path + ".tga";
         screenshot.type = GUIKIT::Image::Type::TGA;
-    } else if (screenshotFormat == "gif") {
-        screenshot.path = _path + ".gif";
-        screenshot.type = GUIKIT::Image::Type::GIF;
     } else {
         screenshot.path = _path + ".png";
         screenshot.type = GUIKIT::Image::Type::PNG;
     }
 
     screenshot.writePalette = (unscaled > 0) && dynamic_cast<LIBC64::Interface*>(activeEmulator) &&
-        ((screenshot.type == GUIKIT::Image::Type::GIF) || ((screenshot.type == GUIKIT::Image::Type::BMP) && usePalete && !mergeTwoFrames));
-
-    screenshot.animatedGif = (screenshot.type == GUIKIT::Image::Type::GIF) && (unscaled > 0) && dynamic_cast<LIBC64::Interface*>(activeEmulator)
-        && ((screenGun > 1) || mergeTwoFrames);
+        (screenshot.type == GUIKIT::Image::Type::BMP) && usePalete && !mergeTwoFrames;
 
     screenshot.withEffects = withEffects;
     screenshot.unscaled = unscaled;
@@ -751,18 +731,13 @@ auto Program::requestScreenshot() -> void {
     screenshot.interval = screenGunEach;
     screenshot.intervalPos = delayScreenshot ? (50 * 3) : 1;
 
-    if (screenshot.animatedGif) {
-        screenshot.gun = screenGun > 1 ? screenGun : 2;
-        VideoManager::takeScreenShots = screenshot.gun;
-    } else {
-        screenshot.gun = screenGun > 1 ? 1 : 0;
-        VideoManager::takeScreenShots = mergeTwoFrames ? 2 : 1;
-        if (screenGun)
-            VideoManager::takeScreenShots *= screenGun;
+    screenshot.gun = screenGun > 1 ? 1 : 0;
+    VideoManager::takeScreenShots = mergeTwoFrames ? 2 : 1;
+    if (screenGun)
+        VideoManager::takeScreenShots *= screenGun;
 
-        if (mergeTwoFrames)
-            screenshot.interval = 1;
-    }
+    if (mergeTwoFrames)
+        screenshot.interval = 1;
     screenshot.clearBuffer();
     screenshot.sharedMutex.unlock();
 }

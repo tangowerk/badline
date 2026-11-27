@@ -62,9 +62,7 @@ struct View : GUIKIT::Window {
         GUIKIT::MenuItem* systemManagement;
         GUIKIT::Menu* debugger;
             GUIKIT::MenuItem* debuggerCpu;
-    		GUIKIT::MenuItem* debuggerSCPU;
             GUIKIT::MenuItem* debuggerMem;
-    		GUIKIT::MenuItem* debuggerMemSCPU;
             GUIKIT::MenuItem* debuggerCia;
             GUIKIT::MenuItem* debuggerVideo;
             GUIKIT::MenuItem* debuggerDma;
@@ -157,8 +155,6 @@ struct View : GUIKIT::Window {
         GUIKIT::MenuCheckItem recordWithEffects;
         GUIKIT::MenuItem recordScreenSettings;
 
-        GUIKIT::MenuItem recordAudio;
-        GUIKIT::MenuItem recordAudioSettings;
 
         GUIKIT::MenuItem copyItem;
         GUIKIT::MenuItem pasteItem;
@@ -298,7 +294,6 @@ struct View : GUIKIT::Window {
     GUIKIT::Image insertImage;
 
 	GUIKIT::Image delImage;
-    GUIKIT::Image recordAudioImage;
 
     GUIKIT::Image debugImage;
 
@@ -373,13 +368,11 @@ struct View : GUIKIT::Window {
     auto takeScreenshot() -> void;
     auto clearScreenshotBuffer() -> void;
     auto updateScreenshotUI() -> void;
-    auto setAudioRecordText() -> void;
     auto updateFPSMenu() -> void;
     auto buildFpsWindow() -> void;
     static auto getReadable(DebuggerTheme theme, Emulator::Interface* emulator = nullptr) -> std::string;
     auto couldDeviceBlockSecondMouseButton( ) -> bool;
     auto isAnalogDeviceConnected( ) -> bool;
-    auto toggleRecord() -> void;
     
     View();
 };

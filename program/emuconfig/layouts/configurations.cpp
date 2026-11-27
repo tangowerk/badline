@@ -557,9 +557,6 @@ ConfigurationsLayout::ConfigurationsLayout(TabWindow* tabWindow)
                     view->configurationsLayout->updateStorePaths();
                 }
 
-                if(view->audioLayout)
-                    view->audioLayout->updateRecordingPath();
-
                 if (view->paletteLayout)
                     view->paletteLayout->loadSettings();
                 if (view->presentationLayout) {

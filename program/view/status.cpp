@@ -226,13 +226,6 @@ auto StatusHandler::updateVolume( bool state ) -> void {
     emuThread->unlock();
 }
 
-auto StatusHandler::updateAudioRecord( bool state ) -> void {
-    emuThread->lockStatus();
-    updateVisible(14, state);
-    updateStatusBar();
-    emuThread->unlockStatus();
-}
-
 auto StatusHandler::updateTapeImage( GUIKIT::Image* image ) -> void {
         
     if (!statusBar)
@@ -259,28 +252,6 @@ auto StatusHandler::updateTapeImage( GUIKIT::Image* image ) -> void {
     updateStatusBar();
 
     emuThread->unlockStatus();
-}
-
-auto StatusHandler::setExpansionClick() -> void {
-    auto expansion = activeEmulator->getExpansion();
-
-    if (MiscHelper::hasSuperCpuActive()) {
-        emuThread->lock();
-        bool state = activeEmulator->getExpansionJumper(expansion->mediaGroup->selected, 0);
-        activeEmulator->setExpansionJumper(expansion->mediaGroup->selected, 0, !state);
-        setMessage( trans->get( state ? "SuperCPU 1Mhz" : "SuperCPU turbo"), false, true);
-
-        auto& jumper = expansion->jumpers[0];
-        auto emuView = EmuConfigView::TabWindow::getView( activeEmulator );
-        if (emuView && emuView->mediaLayout) {
-            auto block = emuView->mediaLayout->getBlock(expansion->mediaGroup->selected);
-            if (block)
-                block->selector.jumpers[0]->setChecked(!state);
-        }
-        std::string saveIdent = _underscore( expansion->mediaGroup->selected->name + "_jumper_" + jumper.name );
-        Program::getSettings(activeEmulator)->set<bool>( saveIdent, !state);
-        emuThread->unlock();
-    }
 }
 
 auto StatusHandler::hideTape() -> void {
@@ -330,9 +301,6 @@ auto StatusHandler::enableLED(LEDState& ledState) -> void {
         settings = Program::getSettings(activeEmulator);
 
     bool enabled = settings ? settings->get<bool>(ledState.name, false) : false;
-
-    if (enabled && (ledState.ledId == Emulator::Interface::LedId::MHz2) && MiscHelper::hasSuperCpuActive())
-        enabled = false;
 
     ledState.enabled = enabled;
 
@@ -443,15 +411,8 @@ auto StatusHandler::init(GUIKIT::StatusBar* statusBar) -> void {
     
     statusBar->append( 9, "000", nullptr, &(view->tapeControlMenu) );    // tape counter
     statusBar->append( 10, &(view->stopStatusImage), nullptr, &(view->tapeControlMenu) );    // tape button icon
-	statusBar->append( 11, "CRT", [this]() {
-	    if (activeEmulator)
-	        this->setExpansionClick();
-    } );
-    statusBar->append( 12, &(view->ledOffImage), [this]() {
-        if (activeEmulator)
-            this->setExpansionClick();
-    } );    // expansion LED
-    statusBar->append(14, &(view->recordStatusImage), []() { view->toggleRecord(); });    // REC Status
+	statusBar->append( 11, "CRT", nullptr );
+    statusBar->append( 12, &(view->ledOffImage), nullptr );    // expansion LED
     statusBar->append( 18, 21, 60, [](unsigned position) {
         if (!activeEmulator)
             return;
@@ -479,7 +440,6 @@ auto StatusHandler::init(GUIKIT::StatusBar* statusBar) -> void {
     statusBar->updateSeparator( 8, true );
     statusBar->updateSeparator( 10, true );
     statusBar->updateSeparator( 12, true );
-    statusBar->updateSeparator( 14, true );
     statusBar->updateSeparator( 17, true );
     statusBar->updateSeparator( 18, true );
     statusBar->updateSeparator( 20, true);

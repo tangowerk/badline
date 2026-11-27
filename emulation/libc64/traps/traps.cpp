@@ -3,7 +3,6 @@
 #include "../system/system.h"
 #include "../disk/iec.h"
 #include "../tape/tape.h"
-#include "../expansionPort/superCpu/superCpu.h"
 
 #define FILE_CLOSED           0
 #define FILE_AWAITING_NAME    1
@@ -31,7 +30,6 @@ auto Traps::add(Trap trap) -> void {
 }
 
 auto Traps::installSerial() -> void {
-    superCpu = dynamic_cast<SuperCpu*>(system->expansionPort) ? system->superCpu : nullptr;
     installed = trapList.size() > 0;
     installDelayed = false;
 
@@ -93,16 +91,13 @@ auto Traps::handler() -> bool {
     if (!installed)
         return false;
 
-    auto pc = superCpu ? superCpu->getPC() : cpu.pc;
+    auto pc = cpu.pc;
 
     for(auto& trap : trapList) {
         if ((trap.address + 1) == pc) {
             auto resumeAddr = trap.resumeAddress;
             trap.job();
-            if (superCpu)
-                superCpu->setPC(resumeAddr);
-            else
-                cpu.pc = resumeAddr;
+            cpu.pc = resumeAddr;
             return true;
         }
     }
@@ -143,10 +138,7 @@ auto Traps::storeKernal(uint16_t addr, uint8_t value) -> void {
     switch (addr & 0xf000) {
         case 0xe000:
         case 0xf000: {
-            if (superCpu)
-                superCpu->sram[0x1e000 | (addr & 0x1fff)] = value;
-            else
-                system->kernalRom[addr & 0x1fff] = value;
+            system->kernalRom[addr & 0x1fff] = value;
         } break;
     }
 }
@@ -155,9 +147,6 @@ auto Traps::readKernal(uint16_t addr) -> uint8_t {
     switch (addr & 0xf000) {
         case 0xe000:
         case 0xf000: {
-            if (superCpu)
-                return superCpu->sram[0x1e000 | (addr & 0x1fff)];
-
             return system->kernalRom[addr & 0x1fff];
         }
     }
@@ -168,10 +157,7 @@ auto Traps::attention() -> void {
     uint8_t b;
     Serial* p;
     //system->interface->log("attention");
-    if (superCpu)
-        b = superCpu->sram[0x95];
-    else
-        b = system->memoryCpu.read( 0x95 ); // BSOUR
+    b = system->memoryCpu.read( 0x95 ); // BSOUR
 
     if (b == (SERIAL_LISTEN + 0x1f)) {
         unlisten(device, secondary);
@@ -203,13 +189,8 @@ auto Traps::attention() -> void {
         setSt(0x80);
     }
 
-    if (superCpu) {
-        superCpu->setRegP_I(false);
-        superCpu->setRegP_C(false);
-    } else {
-        cpu.regP &= ~1; // carry off
-        cpu.regP &= ~4; // int off
-    }
+    cpu.regP &= ~1; // carry off
+    cpu.regP &= ~4; // int off
 }
 
 auto Traps::send() -> void {
@@ -219,20 +200,12 @@ auto Traps::send() -> void {
         listentalkSecondary(SERIAL_SECONDARY + 0);
     }
 
-    if (superCpu)
-        data = superCpu->sram[0x95];
-    else
-        data = system->memoryCpu.read( 0x95 ); // BSOUR
+    data = system->memoryCpu.read( 0x95 ); // BSOUR
 
     write(device, secondary, data);
 
-    if (superCpu) {
-        superCpu->setRegP_I(false);
-        superCpu->setRegP_C(false);
-    } else {
-        cpu.regP &= ~1; // carry off
-        cpu.regP &= ~4; // int off
-    }
+    cpu.regP &= ~1; // carry off
+    cpu.regP &= ~4; // int off
 }
 
 auto Traps::receive() -> void {
@@ -244,13 +217,8 @@ auto Traps::receive() -> void {
     }
     data = read(device, secondary);
 
-    if (superCpu) {
-        superCpu->sram[0xa4] = data;
-        hasFinished = superCpu->sram[0x90] & 0x40;
-    } else {
-        system->memoryCpu.write(0xa4, data);
-        hasFinished = system->memoryCpu.read(0x90) & 0x40;
-    }
+    system->memoryCpu.write(0xa4, data);
+    hasFinished = system->memoryCpu.read(0x90) & 0x40;
 
     if (hasFinished) {
         //system->interface->log("eof");
@@ -259,34 +227,19 @@ auto Traps::receive() -> void {
         p->device->finish(sendFinishEvent);
     }
 
-    if (superCpu) {
-        superCpu->setRegA(data);
-        superCpu->setRegP_N(data & 0x80 ? true : false );
-        superCpu->setRegP_Z(data == 0);
-        superCpu->setRegP_I(false);
-        superCpu->setRegP_C(false);
-    } else {
-        cpu.regA = data;
-        cpu.flagN = data;
-        cpu.flagZ = data;
-        cpu.regP &= ~1; // carry off
-        cpu.regP &= ~4; // int off
-    }
+    cpu.regA = data;
+    cpu.flagN = data;
+    cpu.flagZ = data;
+    cpu.regP &= ~1; // carry off
+    cpu.regP &= ~4; // int off
 }
 
 auto Traps::ready() -> void {
     //system->interface->log("ready");
-    if (superCpu) {
-        superCpu->setRegA(1);
-        superCpu->setRegP_N(false );
-        superCpu->setRegP_Z(false);
-        superCpu->setRegP_I(false);
-    } else {
-        cpu.regA = 1;
-        cpu.flagN = 0;
-        cpu.flagZ = 0;
-        cpu.regP &= ~4; // int off
-    }
+    cpu.regA = 1;
+    cpu.flagN = 0;
+    cpu.flagZ = 0;
+    cpu.regP &= ~4; // int off
 }
 
 auto Traps::testForComplexTapeLoader() -> bool {
@@ -616,10 +569,7 @@ auto Traps::serialcommand(unsigned int device, uint8_t secondary) -> uint8_t {
 }
 
 auto Traps::setSt(uint8_t st) -> void {
-    if (superCpu)
-        superCpu->sram[0x90] = superCpu->sram[0x90] | st;
-    else
-        system->memoryCpu.write( 0x90, system->memoryCpu.read( 0x90 ) | st );
+    system->memoryCpu.write( 0x90, system->memoryCpu.read( 0x90 ) | st );
 }
 
 }

@@ -201,14 +201,6 @@ auto EmuThread::handleUIEvents() -> void {
         unsigned _events = events;
         events = 0;
 
-        if (_events & EVT_FINISH_AUDIO_RECORD) {
-            auto emuView = EmuConfigView::TabWindow::getView(activeEmulator);
-            if (emuView && emuView->audioLayout)
-                emuView->audioLayout->stopRecord();
-            if (view)
-                view->setAudioRecordText();
-        }
-
         if (_events & EVT_POLL_HOTKEYS)
             InputManager::pollHotkeys();
 

@@ -187,11 +187,6 @@ auto SystemLayout::updateExpansionMemory() -> void {
 
             } else if (expansionSelected->id == LIBC64::Interface::ExpansionIdGeoRam) {
                 useModel = emulator->getModel(LIBC64::Interface::ModelIdGeoRam);
-            } else if (expansionSelected->id == LIBC64::Interface::ExpansionIdSuperCpu) {
-                useModel = emulator->getModel(LIBC64::Interface::ModelIdSuperCpuRam);
-            } else if (expansionSelected->id == LIBC64::Interface::ExpansionIdSuperCpuReu) {
-                useModel = emulator->getModel(LIBC64::Interface::ModelIdSuperCpuRam);
-                useModel2 = emulator->getModel(LIBC64::Interface::ModelIdReuRam);
             }
     }
 
@@ -296,7 +291,6 @@ auto MemoryModelLayout::updated( Line::Block* block, Emulator::Interface::Model*
         switch(model->id) {
             case LIBC64::Interface::ModelIdReuRam:
             case LIBC64::Interface::ModelIdGeoRam:
-            case LIBC64::Interface::ModelIdSuperCpuRam:
                 if (this->emulator == activeEmulator)
                     program->power(activeEmulator);
 

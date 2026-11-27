@@ -13,26 +13,17 @@ struct DebuggerSnapshot : Emulator::Interface::DebuggerSnapshot {
     uint16_t regX;
     uint16_t regY;
     uint16_t regS;
-    uint16_t regD;
     uint16_t pc;
     uint32_t pcEdge;
-
-    uint8_t pbr;
-    uint8_t dbr;
 
     uint8_t ddr;
     uint8_t por;
     uint8_t ioLines;
     uint8_t mode;
 
-    bool modeE;
-    bool superCpu;
-
     uint8_t mapper[16];
-    uint8_t mapperSCPU[256];
 
     constexpr static char flagIdent[] = {'C', 'Z', 'I', 'D', 'B', ' ', 'V', 'N'};
-    constexpr static char flagIdent65816[] = {'C', 'Z', 'I', 'D', 'X', 'M', 'V', 'N'};
 
     uint8_t flags;
 
@@ -196,19 +187,6 @@ struct DebuggerSnapshot : Emulator::Interface::DebuggerSnapshot {
     {104, "DRIVE10:"},{105, "DRIVE11:"},
     };
 
-    constexpr static Emulator::Interface::DebuggerIdent breakConditionsSCPU[] {
-    {0, "VPOS"}, {1, "HPOS"}, {2, "PC"}, {3, "REGX"},
-    {4, "REGY"}, {5, "REGA"}, {6, "REGS"}, {7, "REGD"},
-    {8, "REGP"}, {9, "DBR"},{10, "PBR"},
-    {11, "ME"}, {12, "RDY"}, {13, "IRQ"},
-    {14, "NMI"},
-    {20, "FLAG-C"}, {21, "FLAG-Z"}, {22, "FLAG-I"}, {23, "FLAG-D"},
-    {24, "FLAG-X"}, {25, "FLAG-M"}, {26, "FLAG-V"}, {26, "FLAG-N"},
-    {100, "C64RAM:"}, {101, "CPU:"},
-    {102, "DRIVE8:"}, {103, "DRIVE9:"},
-    {104, "DRIVE10:"},{105, "DRIVE11:"},
-    };
-
     constexpr static Emulator::Interface::DebuggerIdent memAccesses[] {
     {0, "CPU"}, {1, "RAM"}, {2, "ROM"}, {3, "IO"}, {4, "CART"}
     };
@@ -266,13 +244,6 @@ struct DebuggerSnapshot : Emulator::Interface::DebuggerSnapshot {
     constexpr static Emulator::Interface::DebuggerIdent exceptions[] {
         {0xfffe, "IRQ"},
         {0xffff, "NMI"},
-    };
-
-    constexpr static Emulator::Interface::DebuggerIdent exceptions65816[] {
-        {0xfffe, "IRQ M-E"},
-        {0xfffa, "NMI M-E"},
-        {0xffee, "IRQ"},
-        {0xffea, "NMI"},
     };
 };
 

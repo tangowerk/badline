@@ -162,10 +162,6 @@ auto requireCpu(Job& job, int cpu) -> bool {
         job.fail("No emulator running");
         return false;
     }
-    if (sys()->expansionPort->haltMainCpu()) {
-        job.fail("SuperCPU active: not supported by the MCP debugger yet");
-        return false;
-    }
     if (cpu > 0 && !drive(cpu)) {
         job.fail(cpuName(cpu) + " is not enabled");
         return false;

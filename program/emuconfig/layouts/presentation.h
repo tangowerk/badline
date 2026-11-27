@@ -336,7 +336,6 @@ struct VideoScreenShotLayout : GUIKIT::FramedVerticalLayout {
         GUIKIT::RadioBox png;
         GUIKIT::RadioBox jpg;
         GUIKIT::RadioBox bmp;
-        GUIKIT::RadioBox gif;
         GUIKIT::RadioBox tga;
 
         GUIKIT::CheckBox palete;

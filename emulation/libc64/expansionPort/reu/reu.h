@@ -73,7 +73,6 @@ struct Reu : ExpansionPort {
 	auto isGame( ) -> bool override;
 
     auto clock() -> void override;
-    auto clockSCPU() -> void;
     auto reset(bool softReset = false) -> void override;
     auto serialize(Emulator::Serializer& s) -> void override;
     
@@ -86,10 +85,10 @@ struct Reu : ExpansionPort {
     auto hasFreezeButton() -> bool override;
     auto freeze() -> void override;
     
-    template<bool fromSCPU = false> inline auto stash() -> void;
-    template<bool fromSCPU = false> inline auto fetch() -> void;
-    template<bool fromSCPU = false> inline auto swap() -> void;
-    template<bool fromSCPU = false> inline auto verify() -> void;
+    inline auto stash() -> void;
+    inline auto fetch() -> void;
+    inline auto swap() -> void;
+    inline auto verify() -> void;
 	
 	auto readRomL(uint16_t addr) -> uint8_t override;
     auto peekRomL(uint16_t addr) -> uint8_t override;

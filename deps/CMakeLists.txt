@@ -29,14 +29,6 @@ set(srcs ${srcs} lha/lha_arch_unix.cpp )
 
 target_sources(lha PRIVATE ${srcs})
 
-# GIF
-add_library(gif STATIC)
-
-target_sources(gif PRIVATE
-        cgif/cgif.cpp
-        cgif/cgif_raw.cpp
-)
-
 # glslang
 add_library(glslang STATIC)
 

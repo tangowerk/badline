@@ -1,7 +1,6 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
-#include "cgif.h"
 
 #include <cstdint>
 #include <vector>
@@ -38,14 +37,6 @@ namespace GUIKIT {
                 stbi_write_tga_to_func(func, this, width, height, 3, (const void*)src);
                 mergeChunks();
                 break;
-            case Type::GIF:
-                if (encodeGIF(src, width, height))
-                    mergeChunks();                    
-                else {
-                    usedType = Type::PNG;
-                    data = stbi_write_png_to_mem((const unsigned char*)src, width * 3, width, height, 3, &size);                    
-                }
-                break;
         }
 
         return data != nullptr;
@@ -58,9 +49,6 @@ namespace GUIKIT {
         switch (type) {
             case Type::BMP:
                 encodeBMPWithColorTable(colorTable, srcs[0], width, height);
-                break;
-            case Type::GIF:
-                encodeGIFWithColorTable(colorTable, srcs, width, height, delay);
                 break;
             default:
                 break;
@@ -190,133 +178,4 @@ namespace GUIKIT {
         return true;
     }
 
-    static auto writeGIF(void* pContext, const uint8_t* pData, const size_t numBytes) -> int {
-        ImageEncoder::func(pContext, (void*)pData, numBytes);
-
-        return 0;
-    }
-
-    auto ImageEncoder::encodeGIF(const uint8_t* src, unsigned width, unsigned height) -> bool {
-        std::vector<uint32_t> colorTable;
-        colorTable.reserve(256);
-        
-        unsigned _size = width * height;
-        uint8_t* _ptr = (uint8_t*)src;
-        unsigned _col;
-        bool match;
-        int colRef;
-        uint8_t* imgSrc = new uint8_t[_size];
-        uint8_t* _pImg = imgSrc;
-
-        for (int i = 0; i < _size; i++) {
-            //_col = (*_ptr++ << 16) | (*_ptr++ << 8) | *_ptr++;
-            _col = *_ptr++ << 16;
-            _col |= *_ptr++ << 8;
-            _col |= *_ptr++;
-            
-            match = false;
-
-            for (colRef = 0; colRef < colorTable.size(); colRef++) {
-                if (colorTable[colRef] == _col) {
-                    match = true;
-                    *_pImg++ = colRef;
-                    break;
-                }
-            }
-
-            if (match)
-                continue;
-
-            colorTable.push_back(_col);
-            colRef = colorTable.size() - 1;
-
-            if (colRef >= 256) {
-                delete[] imgSrc;
-                return false;
-            }
-            *_pImg++ = colRef;
-        }
-
-        CGIF* pGIF;
-        CGIF_Config gConfig;
-        CGIF_FrameConfig fConfig;
-
-        uint16_t numColors = colorTable.size();
-        uint8_t* aPalette = new uint8_t[numColors * 3];
-
-        uint8_t* ptr = aPalette;
-        for (auto& col : colorTable) {
-            *ptr++ = (col >> 16) & 0xff;
-            *ptr++ = (col >> 8) & 0xff;
-            *ptr++ = (col >> 0) & 0xff;
-        }
-
-        std::memset(&gConfig, 0, sizeof(CGIF_Config));
-        gConfig.width = width;
-        gConfig.height = height;
-        gConfig.pGlobalPalette = aPalette;
-        gConfig.numGlobalPaletteEntries = numColors;
-        gConfig.path = nullptr;
-        gConfig.pWriteFn = writeGIF;
-        gConfig.pContext = this;
-
-        pGIF = cgif_newgif(&gConfig);
-        delete[] aPalette;
-
-        std::memset(&fConfig, 0, sizeof(CGIF_FrameConfig));
-        fConfig.pImageData = imgSrc;
-
-        cgif_addframe(pGIF, &fConfig);
-        cgif_close(pGIF);
-        delete[] imgSrc;
-
-        return true;
-    }
-
-    auto ImageEncoder::encodeGIFWithColorTable(std::vector<uint32_t>& colorTable, const std::vector<uint8_t*>& srcs, unsigned width, unsigned height, unsigned delay) -> bool {
-        CGIF* pGIF;
-        CGIF_Config gConfig;
-        CGIF_FrameConfig fConfig;
-        
-        uint16_t numColors = colorTable.size();
-        uint8_t* aPalette = new uint8_t[numColors * 3];
-        
-        uint8_t* ptr = aPalette;
-        for (auto& col : colorTable) {
-            *ptr++ = (col >> 16) & 0xff;
-            *ptr++ = (col >> 8) & 0xff;
-            *ptr++ = (col >> 0) & 0xff;
-        }
-
-        std::memset(&gConfig, 0, sizeof(CGIF_Config));
-        gConfig.width = width;
-        gConfig.height = height;
-        gConfig.pGlobalPalette = aPalette;
-        gConfig.numGlobalPaletteEntries = numColors;
-        gConfig.path = nullptr;
-        gConfig.pWriteFn = writeGIF;
-        gConfig.pContext = this;
-        if (srcs.size() > 1) {
-            gConfig.attrFlags = CGIF_ATTR_IS_ANIMATED;
-            gConfig.genFlags = CGIF_GEN_KEEP_IDENT_FRAMES;
-        }
-
-        pGIF = cgif_newgif(&gConfig);
-        delete[] aPalette;
-
-        std::memset(&fConfig, 0, sizeof(CGIF_FrameConfig));
-
-        if (srcs.size() > 1)
-            fConfig.delay = 2 * delay; // 0.02 => 50 FPS
-
-        for(auto src : srcs) {
-            fConfig.pImageData = (uint8_t*)src;
-            cgif_addframe(pGIF, &fConfig);
-        }
-
-        cgif_close(pGIF);       
-        mergeChunks();
-
-        return true;
-    }
 }

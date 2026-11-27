@@ -716,7 +716,6 @@ auto McpServer::registerTools() -> void {
                     screenshot.path = job.text;
                     screenshot.saveState = false;
                     screenshot.writePalette = false;
-                    screenshot.animatedGif = false;
                     screenshot.gun = 0;
                     screenshot.interval = 1;
                     screenshot.intervalPos = 1;

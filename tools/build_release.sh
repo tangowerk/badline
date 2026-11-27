@@ -34,7 +34,7 @@ if [ "$installDeps" = 1 ]; then
     sudo apt-get install -y --no-install-recommends \
         build-essential cmake ninja-build pkg-config git ca-certificates \
         libgtk-3-dev libpulse-dev libcurl4-openssl-dev libfreetype-dev libfontconfig-dev \
-        libx11-dev libxrandr-dev libxfixes-dev libxext-dev libopenal-dev libmp3lame-dev \
+        libx11-dev libxrandr-dev libxfixes-dev libxext-dev libopenal-dev \
         libwayland-dev libxkbcommon-dev wayland-protocols libdecor-0-dev \
         libegl-dev libgl-dev libgles-dev libdrm-dev libgbm-dev \
         libxcursor-dev libxi-dev libxss-dev libxtst-dev libxinerama-dev \
@@ -84,7 +84,7 @@ Install:        copy the folder anywhere (e.g. ~/.local/opt/badline) and start b
                 share/applications/badline.desktop can be adapted for a launcher entry.
 
 SDL3 is included (lib/). The other libraries come from your system; on Ubuntu/Debian:
-  sudo apt install libgtk-3-0t64 libpulse0 libcurl4t64 libopenal1 libmp3lame0 \\
+  sudo apt install libgtk-3-0t64 libpulse0 libcurl4t64 libopenal1 \\
                    libfreetype6 libfontconfig1 libgl1 libegl1
 (Debian 13 / Ubuntu 24.04 names; most desktops have them already.)
 

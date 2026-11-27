@@ -151,7 +151,6 @@ DriversLayout::DriversLayout() {
     adl.top.driver.combo.onChange = [this]() {
         emuThread->lock();
         globalSettings->set<std::string>("audio_driver", adl.top.driver.combo.text() );
-        audioManager->record.finish();
         AudioManager::initDriver();
         emuThread->unlock();
     };
@@ -159,11 +158,9 @@ DriversLayout::DriversLayout() {
     adl.top.frequencyCombo.onChange = [this]() {
         emuThread->lock();
         globalSettings->set<unsigned>("audio_frequency_v2", adl.top.frequencyCombo.userData());
-        audioManager->record.finish();
         audioManager->setFrequency();
         audioManager->setResampler();
         audioManager->resetDriveSounds( );
-        audioManager->setAudioDsp();
         emuThread->unlock();
     };
 
@@ -173,7 +170,6 @@ DriversLayout::DriversLayout() {
 
         globalSettings->set<unsigned>("audio_latency", position + minimumLatency);
         updateLatencySlider();
-        audioManager->record.finish();
         audioManager->setLatency();
         emuThread->unlock();
     };

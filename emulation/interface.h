@@ -363,8 +363,8 @@ struct Interface {
     };
 
     enum class DebuggerTheme : unsigned { Unspecified = 0,
-        CPU = 1, SCPU = 2, Drive8CPU = 4, Drive9CPU = 8, Drive10CPU = 0x10, Drive11CPU = 0x20,
-        Memory = 0x40, MemorySCPU = 0x80, Drive8Memory = 0x100, Drive9Memory = 0x200, Drive10Memory = 0x400, Drive11Memory = 0x800,
+        CPU = 1, Drive8CPU = 4, Drive9CPU = 8, Drive10CPU = 0x10, Drive11CPU = 0x20,
+        Memory = 0x40, Drive8Memory = 0x100, Drive9Memory = 0x200, Drive10Memory = 0x400, Drive11Memory = 0x800,
         CIA = 0x1000, Video = 0x2000, DMA = 0x4000, SID = 0x8000, Copper = 0x10000, Blitter = 0x20000,
         Agnus = 0x40000, Paula = 0x80000, Drive8VIA = 0x100000, Drive9VIA = 0x200000, Drive10VIA = 0x400000, Drive11VIA = 0x800000,
         Serial = 0x1000000
@@ -720,7 +720,6 @@ struct Interface {
     virtual auto debuggerStepOut(DebuggerTheme theme) -> bool { return false; }
 
     virtual auto getMemoryDumpBank(uint8_t bank, uint16_t* dump) -> void {}
-    virtual auto getMemoryDumpBank(uint8_t bank, uint8_t* dump) -> void {}
     virtual auto getMemoryDumpPage(DebuggerTheme theme, uint8_t page, uint8_t* dump) -> void {}
     virtual auto getMemory(DebuggerTheme theme, DebuggerAction action, unsigned startAddr, unsigned endAddr, uint8_t* dump) -> void {}
     virtual auto getDmaDump() -> uint8_t* { return nullptr; }
@@ -886,6 +885,14 @@ struct Interface {
                 return &media;
         }
         
+        return nullptr;
+    }
+
+    auto getMediaGroupById( unsigned id ) -> MediaGroup* {
+        for (auto& group : mediaGroups) {
+            if (group.id == id)
+                return &group;
+        }
         return nullptr;
     }
 

@@ -3,7 +3,7 @@ Version: _VERSION
 Architecture: amd64
 Essential: no
 Priority: optional
-Depends: libsdl3-0,libcurl4,libgtk-3-0,libpulse0,libmp3lame0,libfreetype6
+Depends: libsdl3-0,libcurl4,libgtk-3-0,libpulse0,libfreetype6
 Maintainer: Badline contributors <https://github.com/tangowerk/badline>
 Installed-Size: _INSTALLED_SIZE
 Description: cycle-accurate Commodore 64 emulator (fork of Denise)

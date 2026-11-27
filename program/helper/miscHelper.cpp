@@ -1,6 +1,5 @@
 
 #include "miscHelper.h"
-#include "../firmware/roms.h"
 
 #include "../../emulation/libc64/interface.h"
 #include "../program.h"
@@ -235,32 +234,12 @@ auto MiscHelper::prepareSocket(Emulator::Interface::Media* media, Emulator::Inte
     emulator->prepareSocket( media, address, port );
 }
 
-auto MiscHelper::initExpansionRom(Emulator::Interface* emulator, const std::string& ident, const std::string& file) -> void {
-    auto fSetting = FileSetting::getInstance( emulator, _underscore(ident) );
-    fSetting->setPath(Roms::path(file));
-    fSetting->setFile(file);
-    fSetting->setId(0);
-    fSetting->setSaveable(false);
-}
-
 auto MiscHelper::toggle2Mhz() -> void {
-    if (dynamic_cast<LIBC64::Interface*>(activeEmulator) && !hasSuperCpuActive()) {
+    if (dynamic_cast<LIBC64::Interface*>(activeEmulator)) {
         bool state = dynamic_cast<LIBC64::Interface*>(activeEmulator)->toggle2Mhz();
         if (statusHandler)
             statusHandler->setMessage(trans->getA(state ? "CPU Turbo 2 MHz" : "CPU Turbo disabled"), false, true);
     }
-}
-
-auto MiscHelper::hasSuperCpuActive() -> bool {
-    if (dynamic_cast<LIBC64::Interface*>(activeEmulator)) {
-        auto expansion = activeEmulator->getExpansion();
-        if (!expansion)
-            return false;
-
-        if ((expansion->id == LIBC64::Interface::ExpansionId::ExpansionIdSuperCpu) || (expansion->id == LIBC64::Interface::ExpansionId::ExpansionIdSuperCpuReu))
-            return true;
-    }
-    return false;
 }
 
 auto MiscHelper::centerGeometry(GUIKIT::Window* window, GUIKIT::Size _size, GUIKIT::Geometry _containerGeo) -> void {
