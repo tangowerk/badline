@@ -9,6 +9,9 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 First preview release. The C64 emulation is Denise's; this release reshapes
 everything around it.
 
+Download: `badline-0.1.0-linux-x86_64.tar.gz` (built on Ubuntu 24.04, needs
+glibc 2.39+, SDL3 included; see `INSTALL.txt` inside) or build from source.
+
 ### Identity
 
 - Renamed to **Badline**: binary `badline`, window title, Wayland app id,
@@ -52,10 +55,25 @@ everything around it.
 - The settings dialogs, debugger windows and file dialogs of the GTK GUI are
   no longer reachable; they will be replaced by the in-window overlay.
 
+### In-window overlay menu
+
+- **F12 or the gamepad Guide button** opens a menu drawn inside the emulator
+  window in a C64 look (C64 Pro fonts, Pepto palette, dimmed last frame); the
+  emulation pauses while it is open. Keyboard, gamepad and mouse work
+  throughout.
+- **Media page** (fully working): tabs Autostart, Disk 8, Disk 9, Cartridge and
+  Tape with the inserted media, eject and write protection; bookmarks and
+  recent files; a file browser that enters ZIP, GZ, TAR and LHA archives, filters while
+  you type and previews disk and tape directories in the C64 font – start a
+  single program straight from the listing.
+- Resume, soft/hard reset and Quit (with confirmation) work; the Savestates,
+  Video, Audio, Input and System pages are **previews** without effect yet.
+- MCP `overlay` tool to drive the menu; the overlay state appears in `status`.
+
 ### Automation and debugging
 
 - **Embedded MCP server** (`-mcp [port]`, Streamable HTTP on 127.0.0.1, default
-  port 6464) with 30 tools:
+  port 6464) with 31 tools:
   - control and media: status, reset, pause/resume, warp, load_media (incl.
     autostart, file path or base64), eject, savestate save/load, quit
   - input and observation: type_text, key (with hold time), joystick,
@@ -101,9 +119,12 @@ everything around it.
   licenses and credits in `NOTICE.md`, license texts for the bundled fonts.
 - Denise's README and changelog archived in `docs/DENISE-HISTORY.md`.
 
-### Known limitations
+### Known limitations (preview)
 
-- No settings UI yet (configure via `~/.config/badline/*.ini` or MCP).
+- Only the Media page of the overlay works; other settings via
+  `~/.config/badline/*.ini` or MCP.
+- Not every overlay input path is tested yet (pad triggers, mouse double/right
+  click, Ctrl shortcuts under Wayland text input, two drives, tape preview).
 - Keyboard mapping is positional; some symbols are wrong on non-US layouts
   (e.g. `"` on German keyboards).
 - No status bar (drive LEDs, track display) until the overlay HUD.

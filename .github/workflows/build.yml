@@ -1,358 +1,61 @@
-name: Build + Release
+name: build
 
 on:
   push:
-    tags:
-      - 'v*.*'
-      - 'v*.*.*'
-      - 'test*.*'
+    branches: [master]
+    tags: ['v*']
+  pull_request:
   workflow_dispatch:
 
 jobs:
-  build-linux-flatpak:
-    runs-on: ubuntu-22.04
-
+  build:
+    runs-on: ubuntu-24.04
     steps:
-      - name: Update apt
-        timeout-minutes: 3
-        continue-on-error: true
-        run: |
-          sudo add-apt-repository -y ppa:flatpak/stable
-          sudo apt-get -q update
+      - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        shell: bash
-        run: |
-          # Jammy ships an older flatpak-builder (1.2.x).
-          # We need a newer version to avoid bwrap: execvp appstream-compose: No such file
-      
-          sudo apt-get -f install -y flatpak-builder
-      
-          flatpak-builder --version
-              
-          sudo apt-get install -y \
-            g++-12 \
-            cmake \
-            mesa-common-dev \
-            libgtk-3-dev \
-            libpulse-dev \
-            libudev-dev \
-            libxcb-xinput-dev \
-            libxcb-xfixes0 \
-            sshpass \
-            libusb-1.0-0-dev \
-            libmp3lame-dev
+      - name: SDL3 version
+        id: sdl
+        run: echo "version=$(sed -n 's/^SDL_VERSION=//p' tools/build_release.sh)" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Build
-        shell: bash
-        run: |
-          flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-          flatpak-builder --jobs "$(nproc)" --force-clean --verbose=0 --user --install-deps-from=flathub --repo=repo .flatpak-builder/out data/org.piciji.Denise.yml
-          flatpak build-bundle repo denise.flatpak org.piciji.Denise --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
-
-      - name: Prepare artifact
-        shell: bash
-        run: |
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            deployFile="denise_linux_${GITHUB_REF_NAME}.flatpak"
-          else
-            deployFile="denise_linux_build_${GITHUB_SHA::7}.flatpak"
-          fi
-
-          mv denise.flatpak "${deployFile}"
-
-          echo "ARTIFACT=${deployFile}" >> "${GITHUB_ENV}"
-
-      - name: Upload GitHub Actions artifact
-        uses: actions/upload-artifact@v6
+      - name: Cache SDL3
+        uses: actions/cache@v4
         with:
-          name: linux-flatpak-artifact
-          path: ${{ env.ARTIFACT }}
-          retention-days: 1
+          path: builds/sdl3
+          key: sdl3-${{ steps.sdl.outputs.version }}-ubuntu-24.04
 
-  build-linux-deb:
-    runs-on: ubuntu-22.04
+      - name: Build tarball
+        run: tools/build_release.sh --deps
 
-    steps:
-      - name: Update apt
-        timeout-minutes: 3
-        continue-on-error: true
-        run: sudo apt-get -q update
-
-      - name: Install dependencies
-        shell: bash
-        run: |
-          sudo apt-get install -y \
-            g++-12 \
-            cmake \
-            mesa-common-dev \
-            libgtk-3-dev \
-            libpulse-dev \
-            libudev-dev \
-            libxcb-xinput-dev \
-            libxcb-xfixes0 \
-            sshpass \
-            libusb-1.0-0-dev \
-            libmp3lame-dev
-
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Build
-        shell: bash
-        run: |
-          cmake \
-            -B builds/release \
-            -DCMAKE_CXX_COMPILER=g++-12 \
-            -DENABLE_LTO=ON
-          
-          cmake --build builds/release --parallel "$(nproc)"
-          
-      - name: Create DEB package
-        shell: bash
-        run: |
-          cd data
-          chmod +x build_deb.sh
-          ./build_deb.sh
-          dpkg-deb --build ./denisepackage
-
-      - name: Prepare artifact
-        shell: bash
-        run: |
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            deployFile="denise_ubuntu2204_${GITHUB_REF_NAME}.deb"
-          else
-            deployFile="denise_ubuntu2204_build_${GITHUB_SHA::7}.deb"
-          fi
-          
-          mv data/denisepackage.deb "${deployFile}"
-          
-          echo "ARTIFACT=${deployFile}" >> "${GITHUB_ENV}"
-
-      - name: Upload GitHub Actions artifact
-        uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v4
         with:
-          name: linux-deb-artifact
-          path: ${{ env.ARTIFACT }}
-          retention-days: 1
-
-  build-macos:
-    strategy:
-      matrix:
-        include:
-          - target: macos_arm64
-            runner: macos-latest
-            deployment_target: "11"
-
-          - target: macos_x64
-            runner: macos-15-intel
-            deployment_target: "10.13"
-
-    runs-on: ${{ matrix.runner }}
-
-    env:
-      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.deployment_target }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.10"
-
-      - name: Install build tools
-        shell: bash
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install dmgbuild==1.6.7
-
-      - name: Build
-        shell: bash
-        run: |          
-          cmake \
-            -B builds/release \
-            -DCMAKE_INSTALL_PREFIX=builds/release \
-            -DENABLE_LTO=ON
-          
-          cmake --build builds/release --parallel "$(sysctl -n hw.ncpu)"
-          cmake --install builds/release
-          
-          dmgbuild \
-            -s data/dmgSettings.py \
-            "Denise" \
-            builds/release/denise.dmg
-
-      - name: Prepare artifact
-        shell: bash
-        run: |
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
-            bzTarget="denise_${{ matrix.target }}_${GITHUB_REF_NAME}.dmg"
-          else
-            bzTarget="denise_${{ matrix.target }}_build_${GITHUB_SHA::7}.dmg"
-          fi
-          
-          mv builds/release/denise.dmg "${bzTarget}"
-          bzip2 -z "${bzTarget}"
-          
-          echo "ARTIFACT=${bzTarget}.bz2" >> "${GITHUB_ENV}"
-
-      - name: Upload GitHub Actions artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.target }}-artifact
-          path: ${{ env.ARTIFACT }}
-          retention-days: 1
-
-  build-windows:
-    runs-on: windows-latest
-
-    strategy:
-      matrix:
-        include:
-          - target: win64
-            mingw_archive: x86_64-15.2.0-release-posix-seh-msvcrt-rt_v13-rev1.7z
-            mingw_dir: mingw64
-
-          - target: win32
-            mingw_archive: i686-15.2.0-release-posix-dwarf-msvcrt-rt_v13-rev1.7z
-            mingw_dir: mingw32
-
-    env:
-      mingw_archive: ${{ matrix.mingw_archive }}
-      mingw_dir: ${{ matrix.mingw_dir }}
-      mingw_url: https://github.com/niXman/mingw-builds-binaries/releases/download/15.2.0-rt_v13-rev1/${{ matrix.mingw_archive }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Cache MinGW archive
-        id: cache-mingw
-        uses: actions/cache@v5
-        with:
-          path: ${{ env.mingw_archive }}
-          key: mingw-${{ env.mingw_archive }}
-
-      - name: Download MinGW
-        if: steps.cache-mingw.outputs.cache-hit != 'true'
-        shell: cmd
-        run: |
-          curl -L "%mingw_url%" -o "%mingw_archive%"
-
-      - name: Extract MinGW
-        shell: cmd
-        run: |
-          7z x -y "%mingw_archive%" > nul
-          
-      - name: Setup MinGW
-        shell: cmd
-        run: |
-          echo %CD%\%mingw_dir%\bin>>"%GITHUB_PATH%"
-
-      - name: Check MinGW
-        shell: cmd
-        run: |
-          where g++
-          g++ -v
-
-      - name: Build
-        shell: pwsh
-        run: |
-          cmake -G "MinGW Makefiles" -B builds/release -DENABLE_LTO=ON
-      
-          $cpus = (Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
-          Write-Host "Building with $cpus parallel jobs"
-      
-          cmake --build builds/release --parallel $cpus
-          cmake --install builds/release          
-
-      - name: Prepare artifact
-        shell: pwsh
-        run: |
-          if ($env:GITHUB_REF_TYPE -eq "tag") {
-            $zipTarget = "denise_${{ matrix.target }}_$env:GITHUB_REF_NAME"
-          } else {
-            $zipTarget = "denise_${{ matrix.target }}_build_$($env:GITHUB_SHA.Substring(0, 7))"
-          }
-          
-          Move-Item "builds/release/out" $zipTarget
-          Compress-Archive -Path $zipTarget -DestinationPath "$zipTarget.zip"
-          
-          "ARTIFACT=$zipTarget.zip" >> $env:GITHUB_ENV
-
-      - name: Upload GitHub Actions artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.target }}-artifact
-          path: ${{ env.ARTIFACT }}
-          retention-days: 1
+          name: badline-linux-x86_64
+          path: dist/*.tar.gz
+          if-no-files-found: error
 
   release:
-    needs:
-      - build-linux-flatpak
-      - build-linux-deb
-      - build-macos
-      - build-windows
-
-    runs-on: ubuntu-latest
-
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
-
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v7
-        with:
-          pattern: '*-artifact'
-          path: release
-          merge-multiple: true
+      - uses: actions/checkout@v4
 
-      - name: Create GitHub release
-        if: github.ref_type == 'tag'
+      - uses: actions/download-artifact@v4
+        with:
+          name: badline-linux-x86_64
+          path: dist
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            /^## / { if (found) exit; if (index($0, "## " v " ") == 1) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "no CHANGELOG section for $version" >&2; exit 1; }
+
+      - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |          
-          gh release create "${GITHUB_REF_NAME}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "${GITHUB_REF_NAME}" \
-            --notes "" \
-            release/*
-
-      - name: Install sshpass
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y sshpass
-
-      - name: Deploy to SourceForge
-        shell: bash
-        env:
-          FTP_PSW: ${{ secrets.FTP_PSW }}
-          FTP_FOLDER: ${{ secrets.FTP_FOLDER }}
-        run: |                    
-          printf '%s\n' "${FTP_PSW}" > ftp.txt
-          trap 'rm -f ftp.txt' EXIT
-          
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            DEST_FOLDER="${GITHUB_REF_NAME}"
-          else
-            DEST_FOLDER="nightlies"
-          fi
-          
-          for file in release/*; do          
-            sshpass -f "ftp.txt" \
-              scp \
-                -o StrictHostKeyChecking=no \
-                -o UserKnownHostsFile=/dev/null \
-                "${file}" \
-                "piciji@frs.sourceforge.net:${FTP_FOLDER}${DEST_FOLDER}/"
-          done
-
-      - name: Clean up
-        if: always()
-        run: rm -rf release
+        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz --title "Badline ${GITHUB_REF_NAME#v}" --notes-file notes.md --verify-tag
