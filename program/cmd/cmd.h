@@ -86,7 +86,6 @@ struct Cmd {
     
     auto saveExitScreenshot() -> void;
 
-    auto recommendPlaceholder() -> bool { return !debug && !noGui && !autoload; }
 
 	auto prepareOptions() -> void;
 

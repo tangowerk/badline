@@ -34,8 +34,6 @@ struct SdlWindow {
     // pixel size of the drawable
     auto drawableSize(int& w, int& h) -> void;
 
-    auto loadSplashScreen() -> void;
-
     // persist window size/fullscreen in the global settings
     auto saveState() -> void;
 
@@ -48,7 +46,6 @@ private:
     auto handleDrop(SDL_Event& ev) -> void;
     auto updateMouseCapture() -> void;
     auto requestQuit() -> void;
-    auto splashHit(float x, float y) -> int;
     auto handleRomPrompt(SDL_Event& ev) -> bool;
     auto romDownloadFinished() -> void;
     auto showText(const std::string& text, bool warn, unsigned seconds) -> void;
@@ -75,7 +72,6 @@ private:
     std::vector<std::string> dropFiles;
     bool dragging = false;
 
-    GUIKIT::Image splash;
 };
 
 extern SdlWindow* sdlWindow;

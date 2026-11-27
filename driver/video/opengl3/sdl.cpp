@@ -18,18 +18,6 @@ struct SDLGL : public Video, GL3, RenderThread {
 
     bool hasRendererContext = false;
 
-    auto showSplashScreen(unsigned frames, SplashscreenCallback callback) -> void {
-        splashScreen.prepare(frames, callback);
-    }
-
-    auto hideSplashScreen() -> void {
-        splashScreen.hide();
-    }
-
-    auto visibleSplashScreen() -> bool {
-        return splashScreen.isVisible();
-    }
-
     auto setOverlay(std::shared_ptr<const OverlayFrame> frame) -> void {
         overlay.set(frame);
     }
@@ -371,9 +359,6 @@ struct SDLGL : public Video, GL3, RenderThread {
 
     auto render() -> void {
         GL3::_redraw(options);
-
-        if (splashScreen.enable)
-            updateSplashScreen();
 
         overlay.show(viewScreen.windowWidth, viewScreen.windowHeight);
 

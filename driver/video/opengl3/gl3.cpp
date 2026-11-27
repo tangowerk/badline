@@ -30,7 +30,6 @@ namespace DRIVER {
 #include "progress.h"
 
 namespace DRIVER {
-#include "splashScreen.h"
 #include "overlay.h"
 
 #define UNIFORM_VERTEX_BLOCK_BINDING 1
@@ -75,7 +74,6 @@ struct GL3 {
 
     ViewScreen viewScreen;
     Viewport viewport;
-    GLSplashScreen splashScreen;
     GLOverlay overlay;
     OpenGLProgress progress;
 #ifdef DRV_FREETYPE
@@ -362,9 +360,6 @@ struct GL3 {
 
         if (!progress.init())
             progress.term();
-
-        if (!splashScreen.init())
-            splashScreen.term();
 
         overlay.term();
         if (!overlay.init())
@@ -1141,14 +1136,6 @@ End:
         screenshotCallback(buffer, viewport.width, viewport.height);
 
         delete[] buffer;
-    }
-
-    auto updateSplashScreen() -> void {
-        if (splashScreen.updateTex( viewport )) {
-            if (splashScreen.lastS == SplashScreen::FADE_OUT)
-                frameCount = 0;
-            splashScreen.show( viewport );
-        }
     }
 };
 

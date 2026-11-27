@@ -23,6 +23,9 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 - USBSID-Pico stub, the Amiga debugger themes and the Windows/macOS branches
   in `emulation/tools` (unused `uuid`/`DLLoader` helpers deleted). Savestates
   keep their format.
+- Dead splash screen code (start image overlay, `splash_screen` setting): its
+  image was already removed with the Denise branding in 0.1.0, so nothing was
+  shown since then.
 
 ### Changed
 

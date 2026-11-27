@@ -203,7 +203,6 @@ auto Autoloader::postProcessing() -> void {
 			}
 		}
 
-        videoDriver->hideSplashScreen();
         ddControl.started = true;
 
         if (!useExpansion)

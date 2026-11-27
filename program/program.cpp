@@ -128,9 +128,6 @@ auto Program::finishStartup() -> void {
     AudioManager::initDriver();
     initVideo();
 
-    if (cmd->recommendPlaceholder() && sdlWindow)
-        sdlWindow->loadSplashScreen();
-
     cmd->autoloadImages();
 
     if (GUIKIT::Application::exitCode || GUIKIT::Application::isQuit)

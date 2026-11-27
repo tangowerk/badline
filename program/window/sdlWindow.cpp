@@ -232,15 +232,6 @@ auto SdlWindow::handleEvent(SDL_Event& ev) -> void {
             }
         } break;
 
-        case SDL_EVENT_MOUSE_BUTTON_DOWN:
-            if (ev.button.button == SDL_BUTTON_LEFT && videoDriver->visibleSplashScreen()) {
-                emuThread->lock(true);
-                if (splashHit(ev.button.x, ev.button.y) != -1)
-                    videoDriver->hideSplashScreen();
-                emuThread->unlock();
-            }
-            break;
-
         case SDL_EVENT_DROP_BEGIN:
         case SDL_EVENT_DROP_POSITION:
         case SDL_EVENT_DROP_FILE:
@@ -310,55 +301,6 @@ auto SdlWindow::handleDrop(SDL_Event& ev) -> void {
                 SDL_RaiseWindow(window);
         } break;
     }
-}
-
-// left click on the splash screen: -1 outside the picture
-auto SdlWindow::splashHit(float x, float y) -> int {
-    float density = SDL_GetWindowPixelDensity(window);
-    if (density <= 0.0f)
-        density = 1.0f;
-    int px = (int)(x * density), py = (int)(y * density);
-    auto& vp = videoDriver->getViewport();
-    if (px < vp.x || py < vp.y || px > vp.x + (int)vp.width || py > vp.y + (int)vp.height)
-        return -1;
-    return 1;
-}
-
-auto SdlWindow::loadSplashScreen() -> void {
-    if (!globalSettings->get<bool>("splash_screen", true))
-        return;
-
-    GUIKIT::File file(program->imgFolder() + "startscreen.png");
-    if (!file.open())
-        return;
-
-    uint8_t* data = file.read();
-    if (!data || !splash.loadPng(data, file.getSize()))
-        return;
-
-    DRIVER::Video::SplashscreenCallback cb = [this](DRIVER::Viewport& vp, bool hide) -> uint8_t* {
-        if (hide) {
-            splash.free();
-            return nullptr;
-        }
-        auto& winVp = videoDriver->getViewport();
-        float targetRatio = (float)splash.width / (float)splash.height;
-
-        vp.width = winVp.width;
-        vp.height = static_cast<int>(winVp.width / targetRatio);
-
-        if (vp.height > winVp.height) {
-            vp.height = winVp.height;
-            vp.width = static_cast<int>(winVp.height * targetRatio);
-        }
-
-        vp.x = (winVp.width - vp.width) / 2;
-        vp.y = (winVp.height - vp.height) / 2;
-
-        return splash.resize(vp.width, vp.height);
-    };
-
-    videoDriver->showSplashScreen(110, cb);
 }
 
 auto SdlWindow::showText(const std::string& text, bool warn, unsigned seconds) -> void {

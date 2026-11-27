@@ -84,7 +84,6 @@ enum Rotation { ROT_0, ROT_90, ROT_180, ROT_270 };
 
 struct Video {
     using ScreenshotCallback = std::function<void (uint8_t* _data, unsigned _width, unsigned _height)>;
-    using SplashscreenCallback = std::function<uint8_t* (Viewport& viewport, bool hide )>;
 
     virtual auto init(uintptr_t handle) -> bool { return true; }
     virtual auto term() -> void {}
@@ -126,9 +125,6 @@ struct Video {
     virtual auto setOverlay(std::shared_ptr<const OverlayFrame> frame) -> void {}
     virtual auto hasOverlay() -> bool { return false; }
 
-    virtual auto showSplashScreen(unsigned frames, SplashscreenCallback callback) -> void {}
-    virtual auto hideSplashScreen() -> void {}
-    virtual auto visibleSplashScreen() -> bool { return false; }
 
     virtual auto setVRR(bool state, float speed = 0.0) -> void {}
     virtual auto hasVRR() -> bool { return false; }
