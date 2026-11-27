@@ -44,7 +44,9 @@ auto OverlayFont::load(const std::string& folder, std::string& error) -> bool {
     auto codes = charset();
     unsigned perRow = 512 / Cell;
     // cell 0 is the white block
-    unsigned cells = 1 + 2 * (unsigned)codes.size();
+    // C64 Pro Mono also gets the screen code glyphs (U+EE00 + code, upper case/graphics set)
+    const unsigned ScreenCodes = 256;
+    unsigned cells = 1 + 2 * (unsigned)codes.size() + ScreenCodes;
     atlasWidth = 512;
     atlasHeight = 16;
     while (atlasHeight < ((cells + perRow - 1) / perRow) * Cell) atlasHeight <<= 1;
@@ -68,7 +70,10 @@ auto OverlayFont::load(const std::string& folder, std::string& error) -> bool {
         }
         FT_Set_Pixel_Sizes(face, 0, Size);
 
-        for (auto cp : codes) {
+        auto faceCodes = codes;
+        if (f == Mono)
+            for (uint32_t sc = 0; sc < ScreenCodes; sc++) faceCodes.push_back(0xee00 + sc);
+        for (auto cp : faceCodes) {
             unsigned index = FT_Get_Char_Index(face, cp);
             if (!index && cp != ' ')
                 continue;

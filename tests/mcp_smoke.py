@@ -76,6 +76,57 @@ def basic_prg(lines):
     return b"\x01\x08" + bytes(body)
 
 
+def make_d64(disk_name, files):
+    """Minimal D64 (35 tracks) with PRG files of at most 254 bytes each: files = [(name, prg_bytes)]."""
+    def sectors(track):
+        return 21 if track <= 17 else 19 if track <= 24 else 18 if track <= 30 else 17
+
+    def offset(track, sector):
+        return (sum(sectors(t) for t in range(1, track)) + sector) * 256
+
+    img = bytearray(sum(sectors(t) for t in range(1, 36)) * 256)
+    bam = offset(18, 0)
+    img[bam:bam + 4] = bytes([18, 1, 0x41, 0])
+    for t in range(1, 36):
+        n = sectors(t)
+        used = 2 if t == 18 else (len(files) if t == 17 else 0)
+        bits = ((1 << n) - 1) & ~((1 << used) - 1)
+        img[bam + 4 * t:bam + 4 * t + 4] = bytes([n - used, bits & 0xff, (bits >> 8) & 0xff, (bits >> 16) & 0xff])
+    name = disk_name.encode()[:16].ljust(16, b"\xa0")
+    img[bam + 0x90:bam + 0xa0] = name
+    img[bam + 0xa0:bam + 0xab] = b"\xa0\xa0" + b"ID" + b"\xa0" + b"2A" + b"\xa0\xa0\xa0\xa0"
+    d = offset(18, 1)
+    img[d:d + 2] = bytes([0, 0xff])
+    for i, (fname, data) in enumerate(files):
+        e = d + 32 * i
+        img[e + 2] = 0x82
+        img[e + 3], img[e + 4] = 17, i
+        img[e + 5:e + 21] = fname.encode()[:16].ljust(16, b"\xa0")
+        img[e + 30] = 1
+        s = offset(17, i)
+        img[s] = 0
+        img[s + 1] = len(data) + 1
+        img[s + 2:s + 2 + len(data)] = data
+    return bytes(img)
+
+
+def make_crt(text):
+    """Generic 8K cartridge that initializes the Kernal and prints 'text'."""
+    code = bytearray([0x09, 0x80, 0x09, 0x80, 0xC3, 0xC2, 0xCD, 0x38, 0x30])  # vectors + CBM80
+    code += bytes([0x20, 0x84, 0xFF, 0x20, 0x87, 0xFF, 0x20, 0x8A, 0xFF, 0x20, 0x81, 0xFF, 0xA2, 0x00])
+    loop = 0x8000 + len(code)
+    msg = loop + 15
+    code += bytes([0xBD, msg & 0xff, msg >> 8, 0xF0, 0x06, 0x20, 0xD2, 0xFF, 0xE8, 0xD0, 0xF5])
+    done = 0x8000 + len(code)
+    code += bytes([0x4C, done & 0xff, done >> 8, 0xEA]) + text.encode() + b"\x00"
+    rom = bytes(code).ljust(0x2000, b"\xff")
+    header = b"C64 CARTRIDGE   " + (0x40).to_bytes(4, "big") + b"\x01\x00" + (0).to_bytes(2, "big") + b"\x00\x01" \
+        + b"\x00" * 6 + b"SMOKE".ljust(32, b"\x00")
+    chip = b"CHIP" + (0x2010).to_bytes(4, "big") + (0).to_bytes(2, "big") + (0).to_bytes(2, "big") \
+        + (0x8000).to_bytes(2, "big") + (0x2000).to_bytes(2, "big") + rom
+    return header + chip
+
+
 def wait_for_server(client, proc, seconds=20):
     end = time.time() + seconds
     while time.time() < end:
@@ -381,7 +432,10 @@ def run_overlay(client, headless):
         r = client.call("overlay", **args)
         if r["isError"]:
             return None, text_of(r)
-        return json.loads(text_of(r)), ""
+        t = text_of(r)
+        if "\n" in t:
+            print("  note: overlay messages:", t.split("\n", 1)[1][:300])
+        return json.loads(t.split("\n", 1)[0]), ""
 
     def focused(state):
         return next((w for w in state["widgets"] if w.get("focused")), None)
@@ -401,9 +455,9 @@ def run_overlay(client, headless):
     check("resume keeps the overlay pause", s.get("paused") is True, str(s))
 
     st, _ = ov(action="nav", keys=["down"])
-    check("sidebar down -> media", st["page"] == "media" and st["preview"] is True, st["page"])
+    check("sidebar down -> media", st["page"] == "media" and st["preview"] is False, st["page"])
     media = st["widgets"][0]
-    check("media list shows drives", media["kind"] == "list" and "Drive 8" in media["value"], str(media))
+    check("media page has the browser", media["kind"] == "media", str(media)[:200])
 
     st, _ = ov(action="page", page="video")
     st, _ = ov(action="nav", keys=["right"])
@@ -468,6 +522,196 @@ def run_overlay(client, headless):
     client.call("resume")
 
 
+def run_media(client, tmp, headless):
+    print("media page")
+    import zipfile
+    import shutil
+
+    base = os.path.join(tmp, "media")
+    os.makedirs(os.path.join(base, "folder"))
+    with open(os.path.join(base, "game.d64"), "wb") as f:
+        f.write(make_d64("TESTDISK", [("HELLO", basic_prg([(10, [0x99] + list(b' "D64 OK"'))])),
+                                      ("SECOND", basic_prg([(10, [0x99] + list(b' "SECOND OK"'))]))]))
+    with open(os.path.join(base, "tool.prg"), "wb") as f:
+        f.write(basic_prg([(10, [0x99] + list(b' "PRG OK"'))]))
+    with open(os.path.join(base, "readme.txt"), "w") as f:
+        f.write("not an image")
+    with open(os.path.join(base, ".hidden.d64"), "wb") as f:
+        f.write(b"x")
+    with zipfile.ZipFile(os.path.join(base, "archive.zip"), "w") as z:
+        z.writestr("sub/", "")
+        z.writestr("sub/inside.d64", make_d64("ZIPDISK", [("ZIPPED", basic_prg([(10, [0x99] + list(b' "ZIP OK"'))]))]))
+    shutil.copy(os.path.join(base, "tool.prg"), os.path.join(base, "gone.prg"))
+    with open(os.path.join(base, "cart.crt"), "wb") as f:
+        f.write(make_crt("CRT OK"))
+
+    def ov(**args):
+        r = client.call("overlay", **args)
+        if r["isError"]:
+            return None, text_of(r)
+        t = text_of(r)
+        if "\n" in t:
+            print("  note: overlay messages:", t.split("\n", 1)[1][:300])
+        return json.loads(t.split("\n", 1)[0]), ""
+
+    def detail(st):
+        return st["widgets"][0].get("detail", {}) if st and st["widgets"] else {}
+
+    def nav(*keys):
+        st, err = ov(action="nav", keys=list(keys))
+        return st, detail(st), err
+
+    def names(d):
+        return [e.rsplit(" [", 1)[0] for e in d.get("entries", [])]
+
+    def select(name):
+        """Type a filter that selects the entry 'name' (exact) in the current folder."""
+        st, err = ov(action="text", text=name.rstrip("/"))
+        d = detail(st)
+        n = names(d)
+        if name in n and d.get("selected") != name:
+            idx, cur = n.index(name), n.index(d.get("selected")) if d.get("selected") in n else 0
+            st, d, _ = nav(*(["down"] * (idx - cur) if idx > cur else ["up"] * (cur - idx)))
+        return st, d
+
+    def goto(path):
+        st, d, _ = nav("backspace")
+        for _ in range(40):
+            if d.get("location") == "/" and not d.get("archive"):
+                break
+            st, d, _ = nav("parent")
+        for part in [p for p in path.split("/") if p]:
+            st, d = select(part + "/")
+            st, d, _ = nav("ok")
+        return st, d
+
+    client.call("resume")
+    st, _ = ov(action="open")
+    st, _ = ov(action="page", page="media")
+    st, d, _ = nav("right")
+    check("media page is bare browser", st["zone"] == "content" and st["widgets"][0]["kind"] == "media"
+          and d.get("tab") == "autostart" and d.get("zone") == "files", str(d)[:300])
+    check("media tabs", d.get("tabs") == ["autostart", "disk8", "cartridge", "tape"], str(d.get("tabs")))
+
+    st, d = goto(base)
+    check("navigate to test folder", d.get("folder") == os.path.realpath(base), str(d.get("folder")))
+    n = names(d)
+    check("browser lists images, archives, folders", all(x in n for x in ["..", "folder/", "archive.zip", "game.d64", "tool.prg", "gone.prg"]), str(n))
+    check("browser hides other and hidden files", "readme.txt" not in n and ".hidden.d64" not in n, str(n))
+    check("folders/archives first", n.index("archive.zip") < n.index("game.d64") and n.index("folder/") < n.index("game.d64"), str(n))
+    st, d, _ = nav("all_files")
+    check("all files shows readme", "readme.txt" in names(d) and d.get("all_files") is True, str(names(d)))
+    st, d, _ = nav("all_files")
+
+    st, d = select("game.d64")
+    check("live filter", d.get("filter") == "game.d64" and d.get("selected") == "game.d64", str(d)[:300])
+    pv = d.get("preview", [])
+    check("directory preview", len(pv) >= 4 and "TESTDISK" in pv[0] and '"HELLO"' in pv[1] and '"SECOND"' in pv[2]
+          and "BLOCKS FREE" in pv[-1], str(pv))
+    st, d, _ = nav("back")
+    check("esc clears the filter first", d.get("filter") == "" and st["zone"] == "content", str(d.get("filter")))
+
+    st, d, _ = nav("bookmark")
+    bm = [f for f in d.get("favorites", []) if f["kind"] == "bookmark"]
+    check("bookmark current folder", any(f["path"] == os.path.realpath(base) for f in bm), str(bm))
+
+    st, d = select("archive.zip")
+    st, d, _ = nav("ok")
+    check("enter archive", d.get("archive", "").endswith("archive.zip") and "sub/" in names(d), str(d)[:300])
+    st, d = select("sub/")
+    st, d, _ = nav("ok")
+    check("folder inside archive", "inside.d64" in names(d) and d.get("location", "").endswith("archive.zip/sub/"), str(d)[:300])
+    st, d = select("inside.d64")
+    check("preview inside archive", any('"ZIPPED"' in l for l in d.get("preview", [])), str(d.get("preview")))
+    st, d, _ = nav("back", "parent", "parent")
+    check("leave archive selects it", not d.get("archive") and d.get("selected") == "archive.zip", str(d)[:300])
+
+    # Return on a preview line loads exactly that file
+    st, d = select("game.d64")
+    st, d, _ = nav("right", "down", "down")
+    check("preview focus", d.get("zone") == "preview" and d.get("preview_selected") == 2, str(d)[:200])
+    st, d, _ = nav("ok")
+    check("preview start closes overlay", st["open"] is False, str(st["open"]))
+    r = client.call("wait_for_text", text="SECOND OK", timeout=60, warp=True)
+    check("preview entry loaded + run", not r["isError"], text_of(r))
+
+    # Disk 8 tab: slot row, write protect, eject, insert only
+    ov(action="open")
+    st, _ = ov(action="page", page="media")
+    st, d, _ = nav("right", "tab")
+    slot = d.get("slot", {})
+    check("disk 8 slot shows image", d.get("tab") == "disk8" and "game" in slot.get("image", "")
+          and slot.get("buttons", [""])[0] == "Eject", str(slot))
+    st, d, _ = nav("home", "up", "right", "ok")
+    check("write protect toggle", d.get("zone") == "slot" and d["slot"].get("write_protect") is True, str(d.get("slot")))
+    st, d, _ = nav("ok")
+    check("write protect off", d["slot"].get("write_protect") is False, str(d.get("slot")))
+    st, d, _ = nav("eject")
+    check("eject drive 8", d["slot"].get("image") == "" and d.get("zone") == "files", str(d.get("slot")) + d.get("zone", ""))
+    st, d = goto(base)
+    st, d = select("game.d64")
+    st, d, _ = nav("insert")
+    check("insert only keeps overlay open", st["open"] and "game" in d["slot"].get("image", "")
+          and "Inserted" in st.get("message", ""), str(st.get("message")))
+    st, d, _ = nav("ok")
+    check("disk 8 autostart closes overlay", st["open"] is False)
+    r = client.call("wait_for_text", text="D64 OK", timeout=60, warp=True)
+    check("disk 8 autostart runs first file", not r["isError"], text_of(r))
+
+    # tape tab filter, mouse on tabs
+    ov(action="open")
+    st, _ = ov(action="page", page="media")
+    st, d, _ = nav("right")
+    rects = [list(map(int, r.split(","))) for r in d.get("tab_rects", "").split(";") if r]
+    if len(rects) == 4:
+        x, y, w_, h = rects[3]
+        st, _ = ov(action="click", x=x + w_ // 2, y=y + h // 2)
+        d = detail(st)
+    check("click tape tab", d.get("tab") == "tape", str(d.get("tab")))
+    st, d = goto(base)
+    check("tape tab filters disks", "game.d64" not in names(d) and "archive.zip" in names(d), str(names(d)))
+
+    # autostart a PRG, then a recent file that disappears
+    st, d, _ = nav("tab")
+    check("tab wraps to autostart", d.get("tab") == "autostart", str(d.get("tab")))
+    st, d = goto(base)
+    st, d = select("gone.prg")
+    st, d, _ = nav("ok")
+    check("autostart prg closes overlay", st["open"] is False)
+    r = client.call("wait_for_text", text="PRG OK", timeout=30, warp=True)
+    check("autostart prg runs", not r["isError"], text_of(r))
+    os.unlink(os.path.join(base, "gone.prg"))
+    ov(action="open")
+    st, _ = ov(action="page", page="media")
+    d = detail(st)
+    rec = [f for f in d.get("favorites", []) if f["kind"] == "recent"]
+    check("recent list", rec and rec[0]["title"].endswith("gone.prg") and rec[0].get("missing") is True, str(rec[:3]))
+    check("recent shows game.d64", any("game.d64" in f["title"] for f in rec), str(rec[:3]))
+    st, d, _ = nav("right", "bookmark")
+    bm = [f for f in d.get("favorites", []) if f["kind"] == "bookmark"]
+    check("bookmark toggled off", not any(f["path"] == os.path.realpath(base) for f in bm), str(bm))
+
+    # cartridge tab: insert = power cycle, eject = hard reset
+    st, d, _ = nav("tab", "tab")
+    check("cartridge tab", d.get("tab") == "cartridge", str(d.get("tab")))
+    st, d = goto(base)
+    check("cartridge tab filters", names(d)[1:] == ["archive.zip", "folder/", "cart.crt"], str(names(d)))
+    st, d = select("cart.crt")
+    st, d, _ = nav("ok")
+    check("cartridge start closes overlay", st["open"] is False, str(st.get("message")))
+    r = client.call("wait_for_text", text="CRT OK", timeout=20, warp=True)
+    check("cartridge runs", not r["isError"], text_of(r))
+    ov(action="open")
+    st, _ = ov(action="page", page="media")
+    d = detail(st)
+    check("cartridge slot", "cart" in d["slot"].get("image", "") and d["slot"].get("buttons") == ["Eject"], str(d.get("slot")))
+    st, d, _ = nav("right", "eject")
+    check("cartridge eject", d["slot"].get("image") == "", str(d.get("slot")))
+    ov(action="close")
+    r = client.call("wait_for_text", text="READY.", timeout=20, warp=True)
+    check("READY. after cartridge eject", not r["isError"], text_of(r))
+
+
 def run_headless_checks(client):
     print("headless")
     st = jtext(client.call("status"))
@@ -497,7 +741,9 @@ def main():
         cfgdir = tempfile.mkdtemp(prefix="u64-smoke-")
         mode = ["-headless", "-mcp", str(args.port)] if args.headless else ["-mcp", str(args.port)]
         cfg = os.path.join(cfgdir, "c64.ini")
-        proc = subprocess.Popen([args.binary, "-config-c64", cfg] + mode,
+        # own config folder: settings and recent files of the user stay untouched
+        env = dict(os.environ, XDG_CONFIG_HOME=cfgdir)
+        proc = subprocess.Popen([args.binary, "-config-c64", cfg] + mode, env=env,
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         wait_for_server(client, proc)
@@ -505,6 +751,7 @@ def main():
             run(client, tmp, args.headless)
             run_debug(client)
             run_overlay(client, args.headless)
+            run_media(client, tmp, args.headless)
             if args.headless:
                 run_headless_checks(client)
                 cfg_before = os.path.getmtime(cfg) if os.path.exists(cfg) else None

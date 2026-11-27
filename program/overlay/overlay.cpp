@@ -10,6 +10,7 @@
 #include "../mcp/server.h"
 #include "../window/sdlWindow.h"
 #include "../firmware/roms.h"
+#include "media.h"
 
 using namespace OverlayUi;
 
@@ -32,22 +33,10 @@ const NavName NavNames[] = {
     {"up", Overlay::Nav::Up}, {"down", Overlay::Nav::Down}, {"left", Overlay::Nav::Left}, {"right", Overlay::Nav::Right},
     {"ok", Overlay::Nav::Ok}, {"back", Overlay::Nav::Back}, {"pageup", Overlay::Nav::PageUp}, {"pagedown", Overlay::Nav::PageDown},
     {"home", Overlay::Nav::Home}, {"end", Overlay::Nav::End}, {"backspace", Overlay::Nav::Backspace}, {"delete", Overlay::Nav::Delete},
+    {"tab", Overlay::Nav::NextTab}, {"shift_tab", Overlay::Nav::PrevTab}, {"insert", Overlay::Nav::Insert},
+    {"bookmark", Overlay::Nav::Bookmark}, {"all_files", Overlay::Nav::AllFiles}, {"eject", Overlay::Nav::Eject},
+    {"parent", Overlay::Nav::Parent},
 };
-
-auto fileExtension(const std::string& name) -> std::string {
-    auto dot = name.rfind('.');
-    if (dot == std::string::npos || dot + 1 >= name.size())
-        return "";
-    std::string ext = name.substr(dot + 1);
-    for (auto& c : ext) c = (char)toupper((unsigned char)c);
-    return ext;
-}
-
-auto mediaName(Emulator::Interface::Media* media) -> std::string {
-    if (!media || !media->guid)
-        return "";
-    return program->getFileNameFromMedia(media);
-}
 
 }
 
@@ -73,6 +62,11 @@ auto Overlay::init() -> bool {
         toggleScancode = SDL_SCANCODE_F12;
     auto button = globalSettings->get<std::string>("overlay_pad_button", "guide");
     toggleButton = button.empty() ? -1 : (int)SDL_GetGamepadButtonFromString(button.c_str());
+
+    // disk directories as C64 screen codes (drawn with the C64 Pro glyphs at U+EE00)
+    for (auto emu : emulators)
+        if (auto c64 = dynamic_cast<LIBC64::Interface*>(emu))
+            c64->convertPetsciiToScreencode(true);
 
     buildPages();
 
@@ -105,28 +99,14 @@ auto Overlay::buildPages() -> void {
         p.action = [this]() { close(); };
     }
     {
-        auto& p = page("media", "Media", true);
-        auto list = p.add(new ListView({{"Slot", 72}, {"Inserted", 0}, {"Type", 40, true, true}}));
-        list->label = "Media";
-        list->onActivate = [this](int) { notify("Preview: the file browser follows in a later milestone"); };
-        p.refresh = [list](Page&) {
-            std::vector<std::vector<std::string>> rows;
-            auto row = [&rows](const std::string& slot, Emulator::Interface::Media* media) {
-                auto name = mediaName(media);
-                rows.push_back({slot, name.empty() ? "-" : name, fileExtension(name)});
-            };
-            if (activeEmulator) {
-                for (unsigned i = 0; i < 4; i++)
-                    row("Drive " + std::to_string(8 + i), activeEmulator->getDisk(i));
-                row("Tape", activeEmulator->getTape(0));
-                auto exp = activeEmulator->getExpansion();
-                Emulator::Interface::Media* cart = nullptr;
-                if (exp && !exp->isEmpty() && exp->mediaGroup && !exp->mediaGroup->media.empty())
-                    cart = &exp->mediaGroup->media[0];
-                row("Cartridge", cart);
-            }
-            list->setRows(rows);
-        };
+        auto& p = page("media", "Media");
+        p.bare = true;
+        auto browser = p.add(new MediaBrowser());
+        browser->font = &font;
+        browser->notify = [this](const std::string& text) { notify(text); };
+        browser->closeOverlay = [this]() { close(); };
+        browser->canAct = [this]() { return canRunMachineAction(); };
+        p.refresh = [browser](Page&) { browser->refresh(); };
     }
     {
         auto& p = page("savestates", "Savestates", true);
@@ -284,7 +264,10 @@ auto Overlay::wantsTextInput() const -> bool {
     if (!opened || dialog || zone != Zone::Content)
         return false;
     auto& p = *pages[pageIndex];
-    return p.focus >= 0 && p.focus < (int)p.widgets.size() && p.widgets[p.focus]->editing();
+    if (p.focus < 0 || p.focus >= (int)p.widgets.size())
+        return false;
+    auto& w = p.widgets[p.focus];
+    return w->editing() || w->acceptsText();
 }
 
 // ------------------------------------------------------------ input
@@ -293,6 +276,13 @@ auto Overlay::nav(Nav n) -> void {
     if (!opened)
         return;
     dirty = true;
+
+    // pad B / Shift+Return mean Back / Return outside the media browser
+    auto editingWidget = focusedWidget();
+    if (dialog || (editingWidget && editingWidget->editing()) || zone == Zone::Sidebar) {
+        if (n == Nav::Parent) n = Nav::Back;
+        if (n == Nav::Insert) n = Nav::Ok;
+    }
 
     if (dialog)
         return dialogNav(n);
@@ -305,6 +295,8 @@ auto Overlay::nav(Nav n) -> void {
             case Nav::End: case Nav::PageDown: showPage((int)pages.size() - 1); break;
             case Nav::Ok: case Nav::Right: activateSidebar(); break;
             case Nav::Back: close(); break;
+            case Nav::PrevTab: showPage(pageIndex - 1); break;
+            case Nav::NextTab: showPage(pageIndex + 1); break;
             default: break;
         }
         return;
@@ -318,11 +310,20 @@ auto Overlay::nav(Nav n) -> void {
     // an edited text field keeps all keys
     if (w->nav(n) || w->editing())
         return;
+    if (n == Nav::Insert) {
+        w->nav(Nav::Ok);
+        return;
+    }
+    // shoulder buttons page through lists that have no tabs
+    if (n == Nav::NextTab || n == Nav::PrevTab) {
+        w->nav(n == Nav::NextTab ? Nav::PageDown : Nav::PageUp);
+        return;
+    }
 
     switch (n) {
         case Nav::Up: moveFocus(-1); break;
         case Nav::Down: moveFocus(1); break;
-        case Nav::Left: case Nav::Back: zone = Zone::Sidebar; break;
+        case Nav::Left: case Nav::Back: case Nav::Parent: zone = Zone::Sidebar; break;
         default: break;
     }
 }
@@ -414,7 +415,27 @@ auto Overlay::wheel(int x, int y, int dy) -> void {
     }
     int widget = hitWidget(x, y);
     if (widget >= 0)
-        currentPage().widgets[widget]->wheel(dy);
+        currentPage().widgets[widget]->wheelAt(x, y, dy);
+}
+
+auto Overlay::rightClick(int x, int y) -> void {
+    if (!opened)
+        return;
+    layout();
+    if (!dialog) {
+        int widget = hitWidget(x, y);
+        if (widget >= 0) {
+            auto& p = currentPage();
+            auto w = p.widgets[widget].get();
+            if (w->rightClick(x, y)) {
+                p.focus = widget;
+                zone = Zone::Content;
+                dirty = true;
+                return;
+            }
+        }
+    }
+    nav(Nav::Back);
 }
 
 auto Overlay::handleEvent(const SDL_Event& ev, float density) -> bool {
@@ -441,7 +462,18 @@ auto Overlay::handleEvent(const SDL_Event& ev, float density) -> bool {
     switch (ev.type) {
         case SDL_EVENT_KEY_DOWN: {
             Nav n;
+            bool shift = ev.key.mod & SDL_KMOD_SHIFT;
+            bool ctrl = ev.key.mod & SDL_KMOD_CTRL;
+            if (ctrl) {
+                switch (ev.key.scancode) {
+                    case SDL_SCANCODE_B: nav(Nav::Bookmark); return true;
+                    case SDL_SCANCODE_H: nav(Nav::AllFiles); return true;
+                    case SDL_SCANCODE_E: nav(Nav::Eject); return true;
+                    default: break;
+                }
+            }
             switch (ev.key.scancode) {
+                case SDL_SCANCODE_TAB: n = shift ? Nav::PrevTab : Nav::NextTab; break;
                 case SDL_SCANCODE_UP: n = Nav::Up; break;
                 case SDL_SCANCODE_DOWN: n = Nav::Down; break;
                 case SDL_SCANCODE_LEFT: n = Nav::Left; break;
@@ -449,7 +481,7 @@ auto Overlay::handleEvent(const SDL_Event& ev, float density) -> bool {
                 case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_SPACE:
                     // space types into text fields
                     if (ev.key.scancode == SDL_SCANCODE_SPACE && wantsTextInput()) return true;
-                    n = Nav::Ok; break;
+                    n = shift && ev.key.scancode != SDL_SCANCODE_SPACE ? Nav::Insert : Nav::Ok; break;
                 case SDL_SCANCODE_ESCAPE: n = Nav::Back; break;
                 case SDL_SCANCODE_PAGEUP: n = Nav::PageUp; break;
                 case SDL_SCANCODE_PAGEDOWN: n = Nav::PageDown; break;
@@ -466,7 +498,8 @@ auto Overlay::handleEvent(const SDL_Event& ev, float density) -> bool {
             return true;
 
         case SDL_EVENT_TEXT_INPUT:
-            if (ev.text.text)
+            // Ctrl/Alt shortcuts are not text
+            if (ev.text.text && !(SDL_GetModState() & (SDL_KMOD_CTRL | SDL_KMOD_ALT | SDL_KMOD_GUI)))
                 textInput(ev.text.text);
             return true;
 
@@ -482,7 +515,7 @@ auto Overlay::handleEvent(const SDL_Event& ev, float density) -> bool {
             if (ev.button.button == SDL_BUTTON_LEFT)
                 pointer(x, y, std::max(1, (int)ev.button.clicks));
             else if (ev.button.button == SDL_BUTTON_RIGHT)
-                nav(Nav::Back);
+                rightClick(x, y);
             return true;
         }
         case SDL_EVENT_MOUSE_BUTTON_UP:
@@ -504,11 +537,26 @@ auto Overlay::handleEvent(const SDL_Event& ev, float density) -> bool {
                 case SDL_GAMEPAD_BUTTON_DPAD_LEFT: nav(Nav::Left); break;
                 case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: nav(Nav::Right); break;
                 case SDL_GAMEPAD_BUTTON_SOUTH: case SDL_GAMEPAD_BUTTON_START: nav(Nav::Ok); break;
-                case SDL_GAMEPAD_BUTTON_EAST: case SDL_GAMEPAD_BUTTON_BACK: nav(Nav::Back); break;
-                case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: nav(Nav::PageUp); break;
-                case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: nav(Nav::PageDown); break;
+                case SDL_GAMEPAD_BUTTON_EAST: nav(Nav::Parent); break;
+                case SDL_GAMEPAD_BUTTON_BACK: nav(Nav::Back); break;
+                case SDL_GAMEPAD_BUTTON_WEST: nav(Nav::Insert); break;
+                case SDL_GAMEPAD_BUTTON_NORTH: nav(Nav::Bookmark); break;
+                case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: nav(Nav::PrevTab); break;
+                case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: nav(Nav::NextTab); break;
             }
             return true;
+        case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+            // triggers page through lists
+            if (ev.gaxis.axis == SDL_GAMEPAD_AXIS_LEFT_TRIGGER || ev.gaxis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) {
+                int i = ev.gaxis.axis == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
+                bool down = ev.gaxis.value > 16000;
+                if (down && !triggerDown[i])
+                    nav(i ? Nav::PageDown : Nav::PageUp);
+                if (down || ev.gaxis.value < 8000)
+                    triggerDown[i] = down;
+                return true;
+            }
+            return false;
         case SDL_EVENT_GAMEPAD_BUTTON_UP:
             return true;
     }
@@ -614,14 +662,16 @@ auto Overlay::layout() -> void {
     content = { panel.x + SidebarWidth + 12, panel.y + 10, std::max(0, panel.w - SidebarWidth - 24), std::max(0, panel.h - 10 - 24) };
 
     auto& p = currentPage();
-    int y = content.y + 20 + (p.subtitle.empty() ? 4 : 16);
+    int y = p.bare ? content.y : content.y + 20 + (p.subtitle.empty() ? 4 : 16);
+    // bare pages leave room for a second key hint line and a message line
+    int bottom = content.y + content.h - (p.bare ? 24 : 0);
     const int gap = 2;
     int fixed = 0, expanding = 0;
     for (auto& w : p.widgets) {
         if (w->expands) expanding++;
         else fixed += w->preferredHeight() + gap;
     }
-    int rest = content.y + content.h - y - fixed;
+    int rest = bottom - y - fixed;
     for (auto& w : p.widgets) {
         int h = w->preferredHeight();
         if (w->expands)
@@ -643,6 +693,8 @@ auto Overlay::hints() -> std::vector<Hint> {
         if (currentPage().action || currentPage().focus >= 0)
             out.push_back({"RETURN", "open"});
         out.push_back({"ESC", "close"});
+    } else if (auto w = focusedWidget(); w && w->ownsHints()) {
+        out = w->hints();
     } else {
         out.push_back({"↑↓", "move"});
         if (auto w = focusedWidget()) {
@@ -686,16 +738,18 @@ auto Overlay::draw(float alpha) -> std::shared_ptr<DRIVER::OverlayFrame> {
     }
 
     auto& page = currentPage();
-    int tw = p.text(content.x, content.y, page.title, Theme::TextBright, OverlayFont::Pro, 2);
-    if (page.preview)
-        p.text(content.x + tw + 8, content.y + 8, "PREVIEW", Theme::Warn);
-    if (!page.subtitle.empty())
+    if (!page.bare) {
+        int tw = p.text(content.x, content.y, page.title, Theme::TextBright, OverlayFont::Pro, 2);
+        if (page.preview)
+            p.text(content.x + tw + 8, content.y + 8, "PREVIEW", Theme::Warn);
+    }
+    if (!page.bare && !page.subtitle.empty())
         p.textClip(content.x, content.y + 22, page.subtitle, content.w, Theme::Path);
 
     for (int i = 0; i < (int)page.widgets.size(); i++) {
         auto& w = page.widgets[i];
         bool focused = zone == Zone::Content && i == page.focus && !dialog;
-        if (!focused && i == hoverWidget && w->kind() != "list")
+        if (!focused && i == hoverWidget && w->kind() != "list" && w->kind() != "media")
             p.rect(w->rect.x, w->rect.y, w->rect.w, w->rect.h, Color::hex(0x6c5eb5, 0.25f));
         w->draw(p, focused);
     }
@@ -708,21 +762,38 @@ auto Overlay::draw(float alpha) -> std::shared_ptr<DRIVER::OverlayFrame> {
         dialog->draw(p);
     }
 
-    // key hints
-    int x = content.x, y = panel.y + panel.h - 16;
-    for (auto& h : hints()) {
-        int kw = font.textWidth(OverlayFont::Pro, h.key) + 6;
-        int aw = font.textWidth(OverlayFont::Pro, h.action);
-        if (x + kw + 4 + aw > content.x + content.w)
-            break;
-        p.rect(x, y - 1, kw, 10, Theme::KeyBg);
-        p.text(x + 3, y, h.key, Theme::KeyText);
-        p.text(x + kw + 4, y, h.action, Theme::TextDim);
-        x += kw + 4 + aw + 12;
+    // key hints, wrapped into at most two lines
+    std::vector<std::vector<std::pair<Hint, int>>> lines(1);
+    {
+        int x = 0;
+        for (auto& h : hints()) {
+            int w = font.textWidth(OverlayFont::Pro, h.key) + 6 + 4 + font.textWidth(OverlayFont::Pro, h.action);
+            if (x && x + w > content.w) {
+                if (lines.size() == 2)
+                    break;
+                lines.emplace_back();
+                x = 0;
+            }
+            lines.back().push_back({h, w});
+            x += w + 12;
+        }
+    }
+    int y = panel.y + panel.h - 16 - 12 * ((int)lines.size() - 1);
+    int top = y;
+    for (auto& line : lines) {
+        int x = content.x;
+        for (auto& [h, w] : line) {
+            int kw = font.textWidth(OverlayFont::Pro, h.key) + 6;
+            p.rect(x, y - 1, kw, 10, Theme::KeyBg);
+            p.text(x + 3, y, h.key, Theme::KeyText);
+            p.text(x + kw + 4, y, h.action, Theme::TextDim);
+            x += w + 12;
+        }
+        y += 12;
     }
 
     if (!message.empty() && std::chrono::steady_clock::now() < messageUntil)
-        p.textClip(content.x, y - 14, message, content.w, Theme::Warn);
+        p.textClip(content.x, top - 14, message, content.w, Theme::Warn);
 
     return frame;
 }
@@ -797,6 +868,10 @@ auto Overlay::describe(Json& out) -> void {
         if (i == page.focus) e.set("focused", zone == Zone::Content);
         if (w->editing()) e.set("editing", true);
         e.set("rect", Json(std::to_string(w->rect.x) + "," + std::to_string(w->rect.y) + "," + std::to_string(w->rect.w) + "," + std::to_string(w->rect.h)));
+        Json detail;
+        w->describe(detail);
+        if (!detail.isNull())
+            e.set("detail", detail);
         widgets.push(e);
     }
     out.set("widgets", widgets);

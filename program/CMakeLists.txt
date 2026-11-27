@@ -77,6 +77,7 @@ set(headers
         overlay/font.h
         overlay/ui.h
         overlay/overlay.h
+        overlay/media.h
 )
 
 set_source_files_properties(${PROJECT_NAME} ${headers}
@@ -152,6 +153,7 @@ set(srcs
         overlay/font.cpp
         overlay/ui.cpp
         overlay/overlay.cpp
+        overlay/media.cpp
         
         ${headers}
 )

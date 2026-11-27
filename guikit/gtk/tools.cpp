@@ -106,6 +106,13 @@ auto getDropPaths(GtkSelectionData* data) -> std::vector<std::string> {
 //system
 auto pSystem::getUserDataFolder() -> std::string {
     std::string out = "";
+    // XDG base directory spec (also isolates test runs)
+    const char* xdg = getenv("XDG_CONFIG_HOME");
+    if (xdg && xdg[0] == '/') {
+        out = File::beautifyPath(xdg);
+        if (out.back() != '/') out += "/";
+        return out;
+    }
     struct passwd* userinfo = getpwuid(getuid());
     out = userinfo->pw_dir;
     out = File::beautifyPath(out);

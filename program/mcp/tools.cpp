@@ -772,12 +772,14 @@ auto McpServer::registerTools() -> void {
     addTool("overlay",
         "Drive the overlay UI (F12 menu; pauses the emulation while open). action: "
         "'state' (default) describes it, 'open', 'close', 'toggle', "
-        "'nav' presses keys (keys: up, down, left, right, ok, back, pageup, pagedown, home, end, backspace, delete), "
-        "'text' types into the text field being edited, 'click' / 'move' / 'wheel' use logical x/y (see rects in the state), "
+        "'nav' presses keys (keys: up, down, left, right, ok, back, pageup, pagedown, home, end, backspace, delete, "
+        "tab, shift_tab, insert (Shift+Return), bookmark (Ctrl+B), all_files (Ctrl+H), eject (Ctrl+E), parent (pad B)), "
+        "'text' types into the text field being edited or the media browser filter, "
+        "'click' / 'rightclick' / 'move' / 'wheel' use logical x/y (see rects in the state; media page: widgets[0].detail). "
         "'page' selects a sidebar page by id. Every call returns the overlay state. "
         "Visible in screenshot rendered=true only; also works headless (no drawing).",
         R"({"type":"object","properties":{)"
-        R"("action":{"type":"string","enum":["state","open","close","toggle","nav","text","click","move","wheel","page"],"default":"state"},)"
+        R"("action":{"type":"string","enum":["state","open","close","toggle","nav","text","click","rightclick","move","wheel","page"],"default":"state"},)"
         R"("keys":{"type":"array","items":{"type":"string"}},)"
         R"("text":{"type":"string"},"page":{"type":"string"},)"
         R"("x":{"type":"integer"},"y":{"type":"integer"},"clicks":{"type":"integer","minimum":1,"maximum":2,"default":1},)"
@@ -797,12 +799,12 @@ auto McpServer::registerTools() -> void {
                 }
             } else if (action == "text" && !job.args["text"].isString())
                 return job.fail("'text' required");
-            else if ((action == "click" || action == "move" || action == "wheel") && (!job.args["x"].isNumber() || !job.args["y"].isNumber()))
+            else if ((action == "click" || action == "rightclick" || action == "move" || action == "wheel") && (!job.args["x"].isNumber() || !job.args["y"].isNumber()))
                 return job.fail("'x' and 'y' (logical coordinates) required");
             else if (action == "page" && !job.args["page"].isString())
                 return job.fail("'page' (sidebar id) required");
             else if (action != "state" && action != "open" && action != "close" && action != "toggle" && action != "nav"
-                && action != "text" && action != "click" && action != "move" && action != "wheel" && action != "page")
+                && action != "text" && action != "click" && action != "rightclick" && action != "move" && action != "wheel" && action != "page")
                 return job.fail("unknown action '" + action + "'");
 
             job.phase = Job::Ui;
@@ -817,6 +819,7 @@ auto McpServer::registerTools() -> void {
                 else if (action == "nav") { for (auto n : navs) overlay->nav(n); }
                 else if (action == "text") overlay->textInput(job.args.getString("text"));
                 else if (action == "click") { overlay->pointer(x, y, 0); overlay->pointer(x, y, (int)std::clamp<int64_t>(job.args.getInt("clicks", 1), 1, 2)); }
+                else if (action == "rightclick") { overlay->pointer(x, y, 0); overlay->rightClick(x, y); }
                 else if (action == "move") overlay->pointer(x, y, 0);
                 else if (action == "wheel") overlay->wheel(x, y, (int)job.args.getInt("dy", 1));
                 else if (action == "page" && !overlay->selectPage(job.args.getString("page")))

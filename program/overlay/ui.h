@@ -11,6 +11,8 @@
 #include "font.h"
 #include "../../driver/driver.h"
 
+struct Json;
+
 namespace OverlayUi {
 
 struct Color {
@@ -65,7 +67,10 @@ private:
     float alpha;
 };
 
-enum class Nav { Up, Down, Left, Right, Ok, Back, PageUp, PageDown, Home, End, Backspace, Delete };
+enum class Nav { Up, Down, Left, Right, Ok, Back, PageUp, PageDown, Home, End, Backspace, Delete,
+    // media browser: Tab / Shift+Tab (pad LB/RB), Shift+Return (pad X), Ctrl+B (pad Y), Ctrl+H, Ctrl+E,
+    // parent folder (pad B; falls back to Back when not consumed)
+    NextTab, PrevTab, Insert, Bookmark, AllFiles, Eject, Parent };
 
 struct Hint { std::string key, action; };
 
@@ -86,7 +91,14 @@ struct Widget {
     // logical coordinates; clicks = 1 single, 2 double
     virtual auto click(int x, int y, int clicks) -> bool { return nav(Nav::Ok); }
     virtual auto wheel(int dy) -> bool { return false; }
+    virtual auto wheelAt(int x, int y, int dy) -> bool { return wheel(dy); }
+    virtual auto rightClick(int x, int y) -> bool { return false; }
     virtual auto editing() const -> bool { return false; }
+    // receives typed text while focused without being in an edit mode (live filter)
+    virtual auto acceptsText() const -> bool { return false; }
+    // hints() is the complete key hint bar (no generic move/back entries)
+    virtual auto ownsHints() const -> bool { return false; }
+    virtual auto describe(Json& out) const -> void {}
     virtual auto value() const -> std::string { return ""; }
     virtual auto hints() const -> std::vector<Hint> { return {}; }
 

@@ -19,6 +19,7 @@ struct Overlay {
     struct Page {
         std::string id, title, subtitle;
         bool preview = false;
+        bool bare = false; // no title: the widgets fill the whole content area
         // sidebar entry without content: runs on select (Resume, Quit)
         std::function<void()> action;
         std::function<void(Page&)> refresh; // when the page is shown
@@ -46,6 +47,7 @@ struct Overlay {
     auto textInput(const std::string& s) -> void;
     auto pointer(int x, int y, int clicks) -> void; // clicks 0 = move only, logical coordinates
     auto wheel(int x, int y, int dy) -> void;
+    auto rightClick(int x, int y) -> void;
     auto selectPage(const std::string& id) -> bool;
 
     // window pixel size; computes scale and logical size
@@ -106,6 +108,7 @@ private:
 
     int toggleScancode = 0;
     int toggleButton = -1;
+    bool triggerDown[2] = {false, false};
 };
 
 extern Overlay* overlay;
