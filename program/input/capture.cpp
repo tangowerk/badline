@@ -83,10 +83,6 @@ auto InputManager::fetch() -> void {
 		bindHidsGlobal();
 		autoAssignJoypads();
 
-		for( auto emuView : emuConfigViews ) {
-            if (emuView->inputLayout)
-                emuView->inputLayout->update();
-        }
 	}
 }
 
@@ -191,7 +187,6 @@ auto InputManager::preventSharingOfAutoFireMappings(InputMapping* captureObject,
     if (!captureObject->emuDevice || !captureObject->emuDevice->isJoypadOrMultiAdapter())
         return;
 
-    auto emuView = EmuConfigView::TabWindow::getView( emulator );
 
     for (auto& input : captureObject->emuDevice->inputs) {
         InputMapping* mapper = (InputMapping*)input.guid;
@@ -222,8 +217,6 @@ auto InputManager::preventSharingOfAutoFireMappings(InputMapping* captureObject,
                         hid.input->id == captureHid.input->id && hid.qualifier == captureHid.qualifier) {
                         GUIKIT::Vector::eraseVectorPos(mapper->hids, pos);
                         mapper->updateSetting();
-                        if (emuView && emuView->inputLayout)
-                            emuView->inputLayout->updateListEntry(input->id, mapper, false);
                         break;
                     }
                     pos++;

@@ -5,8 +5,6 @@
 #include <string>
 #include "../../guikit/api.h"
 #include "../tools/filesetting.h"
-#include "../view/view.h"
-#include "../emuconfig/config.h"
 #include "../tools/filepool.h"
 #include "../input/manager.h"
 
@@ -40,7 +38,6 @@ struct States {
     
     auto updateConnectedDevices() -> void;
     
-    auto updateTapeMenu() -> void;
     
     auto updateModels() -> void;
     

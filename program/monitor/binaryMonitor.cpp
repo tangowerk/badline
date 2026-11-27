@@ -6,9 +6,7 @@
 #include "../tools/buffer.h"
 #include "../thread/emuThread.h"
 #include "../program.h"
-#include "../debugger/cpuDebugger.h"
 #include "../media/autoloader.h"
-#include "../view/view.h"
 #include "../tools/error.h"
 #include <cstring>
 
@@ -89,16 +87,24 @@ auto BinaryMonitor::initBreak() -> void {
     emulator->debuggerAdd( DebuggerTheme::Unspecified, DebuggerAction::UIRequestedStop, 0 );
 }
 
-auto BinaryMonitor::initDebugger(Emulator::Interface* emulator, DebuggerTheme theme) -> Debugger* {
-    Debugger* debugger = program->getDebugger( emulator, theme );
+auto BinaryMonitor::initDebugger(Emulator::Interface* emulator, DebuggerTheme theme) -> void {
+    if (!emulator || theme == DebuggerTheme::Unspecified)
+        return;
+    if (std::find(activeThemes.begin(), activeThemes.end(), theme) != activeThemes.end())
+        return;
+    activeThemes.push_back(theme);
+    emulator->debuggerAdd( theme, DebuggerAction::None, 0 );
+    emulator->debuggerAdd( theme, DebuggerAction::History, 0 );
+    // force reload of instruction cache
+    emulator->debuggerAdd( theme, DebuggerAction::ModifiedCode, 0, 0, ~0 );
+}
 
-    if (!debugger) {
-        debugger = program->createDebugger( emulator, theme );
-        if (debugger)
-            debugger->initTheme();
-    }
-
-    return debugger;
+auto BinaryMonitor::watcherIdents(CheckPoint& cp) -> std::vector<std::pair<unsigned, DebuggerAction>> {
+    std::vector<std::pair<unsigned, DebuggerAction>> out;
+    if (cp.loadIdent.has_value()) out.push_back({cp.loadIdent.value_or(0), DebuggerAction::Watchpoint});
+    if (cp.storeIdent.has_value()) out.push_back({cp.storeIdent.value_or(0), DebuggerAction::WatchpointWrite});
+    if (cp.breakIdent.has_value()) out.push_back({cp.breakIdent.value_or(0), DebuggerAction::Breakpoint});
+    return out;
 }
 
 auto BinaryMonitor::update() -> void {
@@ -307,28 +313,18 @@ auto BinaryMonitor::toggleCheckpoint(Command& command) -> void {
 }
 
 auto BinaryMonitor::toggleCheckpoint(CheckPoint& cp, bool enable) -> bool {
-    Debugger* debugger = program->getDebugger( activeEmulator, cp.theme );
-    if (!debugger)
+    if (!activeEmulator)
         return false;
-    
+
     cp.enabled = enable;
 
-    auto* cpuDebugger = dynamic_cast<CpuDebugger*>(debugger);
-    
-    if (cp.loadIdent.has_value()) {
-        auto watcher = cpuDebugger->findBy(cp.loadIdent.value_or(0));
-        if (watcher)
-            cpuDebugger->enableEntry( watcher, cp.enabled);
-    }
-    if (cp.storeIdent.has_value()) {
-        auto watcher = cpuDebugger->findBy(cp.storeIdent.value_or(0));
-        if (watcher)
-            cpuDebugger->enableEntry( watcher, cp.enabled);
-    }
-    if (cp.breakIdent.has_value()) {
-        auto watcher = cpuDebugger->findBy(cp.breakIdent.value_or(0));
-        if (watcher)
-            cpuDebugger->enableEntry( watcher, cp.enabled);
+    for (auto& [ident, action] : watcherIdents(cp)) {
+        if (cp.enabled) {
+            activeEmulator->debuggerAdd( cp.theme, action, ident, cp.startAddr, cp.endAddr );
+            if (cp.useCondition)
+                activeEmulator->setWatchpointCondition( cp.theme, action, ident, 0, 0, cp.condition, 0 );
+        } else
+            activeEmulator->debuggerRemove( cp.theme, action, ident );
     }
     return true;
 }
@@ -394,27 +390,11 @@ auto BinaryMonitor::deleteCheckpoint(Command& command) -> void {
 }
 
 auto BinaryMonitor::deleteCheckpoint(CheckPoint& cp) -> bool {
-    Debugger* debugger = program->getDebugger( activeEmulator, cp.theme );
-    if (!debugger)
+    if (!activeEmulator)
         return false;
 
-    auto* cpuDebugger = dynamic_cast<CpuDebugger*>(debugger);
-    
-    if (cp.loadIdent.has_value()) {
-        auto watcher = cpuDebugger->findBy(cp.loadIdent.value_or(0));
-        if (watcher)
-            cpuDebugger->deleteEntry( watcher );
-    }
-    if (cp.storeIdent.has_value()) {
-        auto watcher = cpuDebugger->findBy(cp.storeIdent.value_or(0));
-        if (watcher)
-            cpuDebugger->deleteEntry( watcher );
-    }
-    if (cp.breakIdent.has_value()) {
-        auto watcher = cpuDebugger->findBy(cp.breakIdent.value_or(0));
-        if (watcher)
-            cpuDebugger->deleteEntry( watcher );
-    }
+    for (auto& [ident, action] : watcherIdents(cp))
+        activeEmulator->debuggerRemove( cp.theme, action, ident );
 
     auto iter = std::remove_if(checkPoints.begin(), checkPoints.end(),
        [cp](const CheckPoint& _cp) {
@@ -450,15 +430,14 @@ auto BinaryMonitor::setCheckpoint(Command& command) -> void {
         }
     }
 
-    emuThread->lock();
-    Debugger* debugger = initDebugger(activeEmulator, theme);
-
-    if (!debugger) {
+    if (!activeEmulator) {
         sendError( Error::CMD_FAILURE, command.requestId );
         return;
     }
 
-    auto* cpuDebugger = dynamic_cast<CpuDebugger*>(debugger);
+    emuThread->lock();
+    initDebugger(activeEmulator, theme);
+
     static unsigned num = 1;
 
     uint8_t op = command.body[6];
@@ -469,28 +448,20 @@ auto BinaryMonitor::setCheckpoint(Command& command) -> void {
     cp.endAddr = copyBufferToInt<uint16_t>(&command.body[2]);
     cp.enabled = command.body[5] >= 1;
     cp.useCondition = false;
-    DbgWatcher* watcher;
-
-    if (op & 1) {
-        watcher = cpuDebugger->addEntry( cp.startAddr, cp.endAddr, DebuggerAction::Watchpoint);
-        cp.loadIdent = watcher->ident;
-        if (!cp.enabled)
-            cpuDebugger->enableEntry( watcher, false );
-    }
-    if (op & 2) {
-        watcher = cpuDebugger->addEntry( cp.startAddr, cp.endAddr, DebuggerAction::WatchpointWrite);
-        cp.storeIdent = watcher->ident;
-        if (!cp.enabled)
-            cpuDebugger->enableEntry( watcher, false );
-    }
-    if (op & 4) {
-        watcher = cpuDebugger->addEntry( cp.startAddr, cp.endAddr, DebuggerAction::Breakpoint);
-        cp.breakIdent = watcher->ident;
-        if (!cp.enabled)
-            cpuDebugger->enableEntry( watcher, false );
-    }
-    
     cp.theme = theme;
+
+    if (op & 1)
+        cp.loadIdent = nextIdent++;
+    if (op & 2)
+        cp.storeIdent = nextIdent++;
+    if (op & 4)
+        cp.breakIdent = nextIdent++;
+
+    if (cp.enabled) {
+        for (auto& [ident, action] : watcherIdents(cp))
+            activeEmulator->debuggerAdd( theme, action, ident, cp.startAddr, cp.endAddr );
+    }
+
     cp.temporary = command.body[7];
     cp.hit = false;
     cp.stop = command.body[4];
@@ -606,32 +577,18 @@ auto BinaryMonitor::setCondition(Command& command) -> void {
 
     std::string condStr(reinterpret_cast<char*>(command.body + 5), length);
 
-    Debugger* debugger = program->getDebugger( activeEmulator, DebuggerTheme::CPU );
-
-    if (!debugger) {
+    if (!activeEmulator) {
         sendError( Error::CMD_FAILURE, command.requestId );
         return;
     }
 
     emuThread->lock();
-    auto* cpuDebugger = dynamic_cast<CpuDebugger*>(debugger);
     bool result = false;
+    cp->useCondition = true;
+    cp->condition = condStr;
 
-    if (cp->loadIdent.has_value()) {
-        auto watcher = cpuDebugger->findBy(cp->loadIdent.value_or(0));
-        if (watcher)
-            result |= cpuDebugger->addCondition( watcher, condStr );
-    }
-    if (cp->storeIdent.has_value()) {
-        auto watcher = cpuDebugger->findBy(cp->storeIdent.value_or(0));
-        if (watcher)
-            result |= cpuDebugger->addCondition( watcher, condStr );
-    }
-    if (cp->breakIdent.has_value()) {
-        auto watcher = cpuDebugger->findBy(cp->breakIdent.value_or(0));
-        if (watcher)
-            result |= cpuDebugger->addCondition( watcher, condStr );
-    }
+    for (auto& [ident, action] : watcherIdents(*cp))
+        result |= activeEmulator->setWatchpointCondition( cp->theme, action, ident, 0, 0, condStr, 0 );
 
     emuThread->unlock();
     if (!result) {

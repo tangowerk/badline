@@ -4,9 +4,6 @@
 #ifndef APP_NAME
 #define APP_NAME "Badline"
 #endif
-#ifndef TRANSLATION_FOLDER
-#define TRANSLATION_FOLDER "translation/"
-#endif
 #ifndef DATA_FOLDER
 #define DATA_FOLDER "data/"
 #endif
@@ -23,7 +20,6 @@
 #define SOUND_FOLDER "sounds/"
 #endif
 #define SETTINGS_FILE "settings.ini"
-#define DEFAULT_TRANS_FILE "english.txt"
 #define VERSION "0.1.3"
 #define LICENSE "GPLv3"
 #define AUTHOR "Badline contributors"
@@ -39,7 +35,6 @@
 #include "../driver/driver.h"
 #include "video/manager.h"
 #include "video/screenshot.h"
-#include "debugger/debugger.h"
 #include "monitor/binaryMonitor.h"
 #include "tools/logger.h"
 #include "tools/shortcuts.h"
@@ -51,7 +46,6 @@
 struct FileSetting;
 struct Message;
 struct InputManager;
-struct Debugger;
 
 struct Program : Emulator::Interface::Bind {
     ScreenshotState screenshot;
@@ -95,17 +89,14 @@ struct Program : Emulator::Interface::Bind {
     auto loopStopped() -> void;
     auto mcpHandleQuit() -> bool;
     auto loopUserInterface() -> void;
-    auto loadTranslation(std::string file) -> bool;
     auto installFolder() -> std::string;
     auto userFolder() -> std::string;
-    auto translationFolder() -> std::string;
     auto dataFolder() -> std::string;
     auto fontFolder() -> std::string;
 	auto imgFolder() -> std::string;
     auto soundFolder() -> std::string;
     auto presetFolder() -> std::string;
 	auto appFolder() -> std::string;
-    auto getSystemLangFile() -> std::string;
     auto settingsFile( std::string ident = "" ) -> std::string;
     auto settingsFileFromEmuFolder( std::string ident ) -> std::string;
     auto initEmulator( Emulator::Interface* emulator ) -> void;
@@ -195,13 +186,6 @@ struct Program : Emulator::Interface::Bind {
     auto inputPoll(uint16_t deviceId, uint16_t inputId) -> int16_t override;
     auto jitPoll(int delay) -> bool override;
 
-    auto openDebugger(Emulator::Interface* emulator, DebuggerTheme theme) -> void;
-    auto createDebugger(Emulator::Interface* emulator, DebuggerTheme theme) -> Debugger*;
-    auto getDebugger(Emulator::Interface* emulator, DebuggerTheme theme) -> Debugger*;
-    auto hasActiveDebugger() -> bool;
-    auto hasFocusedDebugger() -> bool;
-    auto getFirstActiveDebugger() -> Debugger*;
-    auto getActiveDebuggers() -> std::vector<Debugger*>;
     auto debugger(Emulator::Interface::DebuggerSnapshot* snapshot) -> void override;
 
     static auto getSettings( Emulator::Interface* emulator = nullptr ) -> GUIKIT::Settings*;
@@ -215,10 +199,8 @@ extern Program* program;
 extern DRIVER::Input* inputDriver;
 extern DRIVER::Audio* audioDriver;
 extern DRIVER::Video* videoDriver;
-extern GUIKIT::Translation* trans;
 extern std::vector<Emulator::Interface*> emulators;
 extern std::vector<GUIKIT::Settings*> settingsStorage;
-extern std::vector<Debugger*> debuggers;
 extern GUIKIT::Settings* globalSettings;
 extern Emulator::Interface* activeEmulator;
 extern InputManager* activeInputManager;

@@ -169,7 +169,7 @@ auto InputMapping::informChange(Assign& hid) -> void {
 }
 
 inline auto InputMapping::translateElement(std::string str) -> std::string {
-    return trans->get( GUIKIT::String::capitalize( str ) );
+    return GUIKIT::String::capitalize( str );
 }
 
 auto InputMapping::getDescription() -> std::string {
@@ -198,11 +198,11 @@ auto InputMapping::getDescription() -> std::string {
             out += ".Lo";
                     
 		if ( (++pos < hids.size()) || hasUnknownAssignment)
-			out += " " + (anded ? trans->get("and") : trans->get("or")) + " ";
+			out += std::string(" ") + (anded ? "and" : "or") + " ";
 	}
     
     if (hasUnknownAssignment)
-        out += trans->get("unknown_device");
+        out += "unknown device";
 
 	return out;	
 }

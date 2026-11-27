@@ -1,15 +1,15 @@
 
+#include "../view/message.h"
 #include "fileHelper.h"
 
 #include "settingsHelper.h"
-#include "../view/view.h"
 #include "../tools/filepool.h"
 #include "../media/fileloader.h"
 #include "../tools/filesetting.h"
-#include "../emuconfig/layouts/configurations.h"
 
 auto FileHelper::errorOpen(GUIKIT::File* file, GUIKIT::File::Item* item, Message* message ) -> void {
-    if (message) message->error(trans->get( (file->isArchived() && !item) ? "archive_error" : "file_open_error", {
+    if (message) message->error(GUIKIT::String::substitute( (file->isArchived() && !item)
+        ? "Archive %path% couldn't be opened or doesn't contain valid files." : "The file %path% couldn't be opened.", {
         { "%path%", item ? item->info.name : file->getFile() }
     }));
 
@@ -20,20 +20,20 @@ auto FileHelper::errorOpen( const std::vector<std::string>& paths, bool warning 
     if ( paths.empty() || !appMessage )
         return;
 
-    std::string transKey = "file_open_error";
+    std::string text = "The file %path% couldn't be opened.";
     std::string replaceIdent = "%path%";
     std::string replace = "\"" + paths[0] + "\"";
 
     if (paths.size() > 1) {
-        transKey = "files_open_error";
+        text = "Following files couldn't be opened: %paths%";
         replaceIdent = "%paths%";
         replace = "\n\n" + GUIKIT::String::unsplit(paths, "\n");
     }
 
     if (warning)
-        appMessage->warning(trans->get(transKey, { {replaceIdent, replace} }));
+        appMessage->warning(GUIKIT::String::substitute(text, { {replaceIdent, replace} }));
     else
-        appMessage->error(trans->get(transKey, { {replaceIdent, replace} }));
+        appMessage->error(GUIKIT::String::substitute(text, { {replaceIdent, replace} }));
 }
 
 auto FileHelper::loadImageDataWhenOk( GUIKIT::File* file, unsigned fileId, Emulator::Interface::MediaGroup* group, uint8_t*& data ) -> bool {
@@ -59,9 +59,9 @@ auto FileHelper::readAssignedMedia(Emulator::Interface::Media* media, uint8_t*& 
         return 0;
 
     if (preview)
-        path = generatedFolder(activeEmulator, "disksave_folder", "disksave") + fileloader->queuePreview.fileName + ".sav";
-    else
-        path = getAssignedSaveFile(media);
+        return 0; // no file dialog preview anymore (GTK removed)
+
+    path = getAssignedSaveFile(media);
 
     if (path.empty())
         return 0;
@@ -258,10 +258,7 @@ End:
     settings->set<std::string>( "save_ident", fileName);
     settings->set<unsigned>( "save_slot", 0);
 
-    auto emuView = EmuConfigView::TabWindow::getView( emulator );
 
-    if (emuView && emuView->configurationsLayout)
-        emuView->configurationsLayout->updateSaveIdent( fileName );
 }
 
 auto FileHelper::updateSaveIdentFromSav( Emulator::Interface* emulator, GUIKIT::File* file ) -> void {
@@ -276,10 +273,7 @@ auto FileHelper::updateSaveIdentFromSav( Emulator::Interface* emulator, GUIKIT::
     settings->set<std::string>( "save_ident", fileName);
     settings->set<unsigned>( "save_slot", 0);
 
-    auto emuView = EmuConfigView::TabWindow::getView( emulator );
 
-    if (emuView && emuView->configurationsLayout)
-        emuView->configurationsLayout->updateSaveIdent( fileName );
 }
 
 auto FileHelper::generatedFolder(const std::string& subPath, unsigned flags) -> std::string {

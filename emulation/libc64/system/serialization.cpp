@@ -138,7 +138,12 @@ auto System::serializeAll(Emulator::Serializer& s) -> void {
     
     sysTimer.serialize( s );
 
-    sidManager.usbSIDPico.serialize( s );
+    // former USBSID-Pico state (enabled, buffer size, diff size), kept for savestate compatibility
+    bool usbSidPicoEnabled = false;
+    unsigned usbSidPicoBuffSize = 8192, usbSidPicoDiffSize = 64;
+    s.integer( usbSidPicoEnabled );
+    s.integer( usbSidPicoBuffSize );
+    s.integer( usbSidPicoDiffSize );
 }    
     
 inline auto System::serializeDiskIdle(Emulator::Serializer& s) -> void {

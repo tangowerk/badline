@@ -1,7 +1,6 @@
 
 #include "cmd.h"
 #include <algorithm>
-#include "../view/view.h"
 #include "../media/autoloader.h"
 #include "../media/fileloader.h"
 #include "../thread/emuThread.h"
@@ -621,8 +620,6 @@ end:
         startInFullscreen = true; // applied when the SDL window is created
     }
 
-    if (!debug && !noGui && autoload && globalSettings->get<bool>("single_instance", false))
-        GUIKIT::Application::closeOtherInstances();
 
     autoload = false;
 }

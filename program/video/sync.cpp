@@ -1,4 +1,5 @@
 
+#include "../window/sdlWindow.h"
 #include "manager.h"
 #include "../audio/manager.h"
 
@@ -28,7 +29,9 @@ auto VideoManager::setSynchronize() -> void {
 
     if (audioDriver->hasSynchronized()) {
         if (vsync && adaptive) {
-            float monitorFrequency = GUIKIT::Monitor::getCurrentRefreshRate();
+            float monitorFrequency = (sdlWindow ? sdlWindow->refreshRate() : 0.0f);
+            if (monitorFrequency <= 0.0f)
+                monitorFrequency = audioManager->inputFPS; // unknown (headless): no skew
             vrr = false;
             float ratio = (float)audioManager->inputFPS / monitorFrequency;
             float intpart;

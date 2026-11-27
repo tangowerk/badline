@@ -1,16 +1,13 @@
 
+#include "../view/message.h"
 #include "miscHelper.h"
 
 #include "../../emulation/libc64/interface.h"
 #include "../program.h"
 #include "../tools/chronos.h"
-#include "../view/view.h"
 #include "../view/status.h"
 #include "../tools/filesetting.h"
 #include "../tools/filepool.h"
-#include "../emuconfig/config.h"
-#include "../emuconfig/layouts/system.h"
-#include "../emuconfig/layouts/misc.h"
 #include "../states/states.h"
 #include "fileHelper.h"
 #include "settingsHelper.h"
@@ -20,13 +17,8 @@ std::vector<MiscHelper::DisplayFont> MiscHelper::displayFonts;
 auto MiscHelper::addFileFonts() -> void {
     for(auto emulator : emulators) {
         if ( dynamic_cast<LIBC64::Interface*>(emulator)) {
-            GUIKIT::CustomFont font;
-            font.name = "C64 Pro";
-            font.refPtr = (void*)emulator;
-            font.filePath = program->fontFolder() + "C64_Pro-STYLE121.ttf";
-            font.modifier = 0xee << 8;
-            bool useCustomFont = GUIKIT::Window::addCustomFont( font );
-            ((LIBC64::Interface*) emulator)->convertPetsciiToScreencode(useCustomFont);
+            // listings as C64 screen codes (overlay draws them with the C64 Pro glyphs)
+            ((LIBC64::Interface*) emulator)->convertPetsciiToScreencode(true);
             ((LIBC64::Interface*) emulator)->loadWithColumn( Program::getSettings(emulator)->get<bool>("autostart_load_with_column") );
 
         }
@@ -57,10 +49,6 @@ auto MiscHelper::addFonts() -> void {
 auto MiscHelper::addFonts(unsigned mode, const std::string& _fontFile) -> void {
     static int counter = 0;
     uint16_t ident = mode << 14;
-    GUIKIT::CustomFont font;
-    font.filePath = "";
-    font.name = "";
-    font.refPtr = nullptr;
 
     for(auto& displayFont : displayFonts) {
         if ((displayFont.ident & 0xc000) == ident && displayFont.file == _fontFile)
@@ -77,15 +65,8 @@ auto MiscHelper::addFonts(unsigned mode, const std::string& _fontFile) -> void {
     } else
         return;
 
-    if (!screenTextFontPath.empty()) {
-        if (!GUIKIT::Application::isGtk()) {
-            GUIKIT::TTF ttf(screenTextFontPath);
-            fontNames = ttf.getFontNames();
-        } else
-            fontNames = DRIVER::Video::getFontNames(screenTextFontPath);
-
-        font.filePath = screenTextFontPath;
-    }
+    if (!screenTextFontPath.empty())
+        fontNames = DRIVER::Video::getFontNames(screenTextFontPath);
 
     bool found = false;
     for(unsigned fIndex = 0; fIndex < fontNames.size(); fIndex++) {
@@ -93,8 +74,6 @@ auto MiscHelper::addFonts(unsigned mode, const std::string& _fontFile) -> void {
         if (!fontName.empty()) {
             uint16_t _ident = ident + counter++;
             displayFonts.push_back({_fontFile, fontName, fIndex, _ident});
-            if (!found)
-                font.name = fontName;
             found = true;
         }
     }
@@ -103,9 +82,6 @@ auto MiscHelper::addFonts(unsigned mode, const std::string& _fontFile) -> void {
         ident += counter++;
         displayFonts.push_back({_fontFile, _fontFile, 0, ident});
     }
-
-    if (!font.name.empty())
-        GUIKIT::Window::addCustomFont(font);
 }
 
 auto MiscHelper::getFont(uint16_t ident) -> DisplayFont* {
@@ -150,7 +126,7 @@ auto MiscHelper::libraryMissing(std::string plugin) -> void {
     if (plugin == "CAPS") {
         static int informed = 0;
         if (appMessage && (informed < 20) ) {
-            appMessage->error(trans->get("SPS plugin missing"));
+            appMessage->error("This image requires the SPS plugin at least version 4.2, available here: http://www.softpres.org");
             ts = Chronos::getTimestampInMilliseconds();
             informed++;
         }
@@ -214,9 +190,6 @@ auto MiscHelper::removeExpansion( Emulator::Interface* emulator, bool bootableOn
 
     Program::getSettings( emulator )->set<unsigned>("expansion", 0);
 
-     auto emuView = EmuConfigView::TabWindow::getView(emulator);
-     if (emuView && emuView->systemLayout)
-         emuView->systemLayout->setExpansion( nullptr );
 }
 
 auto MiscHelper::prepareSocket(Emulator::Interface::Media* media, Emulator::Interface* emulator, std::string address) -> void {
@@ -238,56 +211,8 @@ auto MiscHelper::toggle2Mhz() -> void {
     if (dynamic_cast<LIBC64::Interface*>(activeEmulator)) {
         bool state = dynamic_cast<LIBC64::Interface*>(activeEmulator)->toggle2Mhz();
         if (statusHandler)
-            statusHandler->setMessage(trans->getA(state ? "CPU Turbo 2 MHz" : "CPU Turbo disabled"), false, true);
+            statusHandler->setMessage((state ? "2 MHz Turbo enabled" : "Turbo disabled"), false, true);
     }
-}
-
-auto MiscHelper::centerGeometry(GUIKIT::Window* window, GUIKIT::Size _size, GUIKIT::Geometry _containerGeo) -> void {
-    _size.width = GUIKIT::Font::scale( _size.width );
-    _size.height = GUIKIT::Font::scale( _size.height );
-
-    if (_size.width >= _containerGeo.width)
-        _size.width = _containerGeo.width;
-
-    if (_size.height >= _containerGeo.height)
-        _size.height = _containerGeo.height;
-
-    GUIKIT::Position pos;
-    pos.x = _containerGeo.x + static_cast<int>(_containerGeo.width - _size.width) / 2;
-    pos.y = _containerGeo.y + static_cast<int>(_containerGeo.height - _size.height) / 2;
-
-    GUIKIT::Geometry geo(pos, _size);
-
-    window->setGeometry( geo );
-}
-
-auto MiscHelper::applyGeometry(GUIKIT::Window* window, GUIKIT::Settings* settings, const std::string& ident, GUIKIT::Geometry defGeo) -> void {
-    defGeo.width = GUIKIT::Font::scale( defGeo.width );
-    defGeo.height = GUIKIT::Font::scale( defGeo.height );
-
-    if (defGeo.x < 0)
-        defGeo.x = -(int)GUIKIT::Font::scale( defGeo.x * -1 );
-    else
-        defGeo.x = (int)GUIKIT::Font::scale( defGeo.x );
-
-    if (defGeo.y < 0)
-        defGeo.y = -(int)GUIKIT::Font::scale( defGeo.y * -1 );
-    else
-        defGeo.y = (int)GUIKIT::Font::scale( defGeo.y );
-
-    if (settings) {
-        GUIKIT::Geometry geometry = {
-            settings->get<int>( ident + "_x", defGeo.x)
-            ,settings->get<int>(ident + "_y", defGeo.y)
-            ,settings->get<unsigned>(ident + "_width", defGeo.width)
-            ,settings->get<unsigned>(ident + "_height", defGeo.height)
-        };
-
-        window->setGeometry(geometry);
-    }
-
-    if (!settings || window->isOffscreen())
-        window->setGeometry(defGeo);
 }
 
 auto MiscHelper::resetRunAhead() -> void {
@@ -300,10 +225,7 @@ auto MiscHelper::resetRunAhead() -> void {
 
         activeEmulator->runAhead( 0 );
 
-        auto emuView = EmuConfigView::TabWindow::getView( activeEmulator );
 
-        if (emuView && emuView->miscLayout)
-            emuView->miscLayout->setRunAhead( 0, false );
     }
 }
 

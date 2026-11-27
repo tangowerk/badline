@@ -104,10 +104,7 @@ auto IecBus::initThread() -> void {
                 if (idle.load()) {
                     if (cv.wait_for(lk, duration, [this](){ return ready.load() || kill.load(); })) {
                         if (kill) {
-#if defined(_WIN32) || defined(__APPLE__)
-#else
                             std::this_thread::sleep_for(std::chrono::milliseconds(20));
-#endif
                             kill = false;
                             return;
                         }
@@ -115,10 +112,7 @@ auto IecBus::initThread() -> void {
                     }
                 } else {
                     if (kill) {
-#if defined(_WIN32) || defined(__APPLE__)
-#else
                         std::this_thread::sleep_for(std::chrono::milliseconds(20));
-#endif
                         kill = false;
                         return;
                     }

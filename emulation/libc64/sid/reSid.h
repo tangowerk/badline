@@ -42,13 +42,12 @@ namespace LIBC64 {
 
 struct System;
 struct SidManager;
-struct USBSIDPico;
 struct DebuggerSnapshot;
 
 typedef double doublePoint[2];
 
 struct ReSid : Sid {
-    ReSid( unsigned nr, System* system, SidManager& sidManager, USBSIDPico& usbSIDPico, Type type);
+    ReSid( unsigned nr, System* system, SidManager& sidManager, Type type);
 
     auto setType( Type type ) -> void override;
     auto setDigiBoost( bool state ) -> void override;

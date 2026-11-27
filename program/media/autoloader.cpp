@@ -1,19 +1,15 @@
 
+#include "../view/message.h"
 #include "autoloader.h"
 #include "fileloader.h"
 #include "../tools/filepool.h"
-#include "../emuconfig/config.h"
-#include "../media/media.h"
-#include "../view/view.h"
 #include "../tools/filesetting.h"
-#include "../config/archiveViewer.h"
 #include "../cmd/cmd.h"
 #include "../states/states.h"
 #include "../firmware/manager.h"
 #include "../audio/manager.h"
 #include "../thread/emuThread.h"
 #include "../view/status.h"
-#include "../emuconfig/layouts/system.h"
 #include "../helper/fileHelper.h"
 #include "../helper/miscHelper.h"
 
@@ -62,7 +58,6 @@ auto Autoloader::postProcessing() -> void {
     if (ddControl.errorLevel >= 1)
         filePool->unloadOrphaned();
     
-    auto emuView = EmuConfigView::TabWindow::getView( ddControl.emulator );
     
     if (ddControl.saveFile) {
 
@@ -166,28 +161,13 @@ auto Autoloader::postProcessing() -> void {
             if (slotMode() || (ddControl.mode == Mode::Open))
                 activateDrive( ddControl.emulator, mediaGroup, countImagesFor(mediaGroup) + (slotMode() ? ddControl.selection : 0), activeEmulator == ddControl.emulator );
 
-            if (view) {
-                view->setForeground();
-                view->setFocused(100);
-            }
 
             autoloader->setOnlyForFirstDrive(ddControl.emulator, &mediaGroup->media[0]);
             settings->set<int>("swap_pos", -1, false);
         } else {
-            // not autostarted expansion needs settings window
-            if (!emuView)
-                emuView = EmuConfigView::TabWindow::getView( ddControl.emulator, true );
-
-            emuView->setLayout( EmuConfigView::TabWindow::Layout::Media );
-
-            if (!emuView->visible())
-                emuView->setVisible();
-
-            emuView->setFocused();
+            // tape/cartridge without autostart: only inserted (the GTK media window opened here before)
         }
 
-        if (emuView && emuView->mediaLayout)
-            emuView->mediaLayout->showMediaGroupLayout(mediaGroup);
 
     } else {
 
@@ -220,8 +200,6 @@ auto Autoloader::postProcessing() -> void {
 				
 				settings->set<unsigned>("expansion", useExpansion->id);
 
-                if (emuView && emuView->systemLayout)
-                    emuView->systemLayout->setExpansion( useExpansion );
 			}
 		}
 
@@ -231,10 +209,10 @@ auto Autoloader::postProcessing() -> void {
         if (!useExpansion)
             MiscHelper::removeExpansion(ddControl.emulator, true);
 
-        program->power( ddControl.emulator, emuView != nullptr );
+        program->power( ddControl.emulator, false );
 
         if (statusHandler && useExpansion && activeEmulator->isExpansionUnsupported())
-            statusHandler->setMessage(trans->getA("unsupported cartridge"), true);
+            statusHandler->setMessage("This cartridge may not be supported.", true);
 
         bool trapsWithSpeeder = trapped && mediaGroup->isDisk() && settings->get<bool>("autostart_speeder_traps", false);
 
@@ -283,14 +261,6 @@ auto Autoloader::postProcessing() -> void {
         if (fSetting)
             FileHelper::updateSaveIdent(ddControl.emulator, fSetting);
         
-		if (view) {
-			if (mediaGroup->isTape())
-				view->updateTapeIcons(Emulator::Interface::TapeMode::Play);
-
-            view->setForeground();
-
-		    view->setFocused(100 );
-		}
 
 		if (!cmd->noGui && !cmd->debug && (mediaGroup->isTape() || mediaGroup->isDisk()) ) {
 			program->initAutoWarp(mediaGroup);
@@ -321,23 +291,7 @@ auto Autoloader::loadFiles() -> void {
 
     auto& items = file->scanArchive();
 
-	if (archiveViewer && (ddControl.archiveId == -1) ) {
-        filePool->assign("autoloader", file);
-        archiveViewer->onCallback = [this](GUIKIT::File* file, GUIKIT::File::Item* item) {
-            bool locked = emuThread->lock(true);
-			this->loadFile( file, item );
-            filePool->assign("autoloader", nullptr);
-            if (locked)
-                emuThread->unlock();
-		};
-
-	    std::vector<Emulator::Interface::MediaGroup*> groups;
-	    for (auto* emulator : emulators)
-	        GUIKIT::Vector::combine(groups, emulator->getMediaGroups());
-
-	    archiveViewer->preferSuffixes(groups);
-		archiveViewer->setView( file, items );
-	} else if (ddControl.archiveId >= 0) {
+	if (ddControl.archiveId >= 0) {
 	    if (ddControl.archiveId < items.size())
 	        loadFile( file, &items[ddControl.archiveId] );
 	} else {
@@ -364,7 +318,6 @@ auto Autoloader::loadFile( GUIKIT::File* file, GUIKIT::File::Item* item ) -> voi
 		if (ddControl.emulator && ddControl.emulator != emulator)
 			continue;
 
-		auto emuView = EmuConfigView::TabWindow::getView(emulator);
 
 		for (auto& mediaGroup : emulator->mediaGroups) {
 
@@ -400,10 +353,7 @@ auto Autoloader::loadFile( GUIKIT::File* file, GUIKIT::File::Item* item ) -> voi
 
                     ddControl.emulator = emulator;
 
-					if (emuView && emuView->mediaLayout)
-                        emuView->mediaLayout->insertImage(media, file, item, alreadyInUse ? 2 : 0);
-					else
-                        fileloader->insertImage(emulator, media, file, item, alreadyInUse ? 2 : 0);
+					fileloader->insertImage(emulator, media, file, item, alreadyInUse ? 2 : 0);
 
                     //auto settings = Program::getSettings(emulator);
                     //auto folderPath = GUIKIT::File::buildRelativePath(file->getPath());
@@ -462,12 +412,7 @@ auto Autoloader::activateDrive( Emulator::Interface* emulator, Emulator::Interfa
         for (unsigned i = counter; i < requestedCount; i++)
             emulator->resetDrive( &mediaGroup->media[i] );
 
-    auto emuView = EmuConfigView::TabWindow::getView( emulator );
 
-    if (emuView) {
-        if(emuView->systemLayout) emuView->systemLayout->driveModelLayout.updateWidget( modelId );
-        else if(emuView->mediaLayout) emuView->mediaLayout->updateVisibility( mediaGroup, requestedCount );
-    }
 
     bool halfTrackMode = dynamic_cast<LIBC64::Interface*>(emulator);
     if (updateStatus && statusHandler) {
@@ -531,7 +476,7 @@ auto Autoloader::checkForSavestate( GUIKIT::File* file, GUIKIT::File::Item* item
         }
     }
     
-    if (appMessage) appMessage->error( trans->get("state_incompatible", {{"%ident%", file->getFile()}}) );
+    if (appMessage) appMessage->error( GUIKIT::String::substitute("savestate %ident% is incompatible.", {{"%ident%", file->getFile()}}) );
     
 End:
     filePool->unloadOrphaned();

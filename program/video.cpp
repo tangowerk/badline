@@ -42,16 +42,9 @@ auto Program::initVideo(bool driverChange) -> void {
         checkShaderSupport(emulator);
         auto videoManager =  VideoManager::getInstance(emulator);
 
-        auto emuView = EmuConfigView::TabWindow::getView(emulator);
-        if (emuView && emuView->presentationLayout) {
-            emuView->presentationLayout->updatePresets(true, true);
-            emuView->presentationLayout->checkHDR();
-        } else
-            videoManager->reloadSettings(true);
+        videoManager->reloadSettings(true);
     }
 
-    if (view)
-        view->buildShader();
     videoDriver->setShaderProgressCallback( [](int pass, bool hasErrors) {
         if (program->quitInProgress)
             return;
@@ -68,9 +61,9 @@ auto Program::initVideo(bool driverChange) -> void {
         if (statusHandler) {
             emuThread->lockStatus();
             if (pass < 0) {
-                statusHandler->setMessage(trans->get(hasErrors ? "shader has errors" : "shader activated"), hasErrors);
+                statusHandler->setMessage((hasErrors ? "Shader has errors" : "Shader enabled"), hasErrors);
             } else {
-                statusHandler->setMessage(trans->get(hasErrors ? "pass error" : "pass success",
+                statusHandler->setMessage(GUIKIT::String::substitute(hasErrors ? "Shader Pass %pass% faulty" : "Shader Pass %pass% successful",
                     {{"%pass%", std::to_string(pass)}}), hasErrors);
             }
             emuThread->unlockStatus();
@@ -320,7 +313,7 @@ auto Program::canExclusiveFullscreen() -> bool {
 auto Program::hintExclusiveFullscreen() -> void {
 
     if (canExclusiveFullscreen())
-        videoDriver->hintExclusiveFullscreen( true, view ? view->getCustomFullscreenRefreshRate() : 0.0f );
+        videoDriver->hintExclusiveFullscreen( true, 0.0f );
     else
         videoDriver->hintExclusiveFullscreen( false );
 }
@@ -426,30 +419,30 @@ auto Program::getCropMessage( Emulator::Interface* emulator, Emulator::Interface
 
     switch(cropType) {
         case CropType::Off: out = "disabled"; break;
-        case CropType::Monitor: out = "monitor"; break;
-        case CropType::AutoRatio: out = "crop complete ratio"; break;
-        case CropType::Auto: out = "crop complete"; break;
-        case CropType::AllSidesRatio: out = "crop all sides equally ratio"; break;
-        case CropType::AllSides: out = "crop all sides equally"; break;
+        case CropType::Monitor: out = "Monitor"; break;
+        case CropType::AutoRatio: out = "Crop complete and maintain display ratio"; break;
+        case CropType::Auto: out = "Crop complete"; break;
+        case CropType::AllSidesRatio: out = "Crop all sides equally and maintain display ratio"; break;
+        case CropType::AllSides: out = "Crop all sides equally"; break;
         default:
-        case CropType::Free: out = "crop each side manually"; break;
+        case CropType::Free: out = "Crop for each side manually"; break;
     }
 
-    return trans->getA(out) + " (" + std::to_string(int(cropType)) + ")";
+    return out + " (" + std::to_string(int(cropType)) + ")";
 }
 
 auto Program::getScaleMessage(Emulator::Interface* emulator, int aspectMode ) -> std::string {
     std::string out;
 
     switch(aspectMode) {
-        case 0: out = "window"; break;
+        case 0: out = "Window"; break;
         default:
         case 1: out = "CRT TV"; break;
         case 2: out = "Native"; break;
-        case 3: out = "Native free"; break;
+        case 3: out = "Native (free)"; break;
     }
 
-    return trans->getA(out) + " (" + std::to_string(aspectMode) + ")";
+    return out + " (" + std::to_string(aspectMode) + ")";
 }
 
 auto Program::updateCrop( Emulator::Interface* emulator ) -> void {
@@ -533,26 +526,12 @@ auto Program::setWarp( Warp::Mode mode, bool manuell ) -> void {
 
     activeEmulator->setWarpMode( forward );
 
-    if (view)
-        view->updateWarpCheck();
 }
 
 auto Program::updateFullscreenSetting() -> void {
     if (!activeEmulator)
         return;
     auto _settings = Program::getSettings(activeEmulator);
-
-    if (!view)
-        return;
-
-    bool _active = _settings->get<bool>("fullscreen_setting_active", false);
-    unsigned _display = _settings->get<unsigned>("fullscreen_display", 0 );
-    unsigned _setting = _settings->get<unsigned>("fullscreen_setting", 0 );
-
-    if (!_active || (_setting == 0) )
-        view->setFullscreenSetting( false );
-    else
-        view->setFullscreenSetting( true, _display, _setting );
 
     hintExclusiveFullscreen();
 }
@@ -577,27 +556,19 @@ auto Program::setRotation() -> void {
 }
 
 auto Program::checkShaderSupport(Emulator::Interface* emulator) -> void {
-    auto emuView = EmuConfigView::TabWindow::getView(emulator);
     bool support = videoDriver->shaderSupport();
 
-    if (emuView && emuView->presentationLayout) {
-        emuView->presentationLayout->setShaderVisible(support);
-        emuView->presentationLayout->setModuls();
-    }
 
     if (support)
         return;
 
     auto vManager = VideoManager::getInstance(emulator);
 
-    if (emuView && emuView->presentationLayout)
-        emuView->presentationLayout->unloadShader();
-    else if (vManager)
+    if (vManager)
         vManager->clearPreset();
 }
 
 auto Program::updateOnScreenText(bool keepFontPath) -> void {
-    static std::string systemFont = "inv";
 
     if (!activeEmulator)
         return;
@@ -640,19 +611,7 @@ auto Program::updateOnScreenText(bool keepFontPath) -> void {
 
         if (!found) {
             fIndex = 0;
-            if (systemFont == "inv") // one time only
-                systemFont = GUIKIT::Font::systemFontFile();
-
-            if (!systemFont.empty()) {
-                screenTextFontPath = systemFont;
-                GUIKIT::File file(screenTextFontPath);
-                found = file.exists();
-                file.unload();
-            }
-
-            if (!found) {
-                screenTextFontPath = fontFolder() + "/SourceCodePro-Regular.ttf";
-            }
+            screenTextFontPath = fontFolder() + "/SourceCodePro-Regular.ttf";
         }
     }
 

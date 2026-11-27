@@ -9,7 +9,6 @@ mkdir -p badlinepackage/$prefix/
 mkdir badlinepackage/$prefix/bin
 mkdir badlinepackage/$prefix/share
 mkdir badlinepackage/$prefix/share/badline
-mkdir badlinepackage/$prefix/share/badline/translation
 mkdir badlinepackage/$prefix/share/badline/images
 mkdir badlinepackage/$prefix/share/badline/fonts
 mkdir badlinepackage/$prefix/share/badline/data
@@ -25,7 +24,6 @@ mkdir badlinepackage/$prefix/share/mime
 mkdir badlinepackage/$prefix/share/mime/packages
 
 install -D -m 644 control badlinepackage/DEBIAN
-install -D -m 644 translation/* badlinepackage/$prefix/share/badline/translation
 install -D -m 644 fonts/* badlinepackage/$prefix/share/badline/fonts
 cp -r sounds/* badlinepackage/$prefix/share/badline/sounds/
 cp -r presets/* badlinepackage/$prefix/share/badline/presets/

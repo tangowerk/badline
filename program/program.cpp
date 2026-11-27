@@ -1,9 +1,5 @@
 
 #include "program.h"
-#include "view/view.h"
-#include "config/config.h"
-#include "emuconfig/config.h"
-#include "config/archiveViewer.h"
 #include "input/manager.h"
 #include "tools/filesetting.h"
 #include "tools/filepool.h"
@@ -16,36 +12,18 @@
 #include "cmd/cmd.h"
 #include "media/autoloader.h"
 #include "media/fileloader.h"
+#include "media/recentFiles.h"
 #include "thread/emuThread.h"
 #include "helper/fileHelper.h"
 #include "helper/miscHelper.h"
 #include "helper/settingsHelper.h"
-#include "emuconfig/layouts/presentation.h"
-#include "emuconfig/layouts/input.h"
 
-#include "debugger/cpuDebugger.h"
-#include "debugger/drive8CpuDebugger.h"
-#include "debugger/drive9CpuDebugger.h"
-#include "debugger/drive10CpuDebugger.h"
-#include "debugger/drive11CpuDebugger.h"
-#include "debugger/drive8ViaDebugger.h"
-#include "debugger/drive9ViaDebugger.h"
-#include "debugger/drive10ViaDebugger.h"
-#include "debugger/drive11ViaDebugger.h"
-#include "debugger/drive8MemDebugger.h"
-#include "debugger/drive9MemDebugger.h"
-#include "debugger/drive10MemDebugger.h"
-#include "debugger/drive11MemDebugger.h"
-#include "debugger/memDebugger.h"
-#include "debugger/ciaDebugger.h"
-#include "debugger/videoDebugger.h"
-#include "debugger/sidDebugger.h"
-#include "debugger/dmaDebugger.h"
 #include "mcp/server.h"
 #include "window/sdlWindow.h"
 #include "overlay/overlay.h"
 #include "firmware/roms.h"
 #include <chrono>
+#include <clocale>
 #include <thread>
 #include "view/message.h"
 
@@ -56,9 +34,7 @@ DRIVER::Video* videoDriver = new DRIVER::Video;
 std::vector<Emulator::Interface*> emulators;
 Emulator::Interface* activeEmulator = nullptr;
 std::vector<GUIKIT::Settings*> settingsStorage;
-std::vector<Debugger*> debuggers;
 GUIKIT::Settings* globalSettings = nullptr;
-GUIKIT::Translation* trans = nullptr;
 FilePool* filePool = nullptr;
 Logger* logger = nullptr;
 Cmd* cmd = nullptr;
@@ -70,7 +46,12 @@ Message* appMessage = nullptr;
 
 #include "video.cpp"
 
-int main(int argc, char** argv) {  
+int main(int argc, char** argv) {
+    // gtk_init did this before M9: user locale (keyboard layout guess via LC_MESSAGES),
+    // but "C" number formatting (settings, shaders)
+    setlocale(LC_ALL, "");
+    setlocale(LC_NUMERIC, "C");
+
     cmd = new Cmd(argc, argv);
     if (cmd->hasInvalidParam()) {
         cmd->printInvalidParam();
@@ -93,12 +74,6 @@ Program::Program() {
     program = this;
     GUIKIT::Application::name = APP_NAME;
     GUIKIT::Application::vendor = AUTHOR;
-    GUIKIT::Application::onQuitRequest = []() {
-        if (program->quitInProgress)
-            return;
-        program->quit();
-        GUIKIT::Application::quit();
-    };
     srand(time(nullptr) );
 
     globalSettings = new GUIKIT::Settings;
@@ -106,13 +81,12 @@ Program::Program() {
 	fileloader = new Fileloader;
     emuThread = new EmuThread;
     settingsStorage.push_back( globalSettings );
+    appMessage = new Message; // also headless: stderr / MCP capture
 	if(!cmd->noGui) {
 		// SDL window instead of the GTK main window; GTK windows are not created anymore
 		sdlWindow = new SdlWindow;
-		trans = new GUIKIT::Translation;
 		statusHandler = new StatusHandler;
 		audioManager = new AudioManager;
-		appMessage = new Message(nullptr);
 	}
     
 	logger = new Logger;
@@ -126,9 +100,7 @@ Program::Program() {
         if (audioManager)
             audioManager->setResampler();
         
-        if (view)
-            view->updateSpeedLabels();
-        else if (statusHandler)
+        if (statusHandler)
             statusHandler->resetFrameCounter();
 
         fpsChangeTimer.setEnabled(false);
@@ -236,8 +208,9 @@ auto Program::initUserInterface() -> void {
 
     if (cmd->noGui) {
 		emuThread->enable( false );
-        // no audio manager: never produce samples (autostart may have set a warp mode already)
-        if (activeEmulator && !cmd->debug && !cmd->aggressiveWarp)
+        // no audio manager: never produce samples (autostart may have set a warp mode already;
+        // -debugcart keeps the video output for -exitscreenshot)
+        if (activeEmulator && !cmd->aggressiveWarp)
             activeEmulator->setWarpMode( (unsigned)Emulator::Interface::WarpMode::NoAudioOut );
         GUIKIT::Application::loop = [this]() { loopNoGui(); };
     } else if (cmd->debug) {
@@ -284,12 +257,6 @@ auto Program::init() -> void {
     if (!cmd->debug) {
         SettingsHelper::loadSettings();
 
-        auto style = globalSettings->get<unsigned>("visual_style", GUIKIT::Application::DarkMode::Auto);
-        GUIKIT::Application::setDarkMode((GUIKIT::Application::DarkMode)style);
-
-        if (trans && !loadTranslation(DEFAULT_TRANS_FILE)) {
-            GUIKIT::System::printToCmd( "language plugin not found\n" );
-        }
     }
     
     cmd->parse();
@@ -450,39 +417,20 @@ auto Program::power( Emulator::Interface* emulator, bool regular ) -> void {
 		    updateHDR();
 		    updateBFI();
             activeVideoManager->rebuildShader = true;
-            statusHandler->updateDiskDriveSpace();
             setVideoDimension(activeEmulator);
 		    updateOnScreenText();
 		    initFastForward();
 
-            if (view && settings->get<bool>("scale_emu_switch", false))
-                view->updateToHoldDimension();
-            if (view)
-                view->updateScreenshotUI();
         }
 
-	    Debugger::reset();
 
 		MiscHelper::resetRunAhead();
 
-		if (archiveViewer)
-			archiveViewer->setVisible(false);
-		if (view) {
-			view->setCursor( activeEmulator );
-			view->updateCartButtons( activeEmulator );
-			view->showTapeMenu( emulator->getModelValue( emulator->getModelIdOfEnabledDrives( emulator->getTapeMediaGroup() ) ) );
-		}
 
 		globalSettings->set("last_used_emu", activeEmulator->ident);
 
         statusHandler->reset();
 
-        if (view) {
-            view->updateSpeedLabels();
-            view->updateDiskMenu();
-            view->updateMouseGrab();
-            view->updateFPSMenu();
-        }
 	}
 	
 	activeEmulator->power();
@@ -576,16 +524,6 @@ auto Program::powerOff() -> void {
 
             for(auto& media : mediaGroup.media) {
                 
-                if (media.guid) {
-                    auto file = (GUIKIT::File*)media.guid;
-                    // medium was written by emulation, lets update the listing
-                    if (!cmd->noGui && file->wasDataChanged() && filePool->has( _ident(activeEmulator, media.name + "store"), file)) {
-                        auto emuView = EmuConfigView::TabWindow::getView( activeEmulator );
-                        if (!quitInProgress && emuView && emuView->mediaLayout)
-                            emuView->mediaLayout->updateListing( &media );
-                    }
-                }                        
-                
                 filePool->assign( _ident(activeEmulator, media.name), nullptr);
 
                 if (!selectedMedia
@@ -604,8 +542,6 @@ auto Program::powerOff() -> void {
 	}
 	
 	if (!cmd->noGui) {
-        if (view)
-            view->updatePauseCheck();
         emuThread->clearEvents();
 		statusHandler->clear();
 		if (activeVideoManager)
@@ -614,8 +550,6 @@ auto Program::powerOff() -> void {
 		audioDriver->clear();
 		audioManager->powerOff();
 		filePool->unloadOrphaned();
-		if (view)
-			view->updateCartButtons(nullptr);
 		FileHelper::updateSaveIdent( nullptr );
 		InputManager::urgentUpdate = true;
 		InputManager::resetJit();
@@ -737,7 +671,6 @@ auto Program::loopUserInterface() -> void {
             return;
         focused = sdlWindow->focused();
     }
-    emuThread->handleStatusUpdate();
     emuThread->handleUIEvents();
 
     if (mcpServer) {
@@ -759,17 +692,7 @@ auto Program::loopUserInterface() -> void {
 }
 
 auto Program::hasFocus() -> bool {
-    if( focused || (configView && configView->focused()) )
-        return true;
-
-    for(auto emuView : emuConfigViews)
-        if (emuView->focused())
-            return true;
-
-    if (program->hasFocusedDebugger())
-        return true;
-
-    return false;
+    return focused;
 }
 
 auto Program::quit() -> void {
@@ -780,10 +703,6 @@ auto Program::quit() -> void {
         mcpServer->stop();
     }
     emuThread->lock(true);
-    for(auto emuView : emuConfigViews) {
-        if (emuView->inputLayout)
-            emuView->inputLayout->stopCapture();
-    }
     powerOff();
     if (statusHandler)
         statusHandler->clearUpdates();
@@ -810,8 +729,6 @@ auto Program::quit() -> void {
         delete firmwareManager;
     for( auto paletteManager : paletteManagers )
         delete paletteManager;
-    for ( auto debugger : debuggers)
-        delete debugger;
         
     delete inputDriver;
     delete audioDriver;
@@ -821,8 +738,6 @@ auto Program::quit() -> void {
         delete sdlWindow;
         sdlWindow = nullptr;
     }
-	if (trans)
-		delete trans;    
 	delete logger;
 	delete filePool;
     delete cmd;
@@ -844,45 +759,12 @@ auto Program::quit() -> void {
     Socket::clean();
 }
 
-auto Program::loadTranslation(std::string file) -> bool {
-        
-    if (trans->read( translationFolder() + file )) return true;
-
-    if (file != DEFAULT_TRANS_FILE) {
-        if (trans->read( translationFolder() + DEFAULT_TRANS_FILE )) {
-            globalSettings->set<std::string>("translation", DEFAULT_TRANS_FILE);
-            return true;
-        }
-    }
-    return false;
-}
-
-auto Program::getSystemLangFile() -> std::string {
-    
-    auto lang = GUIKIT::System::getOSLang();
-    
-    if (lang == GUIKIT::System::Language::DE)
-        return "german.txt";
-    
-    if (lang == GUIKIT::System::Language::US)
-        return "english.txt";
-    
-    if (lang == GUIKIT::System::Language::FR)
-        return "french.txt";
-
-    return DEFAULT_TRANS_FILE;
-}
-
 auto Program::installFolder() -> std::string {
     return GUIKIT::System::getResourceFolder(appFolder());
 }
 
 auto Program::userFolder() -> std::string {
     return GUIKIT::System::getUserDataFolder();
-}
-
-auto Program::translationFolder() -> std::string {
-    return installFolder() + TRANSLATION_FOLDER;
 }
 
 auto Program::dataFolder() -> std::string {
@@ -948,10 +830,7 @@ auto Program::updateDeviceState( Emulator::Interface::Media* media, bool write, 
 }
 
 auto Program::updateLedState(Emulator::Interface::LedId ledId, uint8_t state) -> void {
-    if (cmd->noGui || !statusHandler)
-        return;
-
-    statusHandler->updateLEDState(ledId, state);
+    // LED states (power, caps, 2 MHz) were shown only in the GTK status bar (HUD milestone)
 }
 
 auto Program::appFolder() -> std::string {
@@ -961,10 +840,14 @@ auto Program::appFolder() -> std::string {
 
 auto Program::questionToWrite(Emulator::Interface::Media* media) -> bool {
     
-	if (!view)
-		return false;
-	
-    return view->questionToWrite(media);
+    // Denise asked before writing changed disk/flash media back into the image file. Without a
+    // dialog the answer is 'no', unless the user turned the question off ("question_media_write").
+    auto file = (GUIKIT::File*)media->guid;
+    if (cmd->debug || cmd->noGui || !file)
+        return false;
+    if (file->isArchived() || file->isReadOnly())
+        return false; // removing the write protection of C64 archives is not supported
+    return !globalSettings->get<bool>("question_media_write", true);
 }
 
 auto Program::autoStartFinish(bool soft) -> void {
@@ -1108,100 +991,6 @@ auto Program::getC64ModelValue(LIBC64::Interface::ModelId modelId) -> int {
     return 0;
 }
 
-auto Program::openDebugger(Emulator::Interface* emulator, DebuggerTheme theme) -> void {
-    Debugger* debugger = getDebugger( emulator, theme );
-
-    if (!debugger)
-        debugger = createDebugger( emulator, theme );
-
-    if (debugger)
-        debugger->makeVisible();
-}
-
-auto Program::getDebugger(Emulator::Interface* emulator, DebuggerTheme theme) -> Debugger* {
-    for (auto debugger : debuggers) {
-        if (debugger->emulator == emulator && debugger->getTheme() == theme) {
-            return debugger;
-        }
-    }
-    return nullptr;
-}
-
-auto Program::createDebugger(Emulator::Interface* emulator, DebuggerTheme theme) -> Debugger* {
-    Debugger* debugger = nullptr;
-
-    switch (theme) {
-        case DebuggerTheme::CPU: debugger = new CpuDebugger(emulator); break;
-        case DebuggerTheme::Drive8CPU: debugger = new Drive8CpuDebugger(emulator); break;
-        case DebuggerTheme::Drive9CPU: debugger = new Drive9CpuDebugger(emulator); break;
-        case DebuggerTheme::Drive10CPU: debugger = new Drive10CpuDebugger(emulator); break;
-        case DebuggerTheme::Drive11CPU: debugger = new Drive11CpuDebugger(emulator); break;
-        case DebuggerTheme::Drive8Memory: debugger = new Drive8MemDebugger(emulator); break;
-        case DebuggerTheme::Drive9Memory: debugger = new Drive9MemDebugger(emulator); break;
-        case DebuggerTheme::Drive10Memory: debugger = new Drive10MemDebugger(emulator); break;
-        case DebuggerTheme::Drive11Memory: debugger = new Drive11MemDebugger(emulator); break;
-        case DebuggerTheme::Drive8VIA: debugger = new Drive8ViaDebugger(emulator); break;
-        case DebuggerTheme::Drive9VIA: debugger = new Drive9ViaDebugger(emulator); break;
-        case DebuggerTheme::Drive10VIA: debugger = new Drive10ViaDebugger(emulator); break;
-        case DebuggerTheme::Drive11VIA: debugger = new Drive11ViaDebugger(emulator); break;
-        case DebuggerTheme::Memory: debugger = new MemDebugger(emulator); break;
-        case DebuggerTheme::CIA: debugger = new CiaDebugger(emulator); break;
-        case DebuggerTheme::Video: debugger = new VideoDebugger(emulator); break;
-        case DebuggerTheme::SID: debugger = new SidDebugger(emulator); break;
-        case DebuggerTheme::DMA: debugger = new DmaDebugger(emulator); break;
-        default:
-            break;
-    }
-
-    if (debugger) {
-        debugger->build();
-        debuggers.push_back(debugger);
-    }
-
-    return debugger;
-}
-
-auto Program::hasActiveDebugger() -> bool {
-    for (auto debugger : debuggers) {
-        if (debugger->emulator == activeEmulator) {
-            if (debugger->visible())
-                return true;
-        }
-    }
-    return false;
-}
-
-auto Program::hasFocusedDebugger() -> bool {
-    for (auto debugger : debuggers) {
-        if (debugger->emulator == activeEmulator) {
-            if (debugger->visible() && debugger->focused())
-                return true;
-        }
-    }
-    return false;
-}
-
-auto Program::getFirstActiveDebugger() -> Debugger* {
-    for (auto debugger : debuggers) {
-        if (debugger->emulator == activeEmulator) {
-            if (debugger->visible())
-                return debugger;
-        }
-    }
-    return nullptr;
-}
-
-auto Program::getActiveDebuggers() -> std::vector<Debugger*> {
-    std::vector<Debugger*> out;
-    for (auto debugger : debuggers) {
-        if (debugger->emulator == activeEmulator) {
-            if (debugger->visible())
-                out.push_back(debugger);
-        }
-    }
-    return out;
-}
-
 auto Program::getSettings( Emulator::Interface* emulator ) -> GUIKIT::Settings* {
     for(auto settings : settingsStorage) {
         if ( (Emulator::Interface*)(settings->getGuid()) == emulator )
@@ -1213,7 +1002,7 @@ auto Program::getSettings( Emulator::Interface* emulator ) -> GUIKIT::Settings* 
 
 auto Program::debugger(Emulator::Interface::DebuggerSnapshot* snapshot) -> void {
     auto mcp = McpServer::StopDecision::Ignore;
-    if (mcpServer && !quitInProgress && !Debugger::lock)
+    if (mcpServer && !quitInProgress && !emuThread->debuggerLock)
         mcp = mcpServer->debuggerEvent(snapshot);
 
     if (mcp == McpServer::StopDecision::Continue) {
@@ -1222,8 +1011,17 @@ auto Program::debugger(Emulator::Interface::DebuggerSnapshot* snapshot) -> void 
         return;
     }
 
-    if (hasActiveDebugger() || binaryMonitor.clientConnected()) {
-        Debugger::Callback( snapshot );
+    if (binaryMonitor.clientConnected()) {
+        if (quitInProgress || !emuThread->enabled || emuThread->debuggerLock) {
+            snapshot->mutex.unlock();
+            return;
+        }
+        bool stop = snapshot->callbackAction != DebuggerAction::AutoUpdate;
+        if (stop)
+            binaryMonitor.responseStopped( static_cast<LIBC64::DebuggerSnapshot*>(snapshot) );
+        snapshot->mutex.unlock();
+        if (stop)
+            emuThread->lockDebugger();
         return;
     }
 

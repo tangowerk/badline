@@ -32,7 +32,7 @@ if [ "$installDeps" = 1 ]; then
     sudo apt-get update
     sudo apt-get install -y --no-install-recommends \
         build-essential cmake ninja-build pkg-config git ca-certificates \
-        libgtk-3-dev libpulse-dev libcurl4-openssl-dev libfreetype-dev libfontconfig-dev \
+        libpulse-dev libcurl4-openssl-dev libfreetype-dev \
         libx11-dev libxrandr-dev libxfixes-dev libxext-dev libopenal-dev \
         libwayland-dev libxkbcommon-dev wayland-protocols libdecor-0-dev \
         libegl-dev libgl-dev libgles-dev libdrm-dev libgbm-dev \
@@ -74,8 +74,8 @@ Install:        copy the folder anywhere (e.g. ~/.local/opt/badline) and start b
                 share/applications/badline.desktop can be adapted for a launcher entry.
 
 SDL3 is included (lib/). The other libraries come from your system; on Ubuntu/Debian:
-  sudo apt install libgtk-3-0t64 libpulse0 libcurl4t64 libopenal1 \\
-                   libfreetype6 libfontconfig1 libgl1 libegl1
+  sudo apt install libpulse0 libcurl4t64 libopenal1 \\
+                   libfreetype6 libgl1 libegl1
 (Debian 13 / Ubuntu 24.04 names; most desktops have them already.)
 
 On first start Badline offers to download the C64 ROMs (see share/doc/badline/README.md).

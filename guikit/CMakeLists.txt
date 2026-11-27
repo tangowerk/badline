@@ -1,52 +1,15 @@
 
 add_library(guikit STATIC)
 
-target_compile_definitions(guikit PUBLIC GUIKIT_GTK)
-
-SET_SOURCE_FILES_PROPERTIES(api.cpp PROPERTIES INCLUDE_DIRECTORIES "${GTK_INCLUDE_DIRS}")
-
 set(headers
-    gtk/widgets/button.cpp
-    gtk/widgets/checkbox.cpp
-    gtk/widgets/checkbutton.cpp
-    gtk/widgets/combobutton.cpp
-    gtk/widgets/frame.cpp
-    gtk/widgets/hyperlink.cpp
-    gtk/widgets/imageView.cpp
-    gtk/widgets/label.cpp
-    gtk/widgets/lineedit.cpp
-    gtk/widgets/listview.cpp
-    gtk/widgets/multilineedit.cpp
-    gtk/widgets/progressbar.cpp
-    gtk/widgets/radiobox.cpp
-    gtk/widgets/slider.cpp
-    gtk/widgets/squareCanvas.cpp
-    gtk/widgets/stepbutton.cpp
-    gtk/widgets/tabframe.cpp
-    gtk/widgets/treeview.cpp
-    gtk/widgets/viewport.cpp
-    gtk/widgets/widget.cpp
-    gtk/browserWindow.cpp
-    gtk/display.cpp
-    gtk/interProcess.cpp
-    gtk/main.cpp
-    gtk/main.h
-    gtk/menu.cpp
-    gtk/messageWindow.cpp
-    gtk/statusbar.cpp
-    gtk/tools.cpp
-)
 
-set(headers ${headers}
         api.h
         tools/crc32.h
         tools/image.cpp
-        tools/layout.cpp
         tools/setting.cpp
         tools/string.cpp
-        tools/translate.cpp
-        tools/ttf.cpp
         tools/utf8.cpp
+        tools/system.cpp
         tools/decode/gzip.h
         tools/decode/images.h
         tools/decode/inflate.h
@@ -92,9 +55,5 @@ target_sources(guikit PRIVATE
 # the library lha is built in "deps/CMakeLists.txt"
 target_link_libraries(guikit PRIVATE lha)
 
-target_link_libraries(guikit PUBLIC fontconfig Xrandr ${X11_LIBRARIES})
-
-target_link_directories(guikit PUBLIC ${GTK_LIBRARY_DIRS})
-target_link_libraries(guikit PUBLIC ${GTK_LIBRARIES})
 
 # link guikit as library: target_link_libraries( APP PUBLIC guikit )

@@ -10,14 +10,6 @@ set(headers
         audio/resampler/sinc.h
         audio/manager.h
         cmd/cmd.h
-        config/layouts/drivers.h
-        config/layouts/settings.h
-        config/archiveViewer.h
-        config/config.h
-        config/slider.h
-        emuconfig/config.h
-        emuconfig/layouts/model.h
-        emuconfig/layouts/presentation.h
         firmware/manager.h
         input/capture.cpp
         input/global.cpp
@@ -26,9 +18,6 @@ set(headers
         input/mapping.cpp
         media/autoloader.h
         media/fileloader.h
-        media/layout.cpp
-        media/media.h
-        media/swapper.cpp
         media/recentFiles.h
         states/states.h
         thread/emuThread.h
@@ -51,9 +40,7 @@ set(headers
         video/shaderParser.h
         video/sync.cpp
         view/message.h
-        view/placeholder.cpp
         view/status.h
-        view/view.h
         video.cpp
         helper/fileHelper.h
         helper/miscHelper.h
@@ -78,37 +65,10 @@ set(srcs
         program.cpp
         thread/emuThread.cpp
         input/manager.cpp
-        view/view.cpp
-        debugger/debugger.cpp
-        debugger/cpuDebugger.cpp
-        debugger/memDebugger.cpp
-        debugger/ciaDebugger.cpp
-        debugger/viaDebugger.cpp
-        debugger/videoDebugger.cpp
-        debugger/sidDebugger.cpp
-        debugger/dmaDebugger.cpp
-        debugger/conditionViewDebugger.cpp
-        debugger/watcherHelper.cpp
         view/status.cpp
-        config/config.cpp
-        config/layouts/drivers.cpp
-        config/layouts/settings.cpp
-        emuconfig/config.cpp
-        emuconfig/layouts/model.cpp
-        emuconfig/layouts/presentation.cpp
-        emuconfig/layouts/audio.cpp
-        emuconfig/layouts/configurations.cpp
-        emuconfig/layouts/firmware.cpp
-        emuconfig/layouts/geometry.cpp
-        emuconfig/layouts/input.cpp
-        emuconfig/layouts/misc.cpp
-        emuconfig/layouts/palette.cpp
-        emuconfig/layouts/system.cpp
-        media/media.cpp
         media/autoloader.cpp
         media/fileloader.cpp
         media/recentFiles.cpp
-        config/archiveViewer.cpp
         states/states.cpp
         audio/manager.cpp
         audio/resampler/cosine.cpp
@@ -146,7 +106,7 @@ set(srcs
 
 
 SET_SOURCE_FILES_PROPERTIES(program.cpp
-        PROPERTIES COMPILE_FLAGS "-DAPP_NAME=\"\\\"${AppName}\\\"\" -DTRANSLATION_FOLDER=\"\\\"${translationFolder}/\\\"\" -DDATA_FOLDER=\"\\\"${dataFolder}/\\\"\" -DPRESET_FOLDER=\"\\\"${presetFolder}/\\\"\" -DIMAGES_FOLDER=\"\\\"${imagesFolder}/\\\"\" -DSOUND_FOLDER=\"\\\"${soundFolder}/\\\"\" ")
+        PROPERTIES COMPILE_FLAGS "-DAPP_NAME=\"\\\"${AppName}\\\"\" -DDATA_FOLDER=\"\\\"${dataFolder}/\\\"\" -DPRESET_FOLDER=\"\\\"${presetFolder}/\\\"\" -DIMAGES_FOLDER=\"\\\"${imagesFolder}/\\\"\" -DSOUND_FOLDER=\"\\\"${soundFolder}/\\\"\" ")
 
 target_link_libraries(${PROJECT_NAME} PUBLIC pthread rt dl -no-pie)
 pkg_check_modules(CURL REQUIRED libcurl)
@@ -163,4 +123,4 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${FREETYPE2_INCLUDE_DIRS} ${S
 target_link_directories(${PROJECT_NAME} PUBLIC ${FREETYPE2_LIBRARY_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC ${FREETYPE2_LIBRARIES})
 
-target_link_libraries(${PROJECT_NAME} PUBLIC guikit driver coreC64 icons)
+target_link_libraries(${PROJECT_NAME} PUBLIC guikit driver coreC64)

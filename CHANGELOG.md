@@ -6,6 +6,48 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ## Unreleased
 
+### Removed
+
+- **GTK is gone.** The GTK toolkit layer (guikit widgets, windows, menus,
+  status bar, file and message dialogs), the GTK settings windows, the GTK
+  debugger windows and the archive viewer were removed; they were unreachable
+  since the SDL window (0.1.0). Badline no longer links GTK, fontconfig, Xrandr
+  or X11 directly. guikit stays as a small GTK-free tools library (settings,
+  files and archive decoders, strings, images, timers, main loop).
+- Translation system (`data/translation`): all texts are English literals now.
+- Dead features that only existed in the GTK UI: single-instance mode
+  (`single_instance`), clipboard copy/paste from the menu, the system font
+  fallback for screen texts (the bundled font is used), DMA debugger colouring,
+  GTK status bar LED/volume widgets, the embedded GTK icon set. Hotkeys that
+  opened GTK windows or drove the GTK debugger do nothing (their ids stay).
+- USBSID-Pico stub, the Amiga debugger themes and the Windows/macOS branches
+  in `emulation/tools` (unused `uuid`/`DLLoader` helpers deleted). Savestates
+  keep their format.
+
+### Changed
+
+- Headless mode (`-headless`) needs no display server anymore (no X/Wayland
+  connection is opened), errors of the autoloader are printed to stderr and
+  captured by MCP calls there too.
+- The main loop is a plain loop with polled timers instead of the GLib main
+  loop; the display refresh rate (adaptive sync, sync status hotkey) comes
+  from SDL.
+- The VICE binary monitor keeps its checkpoints itself instead of hidden GTK
+  debugger windows; new smoke test `tests/binmon_smoke.py`.
+
+### Fixed
+
+- Changed disks and flash cartridges are written back into the image file
+  again when the question is turned off (`question_media_write = false`);
+  since 0.1.0 they were never written back because the GTK question dialog
+  was gone. With the question on (default) changes still stay unsaved until
+  the overlay gets a dialog. (Badline bug since 0.1.0.)
+- `-headless -debugcart` crashed on the first audio sample (no audio manager,
+  warp mode without NoAudioOut). (Badline bug since 0.1.0.)
+- Binary monitor: a failing checkpoint set left the emulation locked, and a
+  condition was always applied to the C64 CPU checkpoint list even for drive
+  checkpoints. (Denise bugs.)
+
 ## 0.1.3 – 2026-11-27
 
 ### Changed

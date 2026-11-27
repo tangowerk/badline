@@ -2,7 +2,14 @@
 #pragma once
 
 #include "../tools/socket.h"
-#include "../debugger/watcherHelper.h"
+#include "../../emulation/interface.h"
+#include <optional>
+
+typedef Emulator::Interface::DebuggerAction DebuggerAction;
+typedef Emulator::Interface::DebuggerTheme DebuggerTheme;
+
+namespace LIBC64 { struct DebuggerSnapshot; }
+#include <string>
 #include <cstdint>
 #include <vector>
 
@@ -75,7 +82,10 @@ struct BinaryMonitor {
         bool hit;
         uint8_t stop;
         DebuggerTheme theme;
+        std::string condition;
     };
+    std::vector<DebuggerTheme> activeThemes;
+    unsigned nextIdent = 1;
 
     std::vector<CheckPoint> checkPoints;
     bool delayedJobs = false;
@@ -97,7 +107,6 @@ struct BinaryMonitor {
 
     Socket* client = nullptr;
 
-    std::vector<DbgWatcher> watchers;
     LIBC64::DebuggerSnapshot* snapshot = nullptr;
 
     auto setServer(const std::string& uri) -> void;
@@ -175,5 +184,6 @@ struct BinaryMonitor {
     
     auto getOp(CheckPoint& cp) -> uint8_t;
 
-    auto initDebugger(Emulator::Interface* emulator, DebuggerTheme theme) -> Debugger*;
+    auto initDebugger(Emulator::Interface* emulator, DebuggerTheme theme) -> void;
+    auto watcherIdents(CheckPoint& cp) -> std::vector<std::pair<unsigned, DebuggerAction>>;
 };

@@ -15,9 +15,9 @@ std::vector<std::string> SidManager::adrOptions = {
 "D7A0", "D7C0", "D7E0", "DE00", "DE20", "DE40", "DE60", "DE80", "DEA0", "DEC0", "DEE0", "DF00", "DF20", "DF40", "DF60", "DF80", "DFA0", "DFC0", "DFE0"
 };
 
-SidManager::SidManager(System* system) : system(system), usbSIDPico(*system) {
+SidManager::SidManager(System* system) : system(system) {
     for (unsigned i = 0; i < 8; i++)
-        sids[i] = new ReSid( i, system, *this, usbSIDPico, ReSid::Type::MOS_8580 );
+        sids[i] = new ReSid( i, system, *this, ReSid::Type::MOS_8580 );
 
     sampleCounter = 0;
     sampleLimit = 2;
@@ -299,7 +299,6 @@ auto SidManager::updateSidUsage() -> void {
 
     if (!extraSids) {
         system->updateStatsStereo();
-        usbSIDPico.updateStereo();
         return;
     }
 
@@ -329,7 +328,6 @@ auto SidManager::updateSidUsage() -> void {
     extraSids = !useSids.empty();
 
     system->updateStatsStereo();
-    usbSIDPico.updateStereo();
     system->history.reset();
 }
 
@@ -374,16 +372,16 @@ auto SidManager::rebuildSids(bool cloneOld) -> void {
         switch (engine) {
             default:
             case 0:
-                newSid = new ReSid( i, system, *this, usbSIDPico, oldSid->type );
+                newSid = new ReSid( i, system, *this, oldSid->type );
                 break;
             case 1:
-                newSid = new ResidfpHandler(i, system, *this, usbSIDPico, oldSid->type);
+                newSid = new ResidfpHandler(i, system, *this, oldSid->type);
                 break;
             case 2:
-                newSid = new ReSid24( i, system, *this, usbSIDPico, oldSid->type );
+                newSid = new ReSid24( i, system, *this, oldSid->type );
                 break;
             case 3:
-                newSid = new Chamberlin( i, system, *this, usbSIDPico, oldSid->type );
+                newSid = new Chamberlin( i, system, *this, oldSid->type );
                 break;
         }
 
@@ -467,9 +465,6 @@ auto SidManager::resetAll() -> void {
     potX = potY = 0xff;
     system->sysTimer.add( &callAlarm, UpdateCycles, Emulator::SystemTimer::Action::UpdateExisting );
 
-    if (usbSIDPico.enabled)
-        usbSIDPico.reset();
-
     for (auto sid : sids)
         sid->reset();
 
@@ -477,8 +472,6 @@ auto SidManager::resetAll() -> void {
     offsetPseudoStereo.offset = 0;
     offsetPseudoStereo.trigger = true;
     offsetPseudoStereo.delayedSid = nullptr;
-
-    usbSIDPico.enabled ? (void)usbSIDPico.open() : usbSIDPico.close();
 }
 
 auto SidManager::calcSerializationSizeForSevenMoreSids() -> void {
@@ -491,7 +484,7 @@ auto SidManager::calcSerializationSizeForSevenMoreSids() -> void {
 
     Emulator::Serializer s2;
 
-    auto testfp = new ResidfpHandler(0, system, *this, usbSIDPico, Sid::Type::MOS_8580);
+    auto testfp = new ResidfpHandler(0, system, *this, Sid::Type::MOS_8580);
 
     testfp->serialize( s2, false );
 
@@ -546,23 +539,6 @@ auto SidManager::getResampleQuality( ) -> uint8_t {
     }
 
     _unreachable
-}
-
-auto SidManager::enableUSBSID(bool state) -> void {
-    usbSIDPico.enabled = state;
-    if (!state)
-        usbSIDPico.close();
-    else if (system->powerOn) {
-        usbSIDPico.open();
-    }
-}
-
-auto SidManager::setUSBSIDBuffSize(unsigned value) -> void {
-    usbSIDPico.setBuffSize(value);
-}
-
-auto SidManager::setUSBSIDDiffSize(unsigned value) -> void {
-    usbSIDPico.setDiffSize(value);
 }
 
 auto SidManager::searializeActiveSids(Emulator::Serializer& s, bool light) -> void {

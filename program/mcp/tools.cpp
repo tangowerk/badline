@@ -9,7 +9,6 @@
 #include "../media/fileloader.h"
 #include "../helper/miscHelper.h"
 #include "../states/states.h"
-#include "../view/view.h"
 #include "../window/sdlWindow.h"
 #include "../firmware/roms.h"
 #include "../overlay/overlay.h"

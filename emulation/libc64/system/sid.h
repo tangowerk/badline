@@ -13,7 +13,6 @@ namespace LIBC64 {
 
 struct System;
 struct SidManager;
-struct USBSIDPico;
 
 struct Sid {
     enum Type { MOS_6581 = 0, MOS_8580 = 1 } type;
@@ -21,7 +20,6 @@ struct Sid {
     unsigned nr;
     System* system;
     SidManager& sidManager;
-    USBSIDPico& usbSIDPico;
 
     bool leftChannel = true;
     bool rightChannel = true;
@@ -40,10 +38,9 @@ struct Sid {
 
     DebuggerSnapshot::SID snapshot;
 
-    Sid(unsigned nr, System* system, SidManager& sidManager, USBSIDPico& usbSIDPico, Type type) :
+    Sid(unsigned nr, System* system, SidManager& sidManager, Type type) :
     system( system ),
-    sidManager( sidManager ),
-    usbSIDPico( usbSIDPico ) {
+    sidManager( sidManager ) {
         this->type = type;
         this->nr = nr;
     }

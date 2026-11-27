@@ -238,7 +238,7 @@ struct Interface {
 		unsigned id;
 		std::string name;		
 		enum Type : unsigned { Switch, Range, Hex, Radio, Combo, Slider } type;
-		enum Purpose : unsigned { Cpu, GraphicChip, SoundChip, Cia, AudioSettings, AudioResampler, Misc, DriveSettings, Performance, Memory, SubModels, DriveMechanics, AudioExtern } purpose;
+		enum Purpose : unsigned { Cpu, GraphicChip, SoundChip, Cia, AudioSettings, AudioResampler, Misc, DriveSettings, Performance, Memory, SubModels, DriveMechanics } purpose;
 		int defaultValue;
 		std::vector<int> range;
 		std::vector<std::string> options;
@@ -365,9 +365,8 @@ struct Interface {
     enum class DebuggerTheme : unsigned { Unspecified = 0,
         CPU = 1, Drive8CPU = 4, Drive9CPU = 8, Drive10CPU = 0x10, Drive11CPU = 0x20,
         Memory = 0x40, Drive8Memory = 0x100, Drive9Memory = 0x200, Drive10Memory = 0x400, Drive11Memory = 0x800,
-        CIA = 0x1000, Video = 0x2000, DMA = 0x4000, SID = 0x8000, Copper = 0x10000, Blitter = 0x20000,
-        Agnus = 0x40000, Paula = 0x80000, Drive8VIA = 0x100000, Drive9VIA = 0x200000, Drive10VIA = 0x400000, Drive11VIA = 0x800000,
-        Serial = 0x1000000
+        CIA = 0x1000, Video = 0x2000, DMA = 0x4000, SID = 0x8000,
+        Drive8VIA = 0x100000, Drive9VIA = 0x200000, Drive10VIA = 0x400000, Drive11VIA = 0x800000
     };
 
     enum class DebuggerAction { None, Breakpoint, Watchpoint, WatchpointWrite, ExceptionPoint, Softstop, ModifiedCode, History, Line, Frame,

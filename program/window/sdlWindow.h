@@ -25,6 +25,9 @@ struct SdlWindow {
     auto focused() const -> bool { return hasFocus; }
     auto setTitle(const std::string& title) -> void;
 
+    // refresh rate (Hz) of the display showing the window, 0 if unknown; any thread
+    auto refreshRate() const -> float { return currentRefreshRate; }
+
     // mouse position in drawable pixels (lightpen/gun); thread-safe snapshot
     auto mousePosition() -> GUIKIT::Position;
 
@@ -41,6 +44,7 @@ struct SdlWindow {
 
 private:
     auto handleEvent(SDL_Event& ev) -> void;
+    auto updateRefreshRate() -> void;
     auto handleDrop(SDL_Event& ev) -> void;
     auto updateMouseCapture() -> void;
     auto requestQuit() -> void;
@@ -55,6 +59,7 @@ private:
     std::string romDownloadError;
 
     SDL_Window* window = nullptr;
+    std::atomic<float> currentRefreshRate{0.0f};
     bool fullscreen = false;
     bool hasFocus = false;
     bool captured = false;

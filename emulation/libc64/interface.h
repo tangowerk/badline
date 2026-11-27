@@ -30,7 +30,6 @@ struct Interface : Emulator::Interface {
         ModelIdReuRam, ModelIdGeoRam, ModelIdIntensifyPseudoStereo,
     	ModelIdEmulateDriveMechanics, ModelIdDriveStepperDelay, ModelIdDriveAcceleration, ModelIdDriveDeceleration,
     	ModelIdTrackZeroSensor, ModelId2Mhz,
-        ModelIdSidUsbPico, ModelIdSidUsbPicoBufferSize, ModelIdSidUsbPicoDiffSize,
         ModelIdDisableSpriteCollisions, ModelIdDisableSpriteCharacterCollisions,
     };
     

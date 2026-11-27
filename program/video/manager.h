@@ -15,7 +15,6 @@
     bool, unsigned, bool, unsigned, bool, float, bool, float
 
 struct ShaderParser;
-struct DmaColor;
 struct SCVideo;
 
 namespace GUIKIT {
@@ -99,8 +98,6 @@ struct VideoManager {
 
     std::vector<DataUpdates> dataUpdates;
     bool dataUpdatesPending;
-    unsigned softwareViewForegroundColorRef;
-    unsigned softwareViewBackgroundColorRef;
 
     SCVideo* scVideo;
     
@@ -140,15 +137,12 @@ struct VideoManager {
     unsigned colorCount;
     ColorLumaChroma* lumaChromaTable = nullptr;
 
-    DmaColor* dmaColors = nullptr;
 
     bool colorTableUpdated = false;
     auto needUpdate() -> bool { return !colorTableUpdated; }
     auto requestUpdate() -> void;
  
     auto generateC64ColorSpectrum() -> void;
-    auto getForegroundColor() -> unsigned;
-    auto getBackgroundColor() -> unsigned;
        
     static auto uclamp8(double x) -> uint8_t;
     static auto uclamp10(double x) -> uint16_t;
@@ -158,7 +152,6 @@ struct VideoManager {
 
     template<typename T> auto renderToLumaChroma(unsigned width, unsigned height, const T* src, unsigned srcPitch, uint32_t* dest, unsigned destPitch, bool odd, unsigned options) -> void;
     template<typename T> auto renderToRgb(unsigned width, unsigned height, const T* src, unsigned srcPitch, unsigned* dest, unsigned destPitch, unsigned options) -> void;
-    template<typename T> auto renderToRgbWithDma(unsigned width, unsigned height, const T* src, unsigned srcPitch, unsigned* dest, unsigned destPitch, unsigned options) -> void;
     template<typename T> auto renderToScreenshot(unsigned width, unsigned height, const T* src, unsigned srcPitch, uint8_t* dest, unsigned _options) -> void;
     template<typename T> auto renderFrame(const T* src, unsigned width, unsigned height, unsigned srcPitch, unsigned options = 0) -> void;
     auto getRenderOptions(unsigned options) -> unsigned;
@@ -173,7 +166,6 @@ struct VideoManager {
     auto adjustBrightness(double& c) -> void;
     auto convertLumaChromaToRGB() -> void;
     static auto normalizeColorSpectrumPalGamma( double& color ) -> void;
-    auto updateListingColors() -> void;
     auto convertPaletteToLumaChroma() -> void;
     auto powerOff() -> void;
 

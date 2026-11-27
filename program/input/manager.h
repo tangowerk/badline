@@ -5,7 +5,6 @@
 #include "../../guikit/api.h"
 #include "../../emulation/interface.h"
 #include "../states/states.h"
-#include "../media/media.h"
 
 //#define DEBUG_INPUT_CHANGE
 
@@ -171,7 +170,6 @@ struct InputManager {
     static auto clearLastDeviceState() -> void;
     static auto assignChangedDeviceState() -> void;
     static auto getDeviceFromIdent( unsigned id ) -> Hid::Device*;
-    static auto openMenu( Emulator::Interface* emulator, Hotkey::Id id ) -> void;
 	static auto updateAllMappingsInUse( bool emuOnly = false ) -> void;
     static auto jitPoll(int delay) -> bool;
     static auto resetJit() -> void;

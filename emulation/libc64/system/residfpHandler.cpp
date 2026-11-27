@@ -5,8 +5,8 @@
 
 namespace LIBC64 {
 
-ResidfpHandler::ResidfpHandler(unsigned nr, System* system, SidManager& sidManager, USBSIDPico& usbSIDPico, Type type) :
-Sid( nr, system, sidManager, usbSIDPico, type ),
+ResidfpHandler::ResidfpHandler(unsigned nr, System* system, SidManager& sidManager, Type type) :
+Sid( nr, system, sidManager, type ),
 
 sysTimer(system->sysTimer),
 residfp(*(new reSIDfp::SID) ) {
@@ -65,9 +65,6 @@ auto ResidfpHandler::writeIO( uint8_t addr, uint8_t value ) -> void {
     addr &= 0x1f;
     //if (system->debugSID())
     rememberParams(addr, value);
-
-    if (usbSIDPico.enabled && system->displayFrame())
-        usbSIDPico.store(addr, value, nr);
 
     residfp.write( addr, value );
 }

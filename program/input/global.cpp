@@ -871,9 +871,6 @@ auto InputManager::resetTouchlessAutofire() -> void {
     if (!emulator)
         return;
 
-    auto emuView = EmuConfigView::TabWindow::getView( emulator );
-    if (emuView && emuView->inputLayout)
-        emuView->inputLayout->updatedAutofireButtonHints();
 }
 
 auto InputManager::updateAnalogSensitivity(Emulator::Interface::Device* updateDevice) -> void {

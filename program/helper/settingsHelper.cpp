@@ -1,9 +1,9 @@
 
+#include "../view/message.h"
 #include "settingsHelper.h"
 
 #include "fileHelper.h"
 #include "../cmd/cmd.h"
-#include "../view/view.h"
 
 auto SettingsHelper::undockSettings() -> bool {
     for (auto settings : settingsStorage) {
@@ -64,7 +64,7 @@ auto SettingsHelper::saveSettings(bool onExit) -> void {
 
         if (!settings->save( path )) {
             if (!errorShown) {
-                appMessage->warning(trans->get("cfg_not_save", {{"%path%", path}}));
+                appMessage->warning(GUIKIT::String::substitute("couldn't save config file at following path: %path%", {{"%path%", path}}));
                 errorShown = true;
             }
         }

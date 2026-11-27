@@ -2,12 +2,8 @@
 #include "manager.h"
 #include "../cmd/cmd.h"
 #include "../view/status.h"
-#include "../view/view.h"
 #include "../tools/chronos.h"
 #include "../helper/settingsHelper.h"
-#include "../emuconfig/layouts/audio.h"
-#include "../config/config.h"
-#include "../config/layouts/drivers.h"
 
 AudioManager* audioManager = nullptr;
 
@@ -50,10 +46,7 @@ auto AudioManager::setSynchronize() -> void {
     bool synchronize = false;
     if (cmd->debug)
         synchronize = false;
-    else if (view)
-        synchronize = !view->isMaximumSpeed();
-    else
-        synchronize = !program->isMaximumSpeed();
+    else synchronize = !program->isMaximumSpeed();
 
     if (audioDriver->hasSynchronized() == synchronize)
         return;
@@ -79,7 +72,7 @@ auto AudioManager::setResampler() -> void {
     bool percent;
     unsigned speedProfile;
 
-    speedProfile = view ? view->getSpeedBySelectedProfile(speed, percent) : program->getSpeedBySelectedProfile(speed, percent);
+    speedProfile = program->getSpeedBySelectedProfile(speed, percent);
 
     if (speedProfile != 0) {
         if (percent) {
@@ -485,8 +478,6 @@ auto AudioManager::initDriver() -> void {
     audioManager->setResampler();
     audioManager->resetDriveSounds();
 
-    if (configView)
-        configView->driversLayout->updateLatencySlider();
 }
 
 auto AudioManager::getSelectedDriver() -> std::string {

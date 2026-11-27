@@ -106,7 +106,6 @@ set(headers
         sid/reSid.h
         sid/tables.cpp
         sid/voice.cpp
-        system/usbSidPico.h
         system/clipboard.h
         system/expansion.cpp
         system/firmware.h
@@ -149,7 +148,6 @@ set(headers
         ../tools/crc32.h
         ../tools/crop.h
         ../tools/dac.h
-        ../tools/uuid.h
         ../tools/flash040.h
         ../tools/fpaq0.h
         ../tools/gcr.h
@@ -170,8 +168,6 @@ set(headers
         ../tools/string.h
 )
 
-SET_SOURCE_FILES_PROPERTIES(system/usbSidPico.cpp
-        PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/deps/USBSID-Pico")
 
 SET_SOURCE_FILES_PROPERTIES(sid/filter/chamberlin.cpp
         PROPERTIES COMPILE_FLAGS "-ffast-math -fno-exceptions")
@@ -179,10 +175,6 @@ SET_SOURCE_FILES_PROPERTIES(sid/filter/chamberlin.cpp
 set_source_files_properties(coreC64 ${headers}
         PROPERTIES HEADER_FILE_ONLY TRUE)
 
-if(LIBUSB_FOUND)
-    SET_SOURCE_FILES_PROPERTIES(system/usbSidPico.cpp PROPERTIES COMPILE_FLAGS "-DLIBUSB")
-    target_link_libraries(coreC64 PRIVATE pico)
-endif()
 
 target_sources(coreC64 PRIVATE
         interface.cpp
@@ -216,7 +208,6 @@ target_sources(coreC64 PRIVATE
         sid/reSid24.cpp
         sid/chamberlin.cpp
         system/residfpHandler.cpp
-        system/usbSidPico.cpp
         system/sidManager.cpp
         sid/filter/chamberlin.cpp
         tape/tape.cpp

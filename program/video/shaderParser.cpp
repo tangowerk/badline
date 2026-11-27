@@ -32,7 +32,7 @@ auto ShaderParser::loadPreset(std::string path) -> bool {
         return false;
 
     if (passCount > MAX_SHADERS) {
-        errors.push_back( trans->get("too much shaders", {{"%count%", std::to_string(MAX_SHADERS)}}) );
+        errors.push_back( GUIKIT::String::substitute("max. %count% shader allowed", {{"%count%", std::to_string(MAX_SHADERS)}}) );
         return false;
     }
 
@@ -48,7 +48,7 @@ auto ShaderParser::loadPreset(std::string path) -> bool {
     parseTextures();
 
     if (shaderPreset.luts.size() > MAX_TEXTURES) {
-        errors.push_back( trans->get("too much textures", {{"%count%", std::to_string(MAX_TEXTURES)}}) );
+        errors.push_back( GUIKIT::String::substitute("max. %count% textures allowed", {{"%count%", std::to_string(MAX_TEXTURES)}}) );
         return false;
     }
 
@@ -495,12 +495,12 @@ auto ShaderParser::addPreset(ShaderParser* parser, bool prepend) -> bool {
     ShaderPreset& preset = parser->shaderPreset;
 
     if ((shaderPreset.passes.size() + preset.passes.size()) > MAX_SHADERS) {
-        errors.push_back( trans->get("too much shaders", {{"%count%", std::to_string(MAX_SHADERS)}}) );
+        errors.push_back( GUIKIT::String::substitute("max. %count% shader allowed", {{"%count%", std::to_string(MAX_SHADERS)}}) );
         return false;
     }
 
     if ((shaderPreset.luts.size() + preset.luts.size()) > MAX_TEXTURES) {
-        errors.push_back( trans->get("too much textures", {{"%count%", std::to_string(MAX_TEXTURES)}}) );
+        errors.push_back( GUIKIT::String::substitute("max. %count% textures allowed", {{"%count%", std::to_string(MAX_TEXTURES)}}) );
         return false;
     }
 

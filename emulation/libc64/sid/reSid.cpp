@@ -15,8 +15,8 @@
 
 namespace LIBC64 {
 
-ReSid::ReSid( unsigned nr, System* system, SidManager& sidManager, USBSIDPico& usbSIDPico, Type type ) :
-Sid( nr, system, sidManager, usbSIDPico, type ),
+ReSid::ReSid( unsigned nr, System* system, SidManager& sidManager, Type type ) :
+Sid( nr, system, sidManager, type ),
 sysTimer(system->sysTimer),
 filter( this ),
 chamberlinFilter(filter) {

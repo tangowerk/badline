@@ -37,7 +37,5 @@ struct MiscHelper {
     static auto setJit(Emulator::Interface* emulator) -> void;
     static auto getDevice( Emulator::Interface* emulator, Emulator::Interface::Connector* connector ) -> Emulator::Interface::Device*;
 
-    static auto applyGeometry(GUIKIT::Window* window, GUIKIT::Settings* settings, const std::string& ident, GUIKIT::Geometry defGeo) -> void;
-    static auto centerGeometry(GUIKIT::Window* window, GUIKIT::Size _size, GUIKIT::Geometry _containerGeo) -> void;
 };
 

@@ -2,10 +2,6 @@
 #include "manager.h"
 #include "../window/sdlWindow.h"
 #include "../program.h"
-#include "../view/view.h"
-#include "../config/config.h"
-#include "../emuconfig/config.h"
-#include "../emuconfig/layouts/presentation.h"
 #include "../tools/filepool.h"
 #include "../tools/filesetting.h"
 #include "../tools/chronos.h"
@@ -483,9 +479,6 @@ auto InputManager::updateMappingsInUse() -> void {
         prioritiseConnectedDevicesOverKeyboard();
 
     if (emulator && (autoFireMappings.size() != copyAutofireMappings.size())) {
-        auto emuView = EmuConfigView::TabWindow::getView( emulator );
-        if (emuView && emuView->inputLayout)
-            emuView->inputLayout->updatedAutofireButtonHints();
     }
 }
 
@@ -576,10 +569,6 @@ auto InputManager::initDriver() -> void {
     }
     init();
 
-    for( auto emuView : emuConfigViews ) {
-        if (emuView->inputLayout)
-            emuView->inputLayout->loadDeviceList();
-    }
 }
 
 auto InputManager::getSelectedDriver() -> std::string {

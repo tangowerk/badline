@@ -6,7 +6,6 @@
 #include <functional>
 #include "../sid/reSid.h"
 #include "sid.h"
-#include "usbSidPico.h"
 #include "debuggerSnapshot.h"
 
 namespace Emulator {
@@ -23,7 +22,6 @@ struct SidManager {
     using Callback = std::function<void ()>;
     std::function<uint8_t ()> getPotX;
     std::function<uint8_t ()> getPotY;
-    USBSIDPico usbSIDPico;
 
     static std::vector<std::string> adrOptions;
 
@@ -106,13 +104,7 @@ struct SidManager {
     auto intensifyPseudoStereo(bool state) -> void;
     auto hasIntensifiedPseudoStereo() -> bool { return offsetPseudoStereo.allow; }
 
-    auto enableUSBSID(bool state) -> void;
-    auto setUSBSIDBuffSize(unsigned value) -> void;
-    auto setUSBSIDDiffSize(unsigned value) -> void;    
 
-    auto hasUSBSID() -> bool { return usbSIDPico.enabled; }
-    auto getUSBSIDBuffSize() -> unsigned { return usbSIDPico.buffSize; }
-    auto getUSBSIDDiffSize() -> unsigned { return usbSIDPico.diffSize; }
 
     auto adjustFilterRange6581All(int value) -> void;
     auto getFilterRange6581() -> int;

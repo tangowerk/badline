@@ -60,8 +60,6 @@ auto ReSid::writeIO( uint8_t addr, uint8_t value ) -> void {
     lastBusValue = value;
     databusDecay = databusDecayTime;
 
-    if (usbSIDPico.enabled && system->displayFrame())
-        usbSIDPico.store(addr, value, nr);
     
     switch( addr ) {
         

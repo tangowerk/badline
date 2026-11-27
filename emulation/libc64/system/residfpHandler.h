@@ -10,7 +10,6 @@ namespace reSIDfp {
 
 namespace LIBC64 {
 
-struct USBSIDPico;
 
 struct ResidfpHandler : Sid {
     reSIDfp::SID& residfp;
@@ -20,7 +19,7 @@ struct ResidfpHandler : Sid {
 
     Emulator::SystemTimer& sysTimer;
 
-    ResidfpHandler(unsigned nr, System* system, SidManager& sidManager, USBSIDPico& usbSIDPico, Type type);
+    ResidfpHandler(unsigned nr, System* system, SidManager& sidManager, Type type);
 
     ~ResidfpHandler();
 

@@ -70,19 +70,17 @@ SDL3, no Windows/macOS code paths.
 | Video | OpenGL 3.2 renderer, slang shaders (internal presets), optional render thread, VSync |
 | Input | Keyboard (positional), mouse capture (middle button), gamepads with hotplug – the first pad drives joystick #1 |
 | Drag & drop | Drop images onto the window: slot overlay for drive/autostart |
-| Automation | Embedded MCP server, 31 tools; headless mode; VICE binary monitor (API v2) |
+| Automation | Embedded MCP server, 31 tools; headless mode (no display server needed); VICE binary monitor (API v2) |
 | Overlay menu | F12 / gamepad Guide: Media page (drives, cartridge, tape, file browser with archives and directory preview), reset, quit. Other pages are previews. |
 | Settings | Settings without an overlay page yet live in `~/.config/badline/*.ini` and can be changed via MCP. |
 
 **Known limitations**
 
 - Only the Media page of the overlay works; video, audio, input and system
-  settings have no UI yet (the old GTK dialogs are disconnected).
+  settings have no UI yet (the old GTK dialogs were removed).
 - Keyboard layouts: mapping is positional; some symbols are wrong on non-US
   layouts (e.g. `"` on German keyboards). A dedicated milestone will fix this.
 - No status bar (drive LEDs, track) until the overlay HUD arrives.
-- GTK is still linked and initialized internally (no window is shown) until
-  the GTK layer is removed; an X display (XWayland) is therefore required.
 
 ---
 
@@ -122,8 +120,8 @@ Ubuntu 24.04 (needs glibc 2.39 or newer), SDL3 included. Unpack anywhere and
 run `bin/badline`; the other libraries come from the system, on Ubuntu/Debian:
 
 ```
-sudo apt install libgtk-3-0t64 libpulse0 libcurl4t64 libopenal1 \
-                 libfreetype6 libfontconfig1 libgl1 libegl1
+sudo apt install libpulse0 libcurl4t64 libopenal1 \
+                 libfreetype6 libgl1 libegl1
 ```
 
 `tools/build_release.sh` builds the same tarball (used by the GitHub Actions
@@ -136,7 +134,7 @@ workflow).
 Requirements (Arch Linux package names; other distributions are similar):
 
 ```
-cmake gcc pkgconf git ninja curl gtk3 libpulse freetype2 fontconfig libx11 libxrandr
+cmake gcc pkgconf git ninja curl libpulse freetype2
 optional: openal
 ```
 
@@ -206,7 +204,6 @@ Tools include:
 - **Keyboard layouts**: correct symbolic/positional mapping for DE/US/FR.
 - **Debugger in the overlay**: split view (picture + disassembler, registers,
   memory …) and a text monitor with VICE-like commands; label files.
-- **Remove GTK** and the remaining native-window code.
 - **SDL3 audio** evaluation (PipeWire) against the current PulseAudio driver.
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed since Denise.

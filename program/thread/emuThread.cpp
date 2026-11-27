@@ -1,16 +1,12 @@
 
 #include "../program.h"
 #include "../tools/chronos.h"
-#include "../view/view.h"
 #include "emuThread.h"
 
-#include "../debugger/debugger.h"
-#include "../emuconfig/config.h"
 #include "../input/manager.h"
 #include "../media/autoloader.h"
 #include "../media/fileloader.h"
 #include "../view/status.h"
-#include "../emuconfig/layouts/audio.h"
 #include "../monitor/binaryMonitor.h"
 
 EmuThread* emuThread = nullptr;
@@ -90,7 +86,7 @@ auto EmuThread::lock(bool unlockDebugging) -> bool {
         return false;
 
     if (unlockDebugging) {
-        Debugger::lock = true;
+        debuggerLock = true;
         unlockDebugger();
     }
 
@@ -107,7 +103,7 @@ auto EmuThread::lock(bool unlockDebugging) -> bool {
 }
 
 auto EmuThread::unlock() -> void {
-    Debugger::lock = false;
+    debuggerLock = false;
     acknowledged = false;
 }
 
@@ -158,43 +154,6 @@ auto EmuThread::initWorker() -> void {
     worker.detach();
 }
 
-auto EmuThread::addStatusUpdate(unsigned id, int visible, GUIKIT::Image* image, std::string text, bool alignRight, int overrideForegroundColor  ) -> void {
-
-    statusUpdates.push_back({id, visible, image, text, alignRight, overrideForegroundColor});
-}
-
-auto EmuThread::handleStatusUpdate( ) -> void {
-
-    statusMutex.lock();
-
-    if (statusUpdates.empty()) {
-        statusMutex.unlock();
-        return;
-    }
-
-    auto copy = statusUpdates;
-
-    statusUpdates.clear();
-
-    statusMutex.unlock();
-
-    if (!view)
-        return;
-
-    auto& statusBar = view->statusBar;
-
-    for(auto& sU : copy) {
-        if (sU.visible != -1) {
-            statusBar.updateVisible(sU.id, (bool)sU.visible);
-        } else if (sU.image) {
-            statusBar.updateImage(sU.id, sU.image);
-        } else
-            statusBar.updateText(sU.id, sU.text, sU.alignRight, sU.overrideForegroundColor);
-    }
-
-    statusBar.update();
-}
-
 auto EmuThread::handleUIEvents() -> void {
 
     if (events) {
@@ -203,15 +162,6 @@ auto EmuThread::handleUIEvents() -> void {
 
         if (_events & EVT_POLL_HOTKEYS)
             InputManager::pollHotkeys();
-
-        if (_events & EVT_UPDATE_PALETTE_SOFTWARE) {
-            auto emulator = program->getEmulator("C64");
-            auto emuView = EmuConfigView::TabWindow::getView(emulator);
-            auto vManager = VideoManager::getInstance(emulator);
-
-            if (emuView && emuView->mediaLayout)
-                emuView->mediaLayout->colorListing(vManager->getForegroundColor(), vManager->getBackgroundColor());
-        }
 
         if (_events & EVT_SHADER_ERROR) {
             auto manager = VideoManager::getInstance(activeEmulator);
@@ -228,27 +178,10 @@ auto EmuThread::handleUIEvents() -> void {
             unlock();
         }
 
-        if (_events & EVT_DEBUGGER) {
-            if (program->hasActiveDebugger())
-                Debugger::Callback();
-        }
-
-        if (_events & EVT_INSERT_MEDIA) {
-            if (insertMedia.file && insertMedia.emulator) {
-                auto emuView = EmuConfigView::TabWindow::getView(insertMedia.emulator);
-                if (emuView && emuView->mediaLayout) {
-                    auto items = insertMedia.file->scanArchive();
-                    lock();
-                    emuView->mediaLayout->insertImage(insertMedia.media, insertMedia.file, &items[0]);
-                    unlock();
-                }
-            }
-        }
     }
 }
 
 auto EmuThread::clearEvents() -> void {
-    statusUpdates.clear();
     updateBorder = false;
     events = 0;
 }
@@ -283,12 +216,3 @@ auto EmuThread::unlockVideo() -> void {
         videoMutex.unlock();
 }
 
-auto EmuThread::lockPaletteForSoftwareView() -> void {
-    if (enabled)
-        paletteForSoftwareView.lock();
-}
-
-auto EmuThread::unlockPaletteForSoftwareView() -> void {
-    if (enabled)
-        paletteForSoftwareView.unlock();
-}

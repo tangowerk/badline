@@ -538,9 +538,6 @@ auto Interface::prepareModels() -> void {
     // extra Sids
     models.push_back({ModelIdSidMulti, "Extra SIDs", Model::Type::Combo, Model::Purpose::AudioResampler, 0, {0, 7}, {"0", "1", "2", "3", "4", "5", "6", "7"}});
     
-    models.push_back({ModelIdSidUsbPico, "USBSID-Pico", Model::Type::Switch, Model::Purpose::AudioExtern, 0});
-    models.push_back({ModelIdSidUsbPicoBufferSize, "Pico Buffer Size", Model::Type::Slider, Model::Purpose::AudioExtern, 8192, {256, 16384}, {}, 64, 1.0 });
-    models.push_back({ModelIdSidUsbPicoDiffSize, "Pico Diff Size", Model::Type::Slider, Model::Purpose::AudioExtern, 64, {16, 128}, {}, 14, 1.0 });
 
 	models.push_back({ModelIdSid, "SID 1", Model::Type::Radio, Model::Purpose::SoundChip, 0, {0, 1}, {"8580", "6581"} });	
     models.push_back({ModelIdSid1Left, "SID 1 Left Channel", Model::Type::Switch, Model::Purpose::AudioResampler, 1});
@@ -1637,15 +1634,6 @@ auto Interface::setModelValue(unsigned modelId, int value) -> void {
         case ModelId2Mhz:
             system->set2Mhz(value & 1);
             break;
-        case ModelIdSidUsbPico:
-            system->sidManager.enableUSBSID(value & 1);
-            break;
-        case ModelIdSidUsbPicoBufferSize:
-            system->sidManager.setUSBSIDBuffSize(value);
-            break;
-        case ModelIdSidUsbPicoDiffSize:
-            system->sidManager.setUSBSIDDiffSize(value);
-            break;
         case ModelIdDisableSpriteCollisions:
             system->vicIICycle.disableSpriteSpriteCollisions(value & 1);
             system->vicIIFast.disableSpriteSpriteCollisions(value & 1);
@@ -1755,9 +1743,6 @@ auto Interface::getModelValue(unsigned modelId) -> int {
         case ModelIdReuRam:                 return (int)system->reu->getRamSize();
         case ModelIdGeoRam:                 return (int)system->geoRam->getRamSize();
         case ModelId2Mhz:					return (int)system->mhz2 & 1;
-        case ModelIdSidUsbPico:             return system->sidManager.hasUSBSID();
-        case ModelIdSidUsbPicoBufferSize:   return system->sidManager.getUSBSIDBuffSize();
-        case ModelIdSidUsbPicoDiffSize:     return system->sidManager.getUSBSIDDiffSize();
         case ModelIdDisableSpriteCollisions: return system->vicIICycle.collisionsSpiteSpriteDisabled();
         case ModelIdDisableSpriteCharacterCollisions: return system->vicIICycle.collisionsSpiteForegroundDisabled();
     }

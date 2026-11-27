@@ -6,17 +6,12 @@
 #include "manager.h"
 #include "../../guikit/api.h"
 #include "../../emulation/libc64/interface.h"
-#include "../emuconfig/config.h"
-#include "../media/media.h"
-#include "../view/view.h"
 #include "../thread/emuThread.h"
 #include "shaderParser.h"
 #include "../helper/settingsHelper.h"
 #include "sync.cpp"
-#include "../debugger/dmaDebugger.h"
 #include "../tools/colors.h"
 #include "../tools/dataStorage.h"
-#include "../emuconfig/layouts/presentation.h"
 #include "scVideo.h"
 
 #include "../tools/chronos.h"
@@ -66,8 +61,6 @@ VideoManager::VideoManager(Emulator::Interface* emulator) {
     this->colorCount = this->palette->paletteColors.size();
 
     countColorBits = 4;
-    softwareViewForegroundColorRef = 14;
-    softwareViewBackgroundColorRef = 6;
 
     gamma = 1.0;
     contrast = 1.0;
@@ -128,40 +121,8 @@ auto VideoManager::update() -> void {
     if (legacyCRTonCPU)
         scVideo->update();
     
-    updateListingColors();
     
     colorTableUpdated = true;    
-}
-
-auto VideoManager::updateListingColors() -> void {
-    emuThread->lockPaletteForSoftwareView();
-    unsigned softwareViewForegroundColor = colorTable[softwareViewForegroundColorRef];
-    unsigned softwareViewBackgroundColor = colorTable[softwareViewBackgroundColorRef];
-    emuThread->unlockPaletteForSoftwareView();
-
-    if (emuThread->enabled) {
-        emuThread->events |= EmuThread::EVT_UPDATE_PALETTE_SOFTWARE;
-        return;
-    }
-
-    auto emuView = EmuConfigView::TabWindow::getView( emulator );
-
-    if (emuView && emuView->mediaLayout)
-        emuView->mediaLayout->colorListing( softwareViewForegroundColor, softwareViewBackgroundColor );
-}
-
-auto VideoManager::getForegroundColor() -> unsigned {
-    emuThread->lockPaletteForSoftwareView();
-    unsigned _color = colorTable[softwareViewForegroundColorRef];
-    emuThread->unlockPaletteForSoftwareView();
-    return _color;
-}
-
-auto VideoManager::getBackgroundColor() -> unsigned {
-    emuThread->lockPaletteForSoftwareView();
-    unsigned _color = colorTable[softwareViewBackgroundColorRef];
-    emuThread->unlockPaletteForSoftwareView();
-    return _color;
 }
 
 auto VideoManager::generateC64ColorSpectrum() -> void {
@@ -468,15 +429,7 @@ template<typename T> auto VideoManager::renderFrame(const T* src, unsigned width
         interlace ? (nonStandardV ? height >> 1 : height) : (nonStandardV ? height : (height << 1)),
         shres | hires | interlace | nonStandardV);
 
-    if (dmaColors) {
-        gpuOptions |= (uint8_t)DRIVER::OPT_DisallowShader | (uint8_t)DRIVER::OPT_DisallowFilter;
-
-        if (!videoDriver->lock(gpuData, gpuPitch, width, height, gpuOptions))
-            return;
-
-        renderToRgbWithDma<T>(width, height, src, srcPitch, gpuData, gpuPitch - width, options);
-
-    } else if (suppressShader) {
+    if (suppressShader) {
         goto Typical;
 
     } else if (!legacyCRTonCPU) {
@@ -544,34 +497,6 @@ template<typename T> auto VideoManager::takeScreenshot(unsigned unscaled, const 
     renderToScreenshot<T>(w, h, _fT, _pitch, _dest, _options);
     program->takeScreenshot(_dest, _width, _height);
     delete[] _dest;
-}
-
-template<typename T> auto VideoManager::renderToRgbWithDma(unsigned width, unsigned height, const T* src, unsigned srcPitch, unsigned* dest, unsigned destPitch, unsigned options) -> void {
-    unsigned mask = (1 << countColorBits) - 1;
-    uint8_t* dmaDump = emulator->getDmaDump();
-    if (!dmaDump)
-        return renderToRgb<T>(width, height, src, srcPitch, dest, destPitch, options);
-
-    unsigned color;
-    unsigned dmaColor;
-    DmaColor* dmaPtr;
-
-    for(unsigned h = 0; h < height; h++) {
-        for(unsigned w = 0; w < width; w++) {
-            dmaPtr = &dmaColors[*dmaDump++];
-
-            if (dmaPtr->enabled) {
-                color = colorTable[ *src++ & mask ];
-                dmaColor = dmaPtr->color;
-                *dest++ = ColorTools::mix(dmaColor, color, dmaPtr->alpha);
-            } else
-                *dest++ = colorTable[ *src++ & mask ];
-        }
-
-        src += srcPitch;
-        dmaDump += srcPitch;
-        dest += destPitch;
-    }
 }
 
 template<typename T> inline auto VideoManager::renderToRgb(unsigned width, unsigned height, const T* src, unsigned srcPitch, unsigned* dest, unsigned destPitch, unsigned options) -> void {
@@ -1040,9 +965,6 @@ auto VideoManager::getPreset() -> ShaderPreset* {
 
 auto VideoManager::finishPreset() -> void {
     parser->addBrokenLUT();
-    auto emuView = EmuConfigView::TabWindow::getView(emulator);
-    if (emuView && emuView->presentationLayout)
-        emuView->presentationLayout->presentShaderError();
 }
 
 auto VideoManager::clearPreset() -> void {

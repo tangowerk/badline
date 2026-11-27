@@ -15,15 +15,6 @@ struct DeviceState {
     bool update = true;
 };
 
-struct LEDState {
-    Emulator::Interface::LedId ledId;
-    std::string name;
-    bool enabled;
-    uint8_t state;
-    uint32_t inputQueue;
-    uint8_t inputs;
-};
-
 struct FpsCounter {
     uint64_t deltas[FPS_MEASUREMENTS];
     uint64_t sum;
@@ -40,59 +31,33 @@ struct StatusHandler {
     
     auto messageUpdate() const -> bool { return control & 1; }
     auto deviceUpdate() const -> bool { return control & 2; }
-    auto ledUpdate() const -> bool { return control & 4; }
     auto drcBufferUpdate() const -> bool { return control & 8; }
     auto fpsCounterUpdate() const -> bool { return control & 0x10; }
     
     auto setMessageUpdate() -> void { control |= 1; }
     auto setDeviceUpdate() -> void { control |= 2; }
-    auto setLedUpdate() -> void { control |= 4; }
     auto setDrcBufferUpdate() -> void  { control |= 8; }
     auto setFpsCounterUpdate() -> void  { control |= 0x10; }
 
     auto clearUpdates( uint16_t mask = ~0 ) -> void { control &= ~mask; }
     auto hasUpdates() -> bool { return !!control; }
 
-    auto init(GUIKIT::StatusBar* statusBar) -> void;
     auto reset() -> void;
     auto clear() -> void;
     auto update() -> void;
     auto updateDeviceState(Emulator::Interface::Media* media, bool write, unsigned position, uint8_t LED, bool motorOff) -> void;
     auto setMessage(const std::string& txt, bool warn = false, bool force = false, unsigned duration = 3) -> void;
-    auto updateFPS( bool state ) -> void;
-    auto updateVolume( bool state ) -> void;
-    auto updateTapeImage( GUIKIT::Image* image ) -> void;
-	auto hideTape() -> void;
     auto updateFrameCounter() -> void;
     auto resetFrameCounter() -> void;
     auto setFpsRefresh() -> void;
-
-    auto updateVisible(unsigned id, bool visible) -> void;
-    auto updateText(unsigned id, std::string text, bool alignRight = false, int overrideForegroundColor = -1) -> void;
-    auto updateImage(unsigned id, GUIKIT::Image* image) -> void;
-    auto updateStatusBar() -> void;
-    auto updateDiskDriveSpace() -> void;
-    auto setVolumeSlider(unsigned value) -> void;
-    auto setVolumeSlider(Emulator::Interface* emulator) -> void;
     auto updateOnScreenFPS() -> void;
-    auto updateLEDState(Emulator::Interface::LedId ledId, uint8_t state) -> void;
-    auto enableLEDs() -> void;
-    auto enableLED(LEDState& ledState) -> void;
-    auto toggleLED(Emulator::Interface::LedId ledId) -> void;
-
-    auto getLEDImage(LEDState& ledState) -> GUIKIT::Image*;
-    auto getStatusId(Emulator::Interface::LedId ledId) -> unsigned;
     auto setMessageLevel() -> void;
 
-    GUIKIT::StatusBar* statusBar = nullptr;
-    uint16_t control;
-    std::vector<DeviceState> deviceStates;
-    std::vector<LEDState> ledStates;
+    uint16_t control = 0;
+    std::vector<DeviceState> deviceStates; // drive/tape/cartridge state for a later HUD
     FpsCounter fpsCounter;
 
-    bool showFPS = false;
     bool showFPSScreen = false;
-    bool showVolume = false;
     bool showOnlyUrgentMessages = false;
 
     struct {

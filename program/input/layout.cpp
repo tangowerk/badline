@@ -8,63 +8,6 @@ auto InputManager::automap( KeyboardLayout::Type type, Emulator::Interface::Key 
     // Note: the Hid key identifier correspond to the uk layout (reference layout) .
     // for other layouts you have to translate the visible key to the uk key at a given position
     
-    if(GUIKIT::Application::isCocoa()) {
-        // mac keyboard differs slightly from a pc keyboard.
-        
-        switch(type) {
-            case KeyboardLayout::Type::Fr:
-                if ( key == EmuKey::NumberSign ) return {{Hid::Key::Grave}};
-                if ( key == EmuKey::At ) return {{Hid::Key::Grave, Hid::Key::ShiftRight}, {Hid::Key::Grave, Hid::Key::ShiftLeft}};
-                if ( key == EmuKey::Minus ) return {{Hid::Key::Equal}};
-                if ( key == EmuKey::ExclamationMark ) return {{Hid::Key::D8}};
-                if ( key == EmuKey::Plus ) return {{Hid::Key::Slash, Hid::Key::ShiftRight}, {Hid::Key::Slash, Hid::Key::ShiftLeft}};
-                if ( key == EmuKey::Equal ) return {{Hid::Key::Slash}};
-                if ( key == EmuKey::Asterisk ) return {{Hid::Key::ClosedSquareBracket, Hid::Key::ShiftRight}, {Hid::Key::ClosedSquareBracket, Hid::Key::ShiftLeft}};
-                if ( key == EmuKey::Pound ) return {{Hid::Key::NumberSign, Hid::Key::ShiftRight}, {Hid::Key::NumberSign, Hid::Key::ShiftLeft}};
-                if ( key == EmuKey::Acute ) return {{Hid::Key::NumberSign}};
-
-                if ( key == EmuKey::AltAndShift2 ) return {{Hid::Key::Grave}};
-                if ( key == EmuKey::AltAndShift3 ) return {{Hid::Key::ShiftRight, Hid::Key::Grave}};
-                if ( key == EmuKey::Shared13 ) return {{Hid::Key::Equal}};
-                if ( key == EmuKey::D8 ) return {{Hid::Key::D8}};
-                if ( key == EmuKey::ShiftShared6 ) return {{Hid::Key::Slash, Hid::Key::ShiftRight}};
-                if ( key == EmuKey::Shared6 ) return {{Hid::Key::Slash}};
-                if ( key == EmuKey::ShiftShared2 ) return {{Hid::Key::ClosedSquareBracket, Hid::Key::ShiftRight}};
-                if ( key == EmuKey::ShiftShared9 ) return {{Hid::Key::NumberSign, Hid::Key::ShiftRight}};
-                if ( key == EmuKey::Shared11 ) return {{Hid::Key::NumberSign}};
-                if ( key == EmuKey::ShiftShared13 ) return {{Hid::Key::Equal, Hid::Key::ShiftRight }};
-                if ( key == EmuKey::Shared1 ) return {{Hid::Key::OpenSquareBracket}};
-                if ( key == EmuKey::ShiftShared7 ) return {{}}; // no pipe
-                if ( key == EmuKey::D6 ) return {{Hid::Key::D6}};       
-                break;
-            case KeyboardLayout::Type::De:                
-                if ( key == EmuKey::At ) return {{Hid::Key::L, Hid::Key::AltRight}}; // @
-                if ( key == EmuKey::AltAnd2 ) return {{Hid::Key::L, Hid::Key::AltRight}}; // @                
-                if ( key == EmuKey::ShiftShared7 ) return {{Hid::Key::D7, Hid::Key::AltRight}}; // |
-                if ( key == EmuKey::Pipe ) return {{Hid::Key::D7, Hid::Key::AltRight}}; // |
-
-                if ( key == EmuKey::ShiftNumLock ) return {{Hid::Key::D8, Hid::Key::AltRight}};
-                if ( key == EmuKey::ShiftScrollLock ) return {{Hid::Key::D9, Hid::Key::AltRight}};
-                break;
-            case KeyboardLayout::Type::Us:
-                // i would say there are no differences
-                break;
-            case KeyboardLayout::Type::Uk:
-                if ( key == EmuKey::Acute ) return {{Hid::Key::Backslash}};
-                if ( key == EmuKey::NumberSign ) return {{Hid::Key::D3, Hid::Key::AltRight}};
-                if ( key == EmuKey::At ) return {{Hid::Key::D2, Hid::Key::ShiftRight}, {Hid::Key::D2, Hid::Key::ShiftLeft}};
-                if ( key == EmuKey::DoubleQuotes ) return {{Hid::Key::Apostrophe, Hid::Key::ShiftRight}, {Hid::Key::Apostrophe, Hid::Key::ShiftLeft}};
-                if ( key == EmuKey::Pipe ) return {{Hid::Key::NumberSign, Hid::Key::ShiftRight}, {Hid::Key::NumberSign, Hid::Key::ShiftLeft}};
-                if ( key == EmuKey::ShiftShared8 ) return {{Hid::Key::D2, Hid::Key::ShiftRight}};
-                if ( key == EmuKey::Shared8 ) return {{Hid::Key::D3, Hid::Key::AltRight}};
-                if ( key == EmuKey::Shared7 ) return {{Hid::Key::NumberSign}};
-                if ( key == EmuKey::ShiftAnd2 ) return {{Hid::Key::Apostrophe, Hid::Key::ShiftRight}};
-                if ( key == EmuKey::ShiftShared7 ) return {{Hid::Key::NumberSign, Hid::Key::ShiftRight}};
-                if ( key == EmuKey::ShiftShared11 ) return {{Hid::Key::Backslash, Hid::Key::ShiftRight}};
-                break;
-        }
-    }
-
     if ( key == EmuKey::A ) return {{Hid::Key::A}};
     if ( key == EmuKey::B ) return {{Hid::Key::B}};
     if ( key == EmuKey::C ) return {{Hid::Key::C}};
@@ -130,7 +73,7 @@ auto InputManager::automap( KeyboardLayout::Type type, Emulator::Interface::Key 
     if ( key == EmuKey::AltLeft ) return {{Hid::Key::AltLeft}};
     if ( key == EmuKey::AltRight ) return {{Hid::Key::AltRight}};
     if ( key == EmuKey::SystemLeft ) return {{Hid::Key::SuperLeft}};
-    if ( key == EmuKey::SystemRight ) return {{ !GUIKIT::Application::isCocoa() ? Hid::Key::Menu : Hid::Key::SuperRight}};
+    if ( key == EmuKey::SystemRight ) return {{ Hid::Key::Menu}};
     
     if ( key == EmuKey::NumPad0 ) return {{Hid::Key::NumPad0}};
     if ( key == EmuKey::NumPad1 ) return {{Hid::Key::NumPad1}};

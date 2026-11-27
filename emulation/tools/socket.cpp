@@ -1,16 +1,11 @@
 
-#if defined(_WIN32)
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-#else
-    #define closesocket close
-    #include <sys/socket.h>
-    #include <netdb.h>
-    #include <netinet/in.h>
-    #include <netinet/tcp.h>
-    #include <unistd.h>
-    #include <cerrno>
-#endif
+#define closesocket close
+#include <sys/socket.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <unistd.h>
+#include <cerrno>
 
 #include <cstring>
 #include "socket.h"
@@ -125,11 +120,7 @@ namespace Emulator {
 
     auto Socket::getLastError() -> int {
 
-#if defined(_WIN32)
-        return WSAGetLastError();
-#else
         return errno;
-#endif
 
     }
 
@@ -140,20 +131,12 @@ namespace Emulator {
         if (init)
             return;
 
-#if defined(_WIN32)
-        WORD wVersionRequested = MAKEWORD(2, 2);
-        WSADATA wsaData;
-        WSAStartup(wVersionRequested, &wsaData);
-#endif
 
         init = true;
     }
 
     auto Socket::clean() -> void {
         return;
-#if defined(_WIN32)
-        WSACleanup();
-#endif
     }
 
 }

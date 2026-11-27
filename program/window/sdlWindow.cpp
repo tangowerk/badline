@@ -51,7 +51,17 @@ auto SdlWindow::create() -> bool {
         SDL_Delay(5);
     }
     lastMouseMove = SDL_GetTicks();
+    updateRefreshRate();
     return true;
+}
+
+auto SdlWindow::updateRefreshRate() -> void {
+    float rate = 0.0f;
+    if (window) {
+        if (auto mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window)))
+            rate = mode->refresh_rate;
+    }
+    currentRefreshRate = rate;
 }
 
 auto SdlWindow::destroy() -> void {
@@ -171,8 +181,7 @@ auto SdlWindow::handleEvent(SDL_Event& ev) -> void {
         case SDL_EVENT_WINDOW_FOCUS_GAINED:
             hasFocus = true;
             Program::focused = true;
-            if (!program->hasActiveDebugger())
-                program->isPause &= ~2;
+            program->isPause &= ~2;
             break;
 
         case SDL_EVENT_WINDOW_FOCUS_LOST: {
@@ -180,12 +189,17 @@ auto SdlWindow::handleEvent(SDL_Event& ev) -> void {
             Program::focused = false;
             if (inputDriver->mIsAcquired() && !fullscreen)
                 inputDriver->mUnacquire();
-            if (!program->hasActiveDebugger()) {
+            {
                 static auto pauseFocusLoss = globalSettings->getOrInit("pause_focus_loss", false);
                 program->isPause &= ~2;
                 program->isPause |= (!!*pauseFocusLoss) << 1;
             }
         } break;
+
+        case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+        case SDL_EVENT_DISPLAY_CURRENT_MODE_CHANGED:
+            updateRefreshRate();
+            break;
 
         case SDL_EVENT_WINDOW_RESIZED:
             if (!fullscreen && !(SDL_GetWindowFlags(window) & (SDL_WINDOW_MAXIMIZED | SDL_WINDOW_FULLSCREEN))) {

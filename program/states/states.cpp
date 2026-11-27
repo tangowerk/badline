@@ -1,13 +1,10 @@
 
+#include "../view/message.h"
 #include "states.h"
 #include "../firmware/manager.h"
 #include "../view/status.h"
 #include "../audio/manager.h"
 #include "../media/fileloader.h"
-#include "../emuconfig/layouts/presentation.h"
-#include "../emuconfig/layouts/audio.h"
-#include "../emuconfig/layouts/input.h"
-#include "../emuconfig/layouts/system.h"
 #include "../helper/fileHelper.h"
 #include "../helper/miscHelper.h"
 #include "../cmd/cmd.h"
@@ -65,12 +62,9 @@ auto States::load( std::string path, bool prependFolder ) -> void {
 
     updateConnectedDevices();
     
-    updateTapeMenu();    
     
     updateExpansionJumper();
 
-    if (view)
-        view->updateCartButtons( emulator );
     
     InputManager::resetJit();
     
@@ -246,11 +240,7 @@ auto States::loadImagePaths( GUIKIT::Settings* loadSettings ) -> std::vector<Emu
                 GUIKIT::File::Item item;
                 item.id = setting->id;
                 item.info.name = setting->file;
-                auto emuView = EmuConfigView::TabWindow::getView( emulator );
-                if (emuView && emuView->mediaLayout)
-                    emuView->mediaLayout->insertImage( mediaInUse, file, &item, 1 );
-                else
-                    fileloader->insertImage( emulator, mediaInUse, file, &item, 1 );
+                fileloader->insertImage( emulator, mediaInUse, file, &item, 1 );
             } else {
                 emulator->ejectMedium(mediaInUse);
 
@@ -368,9 +358,21 @@ auto States::changeSlot( bool down ) -> void {
 }
 
 auto States::statusMessage( std::string langKey, std::string replacer ) -> void {
-    if (!statusHandler || !trans)
+    static const std::vector<std::pair<std::string, std::string>> texts = {
+        {"slot_changed", "selected savestate slot %ident%"},
+        {"state_loaded", "savestate %ident% loaded."},
+        {"state_saved", "savestate %ident% generated."},
+        {"state_error_load", "savestate %ident% couldn't be loaded."},
+        {"state_error_save", "savestate %ident% couldn't be saved."},
+        {"state_incompatible", "savestate %ident% is incompatible."},
+    };
+    if (!statusHandler)
         return;
-    statusHandler->setMessage(trans->get(langKey,{
+    std::string text = langKey;
+    for (auto& t : texts)
+        if (t.first == langKey)
+            text = t.second;
+    statusHandler->setMessage(GUIKIT::String::substitute(text, {
         {"%ident%", replacer}
     }), GUIKIT::String::foundSubStr(langKey, "error") || GUIKIT::String::foundSubStr(langKey, "incompatible"), true, 4 );
 }
@@ -383,23 +385,6 @@ auto States::generateAutoPath(bool createFolder) -> std::string {
     auto pos = settings->get<unsigned>( "save_slot", 0);
 
     return FileHelper::generatedFolder(emulator, "states_folder", "states", createFolder ? FileHelper::FLAG_CREATE : 0) + ident + "_" + std::to_string(pos) + ".sav";
-}
-
-auto States::updateTapeMenu() -> void {
-    
-    if (!view)
-        return;
-    auto media = activeEmulator->getTape(0);
-    if (!media)
-        return view->showTapeMenu( false );
-
-    unsigned count = emulator->getModelValue( emulator->getModelIdOfEnabledDrives(media->group) );
-    
-    Emulator::Interface::TapeMode mode = Emulator::Interface::TapeMode::Unpressed;
-    if (count)
-        mode = emulator->getTapeControl( media );
-    
-    view->showTapeMenu( count ? true : false, mode );
 }
 
 auto States::updateSaveable() -> void {
@@ -456,8 +441,6 @@ auto States::updateConnectedDevices() -> void {
         
         settings->set<unsigned>( _underscore(connector.name), device->id);
 
-        if (view)
-            view->checkInputDevice( emulator, &connector, device );
     }
     
     auto manager = InputManager::getManager(emulator);
@@ -465,13 +448,8 @@ auto States::updateConnectedDevices() -> void {
         manager->updateMappingsInUse();
     }
 
-    auto emuView = EmuConfigView::TabWindow::getView( emulator );
 
-    if (emuView && emuView->inputLayout)
-        emuView->inputLayout->updateConnectorButtons();
 
-    if (view)
-        view->setCursor( emulator );
 }
 
 auto States::updateModels() -> void {
@@ -501,38 +479,11 @@ auto States::updateModels() -> void {
             settings->set<int>( _underscore( model.name), value );                        
     }
 
-    auto emuView = EmuConfigView::TabWindow::getView( emulator );
     auto activeVideoManager = VideoManager::getInstance( emulator );
 
-    if (emuView) {
-        if (emuView->systemLayout) {
-            emuView->systemLayout->systemModelLayout.updateWidgets();
-            emuView->systemLayout->driveModelLayout.updateWidgets();
-            emuView->systemLayout->driveMechanicsLayout.updateWidgets();
-            emuView->systemLayout->memoryModelLayout.updateWidgets();
-
-        } else if (emuView->mediaLayout) {
-            auto diskGroup = emulator->getDiskMediaGroup();
-            if (diskGroup) {
-                int value = emulator->getModelValue(emulator->getModelIdOfEnabledDrives(diskGroup));
-                emuView->mediaLayout->updateVisibility(diskGroup, value);
-            }
-
-            auto hardDiskGroup = emulator->getHardDiskMediaGroup();
-            if (hardDiskGroup) {
-                int value = emulator->getModelValue(emulator->getModelIdOfEnabledDrives(hardDiskGroup));
-                emuView->mediaLayout->updateVisibility(hardDiskGroup, value);
-            }
-        }
-
-        if (emuView->audioLayout)
-            emuView->audioLayout->settingsLayout.updateWidgets();
-    }
 
     if (regionChange) {
-        if (emuView && emuView->presentationLayout)
-            emuView->presentationLayout->updatePresets(true, false);
-        else if (videoDriver && activeVideoManager)
+        if (videoDriver && activeVideoManager)
             activeVideoManager->reloadSettings(false);
     }
     
@@ -540,13 +491,10 @@ auto States::updateModels() -> void {
         audioManager->power();
     }
 
-    if (view && regionChange)
-        view->updateSpeedLabels();
 }
 
 auto States::updateExpansionJumper() -> void {
 
-    auto emuView = EmuConfigView::TabWindow::getView( emulator );
     auto expansion = emulator->getExpansion();
 
     for( auto& mediaGroup : emulator->mediaGroups ) {
@@ -560,21 +508,16 @@ auto States::updateExpansionJumper() -> void {
             settings->set<bool>( _underscore(saveIdent), state);
         }
 
-        if (emuView && emuView->mediaLayout)
-            emuView->mediaLayout->updateJumper( mediaGroup.selected );
     }        
 }
 
 auto States::updateWriteProtection(std::vector<Emulator::Interface::Media*> loadedMedia) -> void {
 
-    auto emuView = EmuConfigView::TabWindow::getView( emulator );
 
     for (auto media : loadedMedia) {
         bool state = emulator->isWriteProtected(media);
         auto fSetting = FileSetting::getInstance( emulator, _underscore(media->name) );
         fSetting->setWriteProtect( state );
 
-        if (emuView && emuView->mediaLayout)
-            emuView->mediaLayout->updateWriteProtection( media, state );
     }       
 }

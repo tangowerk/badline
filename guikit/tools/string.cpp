@@ -189,6 +189,13 @@ auto String::remove(std::string& str, const std::vector<std::string>& subStr) ->
     return str;
 }
 
+auto String::substitute(std::string text, const std::vector<std::vector<std::string>>& replaces) -> std::string {
+    for (auto& r : replaces)
+        if (r.size() == 2)
+            replace(text, r[0], r[1]);
+    return text;
+}
+
 auto String::replace(std::string& str, const std::string& search, const std::string& replace) -> std::string& {
 	if (search.empty())
 		return str;
