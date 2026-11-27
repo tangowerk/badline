@@ -6,6 +6,8 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ## Unreleased
 
+## 0.1.3 – 2026-11-27
+
 ### Changed
 
 - **Drag & drop tiles** rebuilt with the overlay look: while a file is dragged
