@@ -293,34 +293,6 @@ auto stopReport(McpServer& server) -> Json {
 
 // ---------------------------------------------------------------- breakpoints
 
-int stepCpu = 0; // CPU of the last MCP break/step request
-
-auto coversAddress(Emulator::WatchPoints& wp, unsigned address) -> bool {
-    for (auto& w : wp.watchers)
-        if (address >= w.addr && address <= w.endAddr)
-            return true;
-    return false;
-}
-
-// libc64 reports drive breakpoints/steps with theme CPU (M6502New::controlBreaks, upstream bug):
-// find the CPU that actually stopped
-auto resolveStopCpu(Theme theme, Action action, unsigned address) -> int {
-    if (theme != Theme::CPU || (action != Action::Breakpoint && action != Action::Softstop))
-        return themeCpu(theme);
-    auto matches = [&](int cpu) {
-        auto dbg = debuggerOf(cpu);
-        if (!dbg || readRegs(cpu).pc != (address & 0xffff))
-            return false;
-        return action == Action::Softstop || coversAddress(dbg->breakPoints, address);
-    };
-    if (action == Action::Softstop && matches(stepCpu))
-        return stepCpu;
-    for (int cpu = 0; cpu <= 4; cpu++)
-        if (matches(cpu))
-            return cpu;
-    return 0;
-}
-
 auto actionOf(const std::string& type, Action& action) -> bool {
     if (type == "exec") action = Action::Breakpoint;
     else if (type == "read") action = Action::Watchpoint;
@@ -467,8 +439,7 @@ auto McpServer::debuggerEvent(void* snapshotPtr) -> StopDecision {
         std::lock_guard<std::mutex> lock(stopMutex);
         lastStop.valid = true;
         lastStop.reason = reasonName(snap->callbackAction);
-        int cpu = resolveStopCpu(snap->callbackTheme, snap->callbackAction, snap->callbackAddress);
-        lastStop.cpu = cpuName(cpu);
+        lastStop.cpu = cpuName(themeCpu(snap->callbackTheme));
         lastStop.address = snap->callbackAddress & 0xffff;
         lastStop.idents = snap->watcherIdents;
         lastStop.frame = frameCounter;
@@ -713,7 +684,6 @@ auto McpServer::registerDebugTools() -> void {
                 }
                 enableCpuTheme(cpu);
                 activeEmulator->debuggerStepInto(cpuTheme(cpu));
-                stepCpu = cpu;
                 stepPending = true;
                 job.counter = 0;
                 job.limit = (uint64_t)(2 * fps());
@@ -758,7 +728,6 @@ auto McpServer::registerDebugTools() -> void {
                 enableCpuTheme(cpu);
                 if (!issueStep(cpu, mode))
                     return job.fail("step out: no return address known (no JSR seen since the debugger is active)");
-                stepCpu = cpu;
                 stepPending = true;
                 job.inputs.assign(1, (unsigned)count); // remaining steps
                 job.counter = 0;

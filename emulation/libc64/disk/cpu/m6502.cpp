@@ -2062,7 +2062,7 @@ auto M6502New::controlBreaks() -> void {
     }
 
     if (action != DebuggerAction::None)
-        system->debugPointReached(DebuggerTheme::CPU, action, breakPoints, pcEdge);
+        system->debugPointReached(getTheme(), action, breakPoints, pcEdge);
 }
 
 }
