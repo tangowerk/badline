@@ -777,10 +777,14 @@ auto McpServer::registerTools() -> void {
         "tab, shift_tab, insert (Shift+Return), bookmark (Ctrl+B), all_files (Ctrl+H), eject (Ctrl+E), parent (pad B)), "
         "'text' types into the text field being edited or the media browser filter, "
         "'click' / 'rightclick' / 'move' / 'wheel' use logical x/y (see rects in the state; media page: widgets[0].detail). "
-        "'page' selects a sidebar page by id. Every call returns the overlay state. "
+        "'page' selects a sidebar page by id. "
+        "Drag & drop tiles (also with the menu closed): 'drag' starts a file drag over the window, 'drag_move' hovers logical x/y, "
+        "'drop' releases 'files' (paths) at the last position (or x/y if given), 'drag_leave' cancels; tiles and hover are in state.drag. "
+        "Every call returns the overlay state. "
         "Visible in screenshot rendered=true only; also works headless (no drawing).",
         R"({"type":"object","properties":{)"
-        R"("action":{"type":"string","enum":["state","open","close","toggle","nav","text","click","rightclick","move","wheel","page"],"default":"state"},)"
+        R"("action":{"type":"string","enum":["state","open","close","toggle","nav","text","click","rightclick","move","wheel","page","drag","drag_move","drop","drag_leave"],"default":"state"},)"
+        R"("files":{"type":"array","items":{"type":"string"},"description":"absolute paths for 'drop'"},)"
         R"("keys":{"type":"array","items":{"type":"string"}},)"
         R"("text":{"type":"string"},"page":{"type":"string"},)"
         R"("x":{"type":"integer"},"y":{"type":"integer"},"clicks":{"type":"integer","minimum":1,"maximum":2,"default":1},)"
@@ -804,16 +808,25 @@ auto McpServer::registerTools() -> void {
                 return job.fail("'x' and 'y' (logical coordinates) required");
             else if (action == "page" && !job.args["page"].isString())
                 return job.fail("'page' (sidebar id) required");
+            else if (action == "drag_move" && (!job.args["x"].isNumber() || !job.args["y"].isNumber()))
+                return job.fail("'x' and 'y' (logical coordinates) required");
+            else if (action == "drop" && (!job.args["files"].isArray() || job.args["files"].items.empty()))
+                return job.fail("'files' (array of paths) required");
             else if (action != "state" && action != "open" && action != "close" && action != "toggle" && action != "nav"
-                && action != "text" && action != "click" && action != "rightclick" && action != "move" && action != "wheel" && action != "page")
+                && action != "text" && action != "click" && action != "rightclick" && action != "move" && action != "wheel" && action != "page"
+                && action != "drag" && action != "drag_move" && action != "drop" && action != "drag_leave")
                 return job.fail("unknown action '" + action + "'");
 
             job.phase = Job::Ui;
             job.onUi = [action, navs](Job& job) {
                 if (!overlay) return job.fail("Overlay not available (fonts missing?)");
-                if (action != "state" && action != "open" && action != "toggle" && !overlay->isOpen())
+                bool dragAction = action == "drag" || action == "drag_move" || action == "drop" || action == "drag_leave";
+                if (action != "state" && action != "open" && action != "toggle" && !dragAction && !overlay->isOpen())
                     return job.fail("Overlay is closed (use action 'open')");
+                if (action != "drag" && action != "state" && dragAction && !overlay->isDragging())
+                    return job.fail("No drag in progress (use action 'drag')");
                 int x = (int)job.args.getInt("x"), y = (int)job.args.getInt("y");
+                bool hasPos = job.args["x"].isNumber() && job.args["y"].isNumber();
                 if (action == "open") overlay->open();
                 else if (action == "close") overlay->close();
                 else if (action == "toggle") overlay->toggle();
@@ -825,6 +838,16 @@ auto McpServer::registerTools() -> void {
                 else if (action == "wheel") overlay->wheel(x, y, (int)job.args.getInt("dy", 1));
                 else if (action == "page" && !overlay->selectPage(job.args.getString("page")))
                     return job.fail("unknown page '" + job.args.getString("page") + "'");
+                else if (action == "drag") { overlay->dragBegin(); if (hasPos) overlay->dragMove(x, y); }
+                else if (action == "drag_move") overlay->dragMove(x, y);
+                else if (action == "drag_leave") overlay->dragEnd({});
+                else if (action == "drop") {
+                    std::vector<std::string> files;
+                    for (auto& f : job.args["files"].items)
+                        if (f.isString()) files.push_back(f.string);
+                    if (hasPos) overlay->dragMove(x, y);
+                    overlay->dragEnd(files);
+                }
                 Json state;
                 overlay->describe(state);
                 job.addText(state.dump());

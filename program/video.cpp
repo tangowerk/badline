@@ -52,8 +52,6 @@ auto Program::initVideo(bool driverChange) -> void {
 
     if (view)
         view->buildShader();
-    if (sdlWindow)
-        sdlWindow->loadDragnDropOverlay();
     videoDriver->setShaderProgressCallback( [](int pass, bool hasErrors) {
         if (program->quitInProgress)
             return;

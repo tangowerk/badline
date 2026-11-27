@@ -2,7 +2,6 @@
 #define _USE_MATH_DEFINES
 #include <cmath>
 #include "driver.h"
-#include "video/dragnDropOverlay.h"
 #include "video/splashScreen.h"
 
 #include "video/opengl3/sdl.cpp"

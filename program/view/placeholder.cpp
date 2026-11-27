@@ -1,32 +1,4 @@
 
-auto View::loadDragnDropOverlay() -> void {
-    for(int line = 0; line < 2; line++) {
-        GUIKIT::File file(program->imgFolder() + "mediaSlot" + std::to_string(line) + ".png");
-        GUIKIT::Image& dndOverlay = dndOverlays[line];
-
-        if (!file.open())
-            return;
-
-        uint8_t* data = file.read();
-
-        if (!data)
-            return;
-
-        if (!dndOverlay.loadPng(data, file.getSize()))
-            return;
-    }
-
-    DRIVER::Video::DnDOverlayCallback cb;
-    cb = [this](DRIVER::Viewport& vp, unsigned line) -> uint8_t* {
-        GUIKIT::Image& dndOverlay = dndOverlays[line];
-
-        vp.height = (dndOverlay.height * vp.width) / dndOverlay.width;
-
-        return dndOverlay.resize( vp.width, vp.height );
-    };
-    videoDriver->setDragnDropOverlayCallback( cb );
-}
-
 auto View::loadPlaceholder() -> void {
     bool splashScreen = globalSettings->get<bool>("splash_screen", true);
     if (!splashScreen)

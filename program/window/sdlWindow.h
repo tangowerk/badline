@@ -32,7 +32,6 @@ struct SdlWindow {
     auto drawableSize(int& w, int& h) -> void;
 
     auto loadSplashScreen() -> void;
-    auto loadDragnDropOverlay() -> void;
 
     // persist window size/fullscreen in the global settings
     auto saveState() -> void;
@@ -70,10 +69,8 @@ private:
     // drag & drop: SDL3 delivers one DROP_FILE per file between BEGIN and COMPLETE
     std::vector<std::string> dropFiles;
     bool dragging = false;
-    int dropZone = 0;
 
     GUIKIT::Image splash;
-    GUIKIT::Image dndOverlays[2];
 };
 
 extern SdlWindow* sdlWindow;

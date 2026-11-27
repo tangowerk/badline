@@ -139,6 +139,7 @@ set(srcs
         overlay/ui.cpp
         overlay/overlay.cpp
         overlay/media.cpp
+        overlay/drop.cpp
         
         ${headers}
 )

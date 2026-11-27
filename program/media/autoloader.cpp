@@ -30,6 +30,7 @@ auto Autoloader::init( std::vector<std::string> files, Mode mode, unsigned selec
     ddControl.saveFile = nullptr;
     ddControl.overrideSpeeder = false;
     ddControl.archiveId = -1;
+    ddControl.started = false;
     
     unsigned i = 0;
     for( auto& file : files ) {        
@@ -94,6 +95,9 @@ auto Autoloader::postProcessing() -> void {
     });	
 
     auto mediaGroup = ddControl.mediaGroups[0];
+    // the slot (drive 8, 9, ...) only applies to disks; tape, cartridge and PRG have one port
+    if (slotMode() && !mediaGroup->isDisk())
+        ddControl.selection = 0;
     bool autoStart = true;
     bool trapped = false;
     bool forceStandardKernal = false;
@@ -115,8 +119,10 @@ auto Autoloader::postProcessing() -> void {
             else if (mediaGroup->isTape())
                 trapped = settings->get<bool>("use_tape_traps", false);
         }
-    } else if (ddControl.mode == Mode::Open || ddControl.mode == Mode::OpenWithSlot)
-        autoStart = false;
+    } else if (ddControl.mode == Mode::Open || ddControl.mode == Mode::OpenWithSlot) {
+        // cartridges and programs cannot be inserted without a power cycle
+        autoStart = ddControl.mode == Mode::OpenWithSlot && !mediaGroup->isDrive();
+    }
     else if (ddControl.mode == Mode::AutoStart || ddControl.mode == Mode::AutoStartWithSlot) {
         autoStart = true;
         if (mediaGroup->isDisk())
@@ -220,6 +226,7 @@ auto Autoloader::postProcessing() -> void {
 		}
 
         videoDriver->hideSplashScreen();
+        ddControl.started = true;
 
         if (!useExpansion)
             MiscHelper::removeExpansion(ddControl.emulator, true);
@@ -338,65 +345,6 @@ auto Autoloader::loadFiles() -> void {
 	}
 }
 
-auto Autoloader::needSlotsForDragnDrop(std::vector<std::string> files) -> unsigned {
-    Emulator::Interface::MediaGroup* prefered = nullptr;
-
-    for (auto& path : files) {
-        GUIKIT::File* file = filePool->get(path);
-        if (!file || !file->exists() || !file->getSize())
-            continue;
-
-        auto& items = file->scanArchive();
-        if (!items.size())
-            continue;
-        GUIKIT::File::Item* item = &items[0];
-        if (!item || (item->info.size == 0))
-            continue;
-
-        std::string fileSuffix = GUIKIT::String::getExtension(item->info.name, "exe");
-        GUIKIT::String::toLowerCase(fileSuffix);
-
-        for (auto emulator : emulators) {
-            for (auto& mediaGroup : emulator->mediaGroups) {
-                for (auto& mediaSuffix : mediaGroup.suffix) {
-                    if (mediaSuffix == fileSuffix) {
-                        if (mediaGroup.isExpansion()) {
-                            auto analyzedExpansion = emulator->analyzeExpansion(file->archiveData(item->id), item->info.size, fileSuffix);
-                            if (analyzedExpansion != mediaGroup.expansion)
-                                continue;
-                        }
-
-                        if (mediaGroup.isDisk())
-                            prefered = &mediaGroup;
-                        else if (mediaGroup.isTape()) {
-                            if (prefered != emulator->getDiskMediaGroup())
-                                prefered = &mediaGroup;
-                        } else { // PRG or Expansion
-                            if (!prefered)
-                                prefered = &mediaGroup;
-                        }
-                    }
-                }
-            }
-            if (prefered) { // no emu core mixing allowed
-                int count = 0;
-
-                if (prefered->isDrive()) {
-                    count = emulator->getModelValue( emulator->getModelIdOfEnabledDrives(prefered) );
-                    return count ? count : 1;
-                }
-
-                for(auto& media : prefered->media) {
-                    if (!media.parent)
-                        count++;
-                }
-                return count;
-            }
-        }
-    }
-    return 1;
-}
-
 auto Autoloader::loadFile( GUIKIT::File* file, GUIKIT::File::Item* item ) -> void {
     std::string fileSuffix;
 
@@ -436,7 +384,8 @@ auto Autoloader::loadFile( GUIKIT::File* file, GUIKIT::File::Item* item ) -> voi
                     Emulator::Interface::Media* media = mediaGroup.selected;
 
                     if (slotMode()) {
-                        _pos += ddControl.selection;
+                        if (mediaGroup.isDisk())
+                            _pos += ddControl.selection;
                         media = nullptr;
                     }
 
@@ -506,6 +455,12 @@ auto Autoloader::activateDrive( Emulator::Interface* emulator, Emulator::Interfa
         settings->set<unsigned>(_underscore(model->name), requestedCount);
 
     emulator->setModelValue( modelId, requestedCount );
+
+    // a newly connected drive starts from power-on like a real one being switched on;
+    // without it, inserting (no machine reset) leaves it running on uninitialized state and crashes
+    if (mediaGroup->isDisk())
+        for (unsigned i = counter; i < requestedCount; i++)
+            emulator->resetDrive( &mediaGroup->media[i] );
 
     auto emuView = EmuConfigView::TabWindow::getView( emulator );
 

@@ -21,6 +21,7 @@ struct Autoloader {
         GUIKIT::File* saveFile = nullptr;
         bool overrideSpeeder = false;
 	    int archiveId = -1;
+	    bool started = false; // last postProcessing powered the machine (autostart)
 	} ddControl;
 
     struct Used {
@@ -42,7 +43,6 @@ struct Autoloader {
 	auto countImagesFor(Emulator::Interface::MediaGroup* mediaGroup) -> unsigned;
 	auto activateDrive( Emulator::Interface* emulator, Emulator::Interface::MediaGroup* mediaGroup, unsigned requestedCount, bool updateStatus = false ) -> void;
     auto checkForSavestate( GUIKIT::File* file, GUIKIT::File::Item* item ) -> bool;
-    auto needSlotsForDragnDrop(std::vector<std::string> files) -> unsigned;
     auto slotMode() -> bool { return ddControl.mode == Mode::AutoStartWithSlot || ddControl.mode == Mode::OpenWithSlot; }
     auto set(Emulator::Interface* emulator, Emulator::Interface::Media* media, bool trapped, unsigned selection = 0) -> void;
     auto setOnlyForFirstDrive(Emulator::Interface* emulator, Emulator::Interface::Media* media) -> void;
@@ -50,6 +50,7 @@ struct Autoloader {
     auto getLatestDrive(Emulator::Interface* emulator) -> Emulator::Interface::Media*;
     auto setErrorLevel(unsigned level) -> void { ddControl.errorLevel = level; }
     auto hasLoaded() const -> bool { return !ddControl.mediaGroups.empty(); }
+    auto hasStarted() const -> bool { return ddControl.started; }
 };
 
 extern Autoloader* autoloader;

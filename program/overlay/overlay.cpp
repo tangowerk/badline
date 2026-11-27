@@ -439,6 +439,11 @@ auto Overlay::rightClick(int x, int y) -> void {
     nav(Nav::Back);
 }
 
+auto Overlay::toLogical(float wx, float wy, float density, int& x, int& y) const -> void {
+    x = ((int)(wx * density) - offsetX) / scaleFactor;
+    y = ((int)(wy * density) - offsetY) / scaleFactor;
+}
+
 auto Overlay::handleEvent(const SDL_Event& ev, float density) -> bool {
     if (!font.loaded())
         return false;
@@ -455,10 +460,7 @@ auto Overlay::handleEvent(const SDL_Event& ev, float density) -> bool {
     if (!opened)
         return false;
 
-    auto logical = [&](float wx, float wy, int& x, int& y) {
-        x = ((int)(wx * density) - offsetX) / scaleFactor;
-        y = ((int)(wy * density) - offsetY) / scaleFactor;
-    };
+    auto logical = [&](float wx, float wy, int& x, int& y) { toLogical(wx, wy, density, x, y); };
 
     switch (ev.type) {
         case SDL_EVENT_KEY_DOWN: {
@@ -721,8 +723,18 @@ auto Overlay::draw(float alpha) -> std::shared_ptr<DRIVER::OverlayFrame> {
     frame->vertices.reserve(6 * 8 * 1500);
 
     layout();
-    Painter p(font, *frame, scaleFactor, offsetX, offsetY, alpha);
+    if (alpha > 0.0f) {
+        Painter p(font, *frame, scaleFactor, offsetX, offsetY, alpha);
+        drawMenu(p);
+    }
+    if (dragActive) {
+        Painter p(font, *frame, scaleFactor, offsetX, offsetY, 1.0f);
+        drawDrop(p);
+    }
+    return frame;
+}
 
+auto Overlay::drawMenu(Painter& p) -> void {
     p.rawRect(0, 0, pixelWidth, pixelHeight, Theme::Dim);
     p.rect(panel.x, panel.y, panel.w, panel.h, Theme::Panel);
     p.rect(panel.x, panel.y, SidebarWidth, panel.h, Theme::Sidebar);
@@ -795,8 +807,6 @@ auto Overlay::draw(float alpha) -> std::shared_ptr<DRIVER::OverlayFrame> {
 
     if (!message.empty() && std::chrono::steady_clock::now() < messageUntil)
         p.textClip(content.x, top - 14, message, content.w, Theme::Warn);
-
-    return frame;
 }
 
 auto Overlay::tick() -> void {
@@ -806,29 +816,36 @@ auto Overlay::tick() -> void {
     sdlWindow->drawableSize(w, h);
     setSize(w, h);
 
-    if (!visible)
-        return;
+    float alpha = 0.0f;
+    if (visible) {
+        float t = std::chrono::duration<float>(std::chrono::steady_clock::now() - fadeStart) / std::chrono::duration<float>(FadeTime);
+        t = std::clamp(t, 0.0f, 1.0f);
+        alpha = opened ? t : 1.0f - t;
 
-    float t = std::chrono::duration<float>(std::chrono::steady_clock::now() - fadeStart) / std::chrono::duration<float>(FadeTime);
-    t = std::clamp(t, 0.0f, 1.0f);
-    float alpha = opened ? t : 1.0f - t;
-
-    if (!message.empty() && std::chrono::steady_clock::now() >= messageUntil) {
-        message.clear();
-        dirty = true;
+        if (!message.empty() && std::chrono::steady_clock::now() >= messageUntil) {
+            message.clear();
+            dirty = true;
+        }
+        if (!opened && alpha <= 0.0f) {
+            visible = false;
+            lastAlpha = 0.0f;
+            dirty = true;
+        }
     }
 
-    if (!opened && alpha <= 0.0f) {
-        visible = false;
-        lastAlpha = 0.0f;
-        videoDriver->setOverlay(nullptr);
+    if (!visible && !dragActive) {
+        if (frameShown)
+            videoDriver->setOverlay(nullptr);
+        frameShown = false;
         return;
     }
     if (!dirty && alpha == lastAlpha)
         return;
 
     dirty = false;
-    lastAlpha = alpha;
+    if (visible)
+        lastAlpha = alpha;
+    frameShown = true;
     videoDriver->setOverlay(draw(alpha));
 }
 
@@ -891,4 +908,7 @@ auto Overlay::describe(Json& out) -> void {
 
     if (!message.empty() && std::chrono::steady_clock::now() < messageUntil)
         out.set("message", message);
+    Json drag;
+    describeDrop(drag);
+    out.set("drag", drag);
 }

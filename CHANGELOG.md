@@ -6,6 +6,34 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ## Unreleased
 
+### Changed
+
+- **Drag & drop tiles** rebuilt with the overlay look: while a file is dragged
+  over the window, one tile per connected drive shows the drive number, the
+  inserted image and two halves, INSERT (no reset) and START (reset + run from
+  that drive, also drive 9–11). Disks go to the drive of the tile; tapes are
+  inserted and cartridges/PRGs started from any tile; dropping outside the
+  tiles autostarts as before. A hint line says what the hovered half does. The
+  tiles also appear over the open menu (START closes it, INSERT keeps it open).
+  Replaces Denise's four unlabelled picture slots (`mediaSlot*.png` and the GL
+  drag & drop layer are gone).
+- MCP `overlay` tool: actions `drag`, `drag_move`, `drop` and `drag_leave`
+  simulate a file drag; the state lists the tiles under `drag`.
+
+### Fixed
+
+- Inserting more disks than drives are connected (drop of several disks
+  without autostart) crashed the emulator: the extra drive was switched on
+  without its ROM and without a power-on. Drive ROMs are now loaded into all
+  drives, and a newly connected drive starts from power-on while the C64 keeps
+  running. (Denise bug.)
+- A tape or cartridge dropped on the second drive's slot was silently ignored
+  (the slot index was applied to the tape/cartridge port), and inserting a
+  cartridge or PRG without autostart tried to open the removed GTK settings
+  window; they are now inserted or started like from the Media page. (Denise
+  bug, partly Badline since 0.1.0.)
+- `driver/video/splashScreen.h` includes `<atomic>` itself.
+
 ## 0.1.2 – 2026-11-27
 
 ### Fixed

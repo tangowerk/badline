@@ -528,8 +528,8 @@ auto IecBus::getStepperSeekTime( ) -> unsigned {
 }
     
 auto IecBus::setFirmware(unsigned typeId, uint8_t* data, unsigned size) -> void {
-    
-    for( auto drive : drivesEnabled )
+    // all drives, like type and speeder: a drive connected later must not run without ROM
+    for( auto drive : drives )
         drive->setFirmware( typeId, data, size );
 }
 

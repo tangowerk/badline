@@ -13,6 +13,7 @@ on the given port.
 import argparse
 import base64
 import json
+import struct
 import os
 import signal
 import subprocess
@@ -712,6 +713,121 @@ def run_media(client, tmp, headless):
     check("READY. after cartridge eject", not r["isError"], text_of(r))
 
 
+def run_dnd(client, tmp, headless):
+    print("drag & drop tiles")
+    base = os.path.join(tmp, "dnd")
+    os.makedirs(base)
+    paths = {}
+    def write(name, data):
+        paths[name] = os.path.join(base, name)
+        with open(paths[name], "wb") as f:
+            f.write(data)
+    write("one.d64", make_d64("DISKONE", [("ONE", basic_prg([(10, [0x99] + list(b' "DND8 OK"'))]))]))
+    write("two.d64", make_d64("DISKTWO", [("TWO", basic_prg([(10, [0x99] + list(b' "DND9 OK"'))]))]))
+    write("run.prg", basic_prg([(10, [0x99] + list(b' "DROP PRG OK"'))]))
+    write("cart.crt", make_crt("DND CRT OK"))
+    # TAP v1 with a few pulses
+    pulses = bytes([0x30] * 64)
+    write("tape.tap", b"C64-TAPE-RAW" + bytes([1, 0, 0, 0]) + struct.pack("<I", len(pulses)) + pulses)
+
+    def ov(**args):
+        r = client.call("overlay", **args)
+        if r["isError"]:
+            return None, text_of(r)
+        return json.loads(text_of(r).split("\n", 1)[0]), ""
+
+    def center(rect):
+        x, y, w, h = (int(v) for v in rect.split(","))
+        return x + w // 2, y + h // 2
+
+    def media():
+        return jtext(client.call("status")).get("media", {})
+
+    def drop(files, drive=None, action=None, x=None, y=None):
+        st, err = ov(action="drag")
+        if not st:
+            return None, err
+        if drive is not None:
+            tile = next((t for t in st["drag"]["tiles"] if t["drive"] == drive), None)
+            if not tile:
+                return None, "no tile for drive %d: %s" % (drive, st["drag"])
+            x, y = center(tile[action])
+        if x is None:
+            x, y = 0, 0
+        st, err = ov(action="drag_move", x=x, y=y)
+        hover = st["drag"].get("hover") if st else None
+        st, err = ov(action="drop", files=[paths[f] for f in files])
+        return (st, hover), err
+
+    client.call("eject", target="all")
+    client.call("reset", type="hard")
+    client.call("wait_for_text", text="READY.", timeout=20, warp=True)
+
+    st, err = ov(action="drag")
+    tiles = st["drag"].get("tiles", []) if st else []
+    check("drag shows one tile per drive", st and st["drag"]["active"] and [t["drive"] for t in tiles] == [8], err or str(st and st["drag"]))
+    check("drag works with closed menu", st and st["open"] is False, str(st and st["open"]))
+    check("drag hint outside tiles", st and "autostart" in st["drag"].get("hint", ""), str(st and st["drag"].get("hint")))
+    if tiles:
+        x, y = center(tiles[0]["start"])
+        st, _ = ov(action="drag_move", x=x, y=y)
+        check("drag hover start", st["drag"].get("hover") == {"drive": 8, "action": "start"}, str(st["drag"].get("hover")))
+        check("drag hint start", "reset + run" in st["drag"].get("hint", ""), st["drag"].get("hint", ""))
+    st, _ = ov(action="drag_leave")
+    check("drag leave hides tiles", st and st["drag"]["active"] is False, str(st and st["drag"]))
+    r = client.call("overlay", action="drop", files=[paths["run.prg"]])
+    check("drop without drag fails", r["isError"], text_of(r))
+
+    # two disks on INSERT of drive 8: both inserted, drive 9 switched on, nothing started
+    res, err = drop(["one.d64", "two.d64"], 8, "insert")
+    m = media()
+    check("insert two disks via tile", res and res[1] == {"drive": 8, "action": "insert"}
+          and "one" in str(m.get("drive8")) and "two" in str(m.get("drive9")), err or str(m))
+    r = client.call("read_screen")
+    check("insert does not reset", "READY." in text_of(r), text_of(r)[:200])
+
+    st, _ = ov(action="drag")
+    tiles = st["drag"].get("tiles", []) if st else []
+    check("second drive gets a tile", [t["drive"] for t in tiles] == [8, 9], str(tiles))
+    check("tile names the inserted image", tiles and "one" in tiles[0]["image"], str(tiles))
+    ov(action="drag_leave")
+
+    # START on drive 9 loads from drive 9
+    res, err = drop(["two.d64"], 9, "start")
+    r = client.call("wait_for_text", text="DND9 OK", timeout=30, warp=True)
+    check("start from drive 9 tile", not r["isError"], err or text_of(r))
+
+    # tape on drive 9 INSERT: goes to the tape port, no start
+    res, err = drop(["tape.tap"], 9, "insert")
+    check("tape on drive 9 tile is inserted", "tape" in str(media().get("tape")), err or str(media()))
+
+    # cartridge on INSERT still starts (needs a power cycle)
+    res, err = drop(["cart.crt"], 9, "insert")
+    r = client.call("wait_for_text", text="DND CRT OK", timeout=20, warp=True)
+    check("cartridge on insert tile starts", not r["isError"], err or text_of(r))
+    client.call("eject", target="cartridge")
+    client.call("wait_for_text", text="READY.", timeout=20, warp=True)
+
+    # over the open menu: insert keeps it open, start closes it
+    ov(action="open")
+    ov(action="page", page="media")
+    res, err = drop(["one.d64"], 8, "insert")
+    st = res[0] if res else None
+    check("insert over open menu keeps it open", st and st["open"] is True and "Inserted" in str(st.get("message")), err or str(st and st.get("message")))
+    res, err = drop(["one.d64"], 8, "start")
+    st = res[0] if res else None
+    check("start over open menu closes it", st and st["open"] is False, err or str(st and st["open"]))
+    r = client.call("wait_for_text", text="DND8 OK", timeout=30, warp=True)
+    check("start from drive 8 tile", not r["isError"], text_of(r))
+
+    # outside the tiles: plain autostart
+    res, err = drop(["run.prg"], x=2, y=2)
+    check("drop outside tiles has no hover", res and res[1] is None, err or str(res and res[1]))
+    r = client.call("wait_for_text", text="DROP PRG OK", timeout=20, warp=True)
+    check("drop outside tiles autostarts", not r["isError"], text_of(r))
+    client.call("eject", target="all")
+
+
 def run_headless_checks(client):
     print("headless")
     st = jtext(client.call("status"))
@@ -752,6 +868,7 @@ def main():
             run_debug(client)
             run_overlay(client, args.headless)
             run_media(client, tmp, args.headless)
+            run_dnd(client, tmp, args.headless)
             if args.headless:
                 run_headless_checks(client)
                 cfg_before = os.path.getmtime(cfg) if os.path.exists(cfg) else None

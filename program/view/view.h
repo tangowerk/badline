@@ -18,11 +18,9 @@ struct View : GUIKIT::Window {
     GUIKIT::StatusBar statusBar;
 	bool requestFullscreenSwitch = false;
     bool customResizeMode = false;
-    int dropZone = 0;
 	bool grabMouseLeft = false;
     float overrideFullscreenRefreshRate = 0.0f;
     GUIKIT::Image placeholder;
-    GUIKIT::Image dndOverlays[2];
 
     ScreenshotState screenshot;
 
@@ -109,14 +107,12 @@ struct View : GUIKIT::Window {
     auto updateStatusBar(bool toggle = false ) -> void;
     auto loadCursor() -> void;
     auto setCursor( Emulator::Interface* emulator ) -> void;
-    auto setDragnDrop() -> void;
     auto getSysMenu( Emulator::Interface* emulator ) -> SystemMenu*;
     auto cursorForPlaceholderInUpperTriangle(GUIKIT::Position p) -> int;
     auto cursorForPlaceholderInUpperTriangle() -> int;
     auto loadImages() -> void;
     
     auto loadPlaceholder() -> void;
-    auto loadDragnDropOverlay() -> void;
     auto togglePause() -> void;
     auto updatePauseCheck() -> void;
     auto updateWarpCheck() -> void;

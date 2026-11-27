@@ -58,6 +58,15 @@ struct Overlay {
     auto describe(Json& out) -> void;
     auto scale() const -> int { return scaleFactor; }
 
+    // drag & drop tiles while a file is dragged over the window (UI thread, drop.cpp);
+    // MCP simulates drags with the same calls
+    auto dragBegin() -> void;
+    auto dragMove(int x, int y) -> void; // logical coordinates
+    auto dragEnd(const std::vector<std::string>& files) -> void; // empty: drag left the window
+    auto isDragging() const -> bool { return dragActive; }
+    // window coordinates (SDL, unscaled) -> logical overlay coordinates
+    auto toLogical(float wx, float wy, float density, int& x, int& y) const -> void;
+
     static auto navFromName(const std::string& name, Nav& out) -> bool;
 
 private:
@@ -78,6 +87,17 @@ private:
     auto sidebarRect(int index) const -> OverlayUi::Rect;
     auto hitWidget(int x, int y) -> int;
     auto canRunMachineAction() -> bool;
+
+    struct DropTile {
+        unsigned drive = 0; // 0 = drive 8
+        std::string image;  // inserted image, empty if none
+        OverlayUi::Rect tile, insert, start;
+    };
+    auto dropTiles() const -> std::vector<DropTile>;
+    auto drawMenu(OverlayUi::Painter& p) -> void;
+    auto drawDrop(OverlayUi::Painter& p) -> void;
+    auto dropHint() const -> std::string;
+    auto describeDrop(Json& out) const -> void;
 
     auto resetMachine(bool hard) -> void;
     auto quitProgram() -> void;
@@ -105,6 +125,10 @@ private:
     int offsetX = 0, offsetY = 0;
     OverlayUi::Rect panel, content;
     unsigned atlasId = 1;
+
+    bool dragActive = false;
+    int dragHover = -1; // tile index * 2, + 1 for the start half
+    bool frameShown = false;
 
     int toggleScancode = 0;
     int toggleButton = -1;

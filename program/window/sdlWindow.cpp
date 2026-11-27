@@ -249,6 +249,20 @@ auto SdlWindow::handleEvent(SDL_Event& ev) -> void {
 }
 
 auto SdlWindow::handleDrop(SDL_Event& ev) -> void {
+    // the tiles are drawn and evaluated by the overlay (overlay/drop.cpp);
+    // without overlay (fonts missing) a drop is a plain autoload
+    if (!overlay) {
+        if (ev.type == SDL_EVENT_DROP_FILE && ev.drop.data)
+            dropFiles.push_back(ev.drop.data);
+        else if (ev.type == SDL_EVENT_DROP_COMPLETE && !dropFiles.empty()) {
+            emuThread->lock();
+            autoloader->init(dropFiles, Autoloader::Mode::DragnDrop);
+            autoloader->loadFiles();
+            emuThread->unlock();
+            dropFiles.clear();
+        }
+        return;
+    }
     float density = SDL_GetWindowPixelDensity(window);
     if (density <= 0.0f)
         density = 1.0f;
@@ -256,18 +270,16 @@ auto SdlWindow::handleDrop(SDL_Event& ev) -> void {
     switch (ev.type) {
         case SDL_EVENT_DROP_BEGIN:
             dropFiles.clear();
-            dropZone = 0;
             dragging = true;
-            emuThread->lock();
-            // the dropped files are unknown until release: offer all four drive slots
-            videoDriver->setDragnDropOverlaySlots(4);
-            videoDriver->enableDragnDropOverlay(true);
-            emuThread->unlock();
+            overlay->dragBegin();
             break;
 
         case SDL_EVENT_DROP_POSITION:
-            if (dragging)
-                dropZone = videoDriver->sendDragnDropOverlayCoordinates((int)(ev.drop.x * density), (int)(ev.drop.y * density));
+            if (dragging) {
+                int x, y;
+                overlay->toLogical(ev.drop.x, ev.drop.y, density, x, y);
+                overlay->dragMove(x, y);
+            }
             break;
 
         case SDL_EVENT_DROP_FILE:
@@ -277,23 +289,11 @@ auto SdlWindow::handleDrop(SDL_Event& ev) -> void {
 
         case SDL_EVENT_DROP_COMPLETE: {
             dragging = false;
-            emuThread->lock();
-            videoDriver->enableDragnDropOverlay(false);
-
-            if (!dropFiles.empty()) {
-                Autoloader::Mode mode = Autoloader::Mode::DragnDrop;
-                unsigned selection = 0;
-                if (dropZone & 0x8000) {
-                    selection = dropZone & 0xff;
-                    mode = (dropZone & 0x100) ? Autoloader::Mode::AutoStartWithSlot : Autoloader::Mode::OpenWithSlot;
-                }
-                autoloader->init(dropFiles, mode, selection);
-                autoloader->loadFiles();
-            }
-            dropZone = 0;
+            bool dropped = !dropFiles.empty();
+            overlay->dragEnd(dropFiles);
             dropFiles.clear();
-            emuThread->unlock();
-            SDL_RaiseWindow(window);
+            if (dropped)
+                SDL_RaiseWindow(window);
         } break;
     }
 }
@@ -308,27 +308,6 @@ auto SdlWindow::splashHit(float x, float y) -> int {
     if (px < vp.x || py < vp.y || px > vp.x + (int)vp.width || py > vp.y + (int)vp.height)
         return -1;
     return 1;
-}
-
-auto SdlWindow::loadDragnDropOverlay() -> void {
-    for (int line = 0; line < 2; line++) {
-        GUIKIT::File file(program->imgFolder() + "mediaSlot" + std::to_string(line) + ".png");
-        GUIKIT::Image& dndOverlay = dndOverlays[line];
-
-        if (!file.open())
-            return;
-
-        uint8_t* data = file.read();
-        if (!data || !dndOverlay.loadPng(data, file.getSize()))
-            return;
-    }
-
-    DRIVER::Video::DnDOverlayCallback cb = [this](DRIVER::Viewport& vp, unsigned line) -> uint8_t* {
-        GUIKIT::Image& dndOverlay = dndOverlays[line];
-        vp.height = (dndOverlay.height * vp.width) / dndOverlay.width;
-        return dndOverlay.resize(vp.width, vp.height);
-    };
-    videoDriver->setDragnDropOverlayCallback(cb);
 }
 
 auto SdlWindow::loadSplashScreen() -> void {

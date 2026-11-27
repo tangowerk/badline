@@ -11,7 +11,6 @@ set(headers
 set(headers ${headers}
         driver.h
         video/opengl3/bind.h
-        video/opengl3/dragndropOverlay.h
         video/opengl3/gl3.cpp
         video/opengl3/progress.h
         video/opengl3/screenText.h
@@ -19,7 +18,6 @@ set(headers ${headers}
         video/opengl3/types.h
         video/opengl3/utility.h
         video/thread/renderThread.h
-        video/dragnDropOverlay.h
         video/freetype.h
         video/viewport.h
         tools/chronos.h

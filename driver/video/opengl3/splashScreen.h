@@ -113,8 +113,8 @@ struct GLSplashScreen : SplashScreen {
         glGenBuffers(1, &vbo);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
 
-        vertex = GLUtility::createShader(GL_VERTEX_SHADER, OpenGLDragnDropVertexShader.c_str(), error);
-        fragment = GLUtility::createShader(GL_FRAGMENT_SHADER, OpenGLDragnDropFragmentShader.c_str(), error);
+        vertex = GLUtility::createShader(GL_VERTEX_SHADER, OpenGLImageVertexShader.c_str(), error);
+        fragment = GLUtility::createShader(GL_FRAGMENT_SHADER, OpenGLImageFragmentShader.c_str(), error);
 
         if (!vertex || !fragment)
             goto End;

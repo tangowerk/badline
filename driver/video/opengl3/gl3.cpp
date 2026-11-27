@@ -30,7 +30,6 @@ namespace DRIVER {
 #include "progress.h"
 
 namespace DRIVER {
-#include "dragndropOverlay.h"
 #include "splashScreen.h"
 #include "overlay.h"
 
@@ -76,7 +75,6 @@ struct GL3 {
 
     ViewScreen viewScreen;
     Viewport viewport;
-    GLDragndropOverlay dndOverlay;
     GLSplashScreen splashScreen;
     GLOverlay overlay;
     OpenGLProgress progress;
@@ -364,9 +362,6 @@ struct GL3 {
 
         if (!progress.init())
             progress.term();
-
-        if (!dndOverlay.init())
-            dndOverlay.term();
 
         if (!splashScreen.init())
             splashScreen.term();

@@ -36,23 +36,6 @@ struct SDLGL : public Video, GL3, RenderThread {
 
     auto hasOverlay() -> bool { return overlay.initialized; }
 
-    auto setDragnDropOverlayCallback(DnDOverlayCallback callback) -> void {
-        dndOverlay.callback = callback;
-    }
-
-    auto setDragnDropOverlaySlots(unsigned slots) -> void {
-        dndOverlay.setSlots(slots);
-    }
-
-    auto enableDragnDropOverlay(bool state) -> void {
-        if (dndOverlay.enable != state)
-            dndOverlay.enable = state;
-    }
-
-    auto sendDragnDropOverlayCoordinates(int x, int y) -> int {
-        return dndOverlay.sendDragnDropOverlayCoordinates(x, y);
-    }
-
     auto setShaderCacheCallback( std::function<void (DiskFile& diskFile)> onCallback ) -> void {
         onShaderCacheCallback = onCallback;
     }
@@ -394,8 +377,6 @@ struct SDLGL : public Video, GL3, RenderThread {
 
         overlay.show(viewScreen.windowWidth, viewScreen.windowHeight);
 
-        if (dndOverlay.enabled())
-            dndOverlay.show(viewport);
 #ifdef DRV_FREETYPE
         screenText.showText(viewport);
 #endif

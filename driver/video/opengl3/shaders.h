@@ -100,7 +100,7 @@ static std::string OpenGLOverlayFragmentShader = R"(
   }
 )";
 
-static std::string OpenGLDragnDropVertexShader = R"(
+static std::string OpenGLImageVertexShader = R"(
   #version 140
 
   in vec4 texCoords;
@@ -115,7 +115,7 @@ static std::string OpenGLDragnDropVertexShader = R"(
 }
 )";
 
-static std::string OpenGLDragnDropFragmentShader = R"(
+static std::string OpenGLImageFragmentShader = R"(
 #version 140
 
 in vec2 texCoordsOut;

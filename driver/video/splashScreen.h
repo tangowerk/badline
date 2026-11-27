@@ -1,3 +1,7 @@
+#pragma once
+
+#include <atomic>
+
 
 namespace DRIVER {
 
