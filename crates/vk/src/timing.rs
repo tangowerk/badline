@@ -321,6 +321,22 @@ pub fn now_ns() -> u64 {
     ts.sec as u64 * 1_000_000_000 + ts.nsec as u64
 }
 
+/// sleeps until CLOCK_MONOTONIC reaches `ns` (returns at once when it is in the past)
+pub fn sleep_until(ns: u64) {
+    #[repr(C)]
+    struct Timespec {
+        sec: i64,
+        nsec: i64,
+    }
+    unsafe extern "C" {
+        fn clock_nanosleep(clock: i32, flags: i32, req: *const Timespec, rem: *mut Timespec) -> i32;
+    }
+    const TIMER_ABSTIME: i32 = 1;
+    const EINTR: i32 = 4;
+    let ts = Timespec { sec: (ns / 1_000_000_000) as i64, nsec: (ns % 1_000_000_000) as i64 };
+    while unsafe { clock_nanosleep(1, TIMER_ABSTIME, &ts, std::ptr::null_mut()) } == EINTR {}
+}
+
 /// flags of a present record (see BVK_PRESENT_* in bvk.h)
 pub const REC_REPEAT: u32 = 1;
 pub const REC_REDRAW: u32 = 2;
@@ -362,7 +378,17 @@ pub struct Feedback {
     done: VecDeque<Record>,
     stages: Vec<PresentStageTime>,
     timings: Vec<PastPresentationTiming>,
+    /// grid cadence detection (VRR): period of the target time grid (0 = off)
+    grid_period: u64,
+    /// last displayed first present of a picture: (frame, display time)
+    grid_last: (u64, u64),
+    /// recent picture intervals, true = within CADENCE_TOLERANCE of the grid period
+    grid_hits: VecDeque<bool>,
 }
+
+/// picture intervals looked at for the cadence decision (~1 s at 50 fps)
+const CADENCE_WINDOW: usize = 50;
+const CADENCE_TOLERANCE: u64 = 1_000_000;
 
 impl Feedback {
     pub fn new(v2: Option<Fns>, stage: u32) -> Self {
@@ -379,6 +405,9 @@ impl Feedback {
             done: VecDeque::new(),
             stages: Vec::new(),
             timings: Vec::new(),
+            grid_period: 0,
+            grid_last: (0, 0),
+            grid_hits: VecDeque::new(),
         }
     }
 
@@ -471,7 +500,38 @@ impl Feedback {
         self.pending.push_back(rec);
     }
 
+    pub fn set_grid(&mut self, period: u64) {
+        if self.grid_period != period {
+            self.grid_period = period;
+            self.grid_last = (0, 0);
+            self.grid_hits.clear();
+        }
+    }
+
+    /// most of the recent pictures were displayed one grid period after their predecessor:
+    /// the display follows the target times (VRR, or a refresh equal to the grid)
+    pub fn cadence(&self) -> bool {
+        self.grid_hits.len() >= CADENCE_WINDOW / 2
+            && self.grid_hits.iter().filter(|&&h| h).count() * 10 >= self.grid_hits.len() * 9
+    }
+
+    fn track_cadence(&mut self, rec: &Record) {
+        if self.grid_period == 0 || rec.copy != 0 || rec.flags & (REC_REDRAW | REC_LOST) != 0 || rec.display_ns == 0 {
+            return;
+        }
+        let (frame, time) = self.grid_last;
+        if frame != 0 && rec.frame == frame + 1 {
+            let dt = rec.display_ns.wrapping_sub(time);
+            if self.grid_hits.len() >= CADENCE_WINDOW {
+                self.grid_hits.pop_front();
+            }
+            self.grid_hits.push_back(dt.abs_diff(self.grid_period) <= CADENCE_TOLERANCE);
+        }
+        self.grid_last = (rec.frame, rec.display_ns);
+    }
+
     fn finish(&mut self, rec: Record) {
+        self.track_cadence(&rec);
         if self.done.len() >= MAX_DONE {
             self.done.pop_front();
         }

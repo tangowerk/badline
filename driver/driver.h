@@ -95,6 +95,8 @@ struct PacingCaps {
     int timeDomain = 0;   // Vulkan time domain of displayNs (1 = CLOCK_MONOTONIC)
     uint64_t refreshNs = 0;
     bool stalled = false; // a present wait timed out, nothing displayed since (hidden window)
+    bool absoluteTime = false; // presents can carry target times (grid pacing)
+    bool cadence = false; // grid presents shown at the grid cadence (VRR active)
 };
 
 enum Options { OPT_HoldFrame = 1, OPT_Interlace = 2, OPT_DisallowShader = 4, OPT_TakeScreenshot = 8,
@@ -152,7 +154,7 @@ struct Video {
     // frame pacing (Vulkan, M-Pacing1): every new picture is presented `repeat` times; with
     // queueDepth d > 0 present N waits until present N-d is on screen (video master)
     virtual auto supportsPacing() -> bool { return false; }
-    virtual auto setPacing(unsigned repeat, unsigned queueDepth, int presentMode) -> void {}
+    virtual auto setPacing(unsigned repeat, unsigned queueDepth, int presentMode, uint64_t gridNs = 0) -> void {}
     virtual auto pacingCaps() -> PacingCaps { return {}; }
     // copies the collected presents (oldest first); `clear` drops them afterwards
     virtual auto pacingSamples(std::vector<PacingSample>& out, bool clear) -> void {}

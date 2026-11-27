@@ -182,7 +182,7 @@ auto round3(double v) -> double {
 
 // Evaluates the presents of the Vulkan renderer: display intervals in refresh periods and how
 // long each emulator picture stayed on screen (expected: `repeat` periods under video master).
-auto pacingStats(const std::vector<DRIVER::PacingSample>& all, double refreshNs, unsigned repeat) -> Json {
+auto pacingStats(const std::vector<DRIVER::PacingSample>& all, double refreshNs, unsigned repeat, double gridNs) -> Json {
     std::vector<const DRIVER::PacingSample*> shown;
     unsigned lost = 0, redraws = 0;
     for (auto& p : all) {
@@ -298,6 +298,62 @@ auto pacingStats(const std::vector<DRIVER::PacingSample>& all, double refreshNs,
     }
     out.set("present_to_display_ms_avg", round3(latSum / shown.size()));
     out.set("present_to_display_ms_max", round3(latMax));
+
+    // grid (target times): interval between consecutive pictures vs. the grid period
+    // (with VRR every interval is one period, acceptance tolerance 1 ms)
+    if (gridNs > 0.0) {
+        Json g = Json::object();
+        unsigned n = 0, within = 0, longer = 0, shorter = 0;
+        double devMax = 0, devSum = 0;
+        Json outliers = Json::array();
+        Json gaps = Json::array();
+        for (size_t i = 1; i < firsts.size(); i++) {
+            if (firsts[i]->frame != firsts[i - 1]->frame + 1) {
+                // pictures without a displayed present (e.g. swapchain rebuilt on a resize)
+                if (gaps.items.size() < 1000) {
+                    Json o = Json::object();
+                    o.set("display_ns", firsts[i]->displayNs);
+                    o.set("missing", (uint64_t)(firsts[i]->frame - firsts[i - 1]->frame - 1));
+                    gaps.push(o);
+                }
+                continue;
+            }
+            double dt = (double)(int64_t)(firsts[i]->displayNs - firsts[i - 1]->displayNs);
+            double dev = (dt - gridNs) / 1e6;
+            n++;
+            devSum += std::abs(dev);
+            devMax = std::max(devMax, std::abs(dev));
+            if (std::abs(dev) <= 1.0)
+                within++;
+            else {
+                if (dev > 0) longer++; else shorter++;
+                // all of them (~10 min window cap in the driver): window/fullscreen phases are
+                // evaluated per time range by tests/pacing_check.py
+                if (outliers.items.size() < 20000) {
+                    Json o = Json::object();
+                    o.set("t", round3((double)(firsts[i]->displayNs - firsts.front()->displayNs) / 1e9));
+                    o.set("interval_ms", round3(dt / 1e6));
+                    o.set("submit_gap_ms", round3((double)((int64_t)firsts[i]->submitNs - (int64_t)firsts[i - 1]->submitNs) / 1e6));
+                    o.set("present_to_display_ms", round3((double)((int64_t)firsts[i]->displayNs - (int64_t)firsts[i]->submitNs) / 1e6));
+                    o.set("display_ns", firsts[i]->displayNs);
+                    outliers.push(o);
+                }
+            }
+        }
+        g.set("period_ms", round3(gridNs / 1e6));
+        g.set("intervals", n);
+        g.set("within_1ms", within);
+        g.set("longer", longer);
+        g.set("shorter", shorter);
+        g.set("skipped", skipped);
+        if (n) {
+            g.set("deviation_ms_avg", round3(devSum / n));
+            g.set("deviation_ms_max", round3(devMax));
+        }
+        g.set("outliers", outliers);
+        g.set("gaps", gaps);
+        out.set("grid", g);
+    }
     return out;
 }
 
@@ -440,7 +496,9 @@ auto McpServer::registerTools() -> void {
     // ------------------------------------------------------------ pacing
     addTool("pacing",
         "Frame pacing of the Vulkan renderer. 'status' (default): pacing decision (video_master = display "
-        "clocks the emulation, each picture presented 'repeat' times; audio_master; lowest_latency; "
+        "clocks the emulation, each picture presented 'repeat' times; grid / grid_vrr = pictures presented at "
+        "target times of a steady grid at the emulated rate, grid_vrr when the display follows it (VRR); "
+        "audio_master; lowest_latency; "
         "unthrottled), refresh/emulation rates, present feedback. 'reset' clears the collected presents and "
         "audio counters; 'stats' evaluates the presents since the last reset (display intervals in refresh "
         "periods, pictures shown longer/shorter than expected, skipped pictures, audio DRC/xruns). "
@@ -473,6 +531,9 @@ auto McpServer::registerTools() -> void {
                 s.set("mode", p.mode == 1 ? "lowest_latency" : "auto");
                 s.set("repeat", p.repeat);
                 s.set("queue_depth", p.queueDepth);
+                if (p.gridNs)
+                    s.set("grid_period_ms", round3((double)p.gridNs / 1e6));
+                s.set("absolute_time", caps.absoluteTime);
                 if (p.stalled)
                     s.set("stalled", true);
                 s.set("refresh_hz", round3(p.refresh));
@@ -495,7 +556,7 @@ auto McpServer::registerTools() -> void {
                     std::vector<DRIVER::PacingSample> samples;
                     videoDriver->pacingSamples(samples, false);
                     double refreshNs = caps.refreshNs ? (double)caps.refreshNs : (p.refresh > 0 ? 1e9 / p.refresh : 0);
-                    s.set("video", pacingStats(samples, refreshNs, p.repeat));
+                    s.set("video", pacingStats(samples, refreshNs, p.repeat, (double)p.gridNs));
 
                     Json a = Json::object();
                     unsigned under = 0, dropped = 0;

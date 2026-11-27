@@ -12,6 +12,10 @@ path = "src/lib.rs"
 
 [dependencies]
 ash = "0.38"
+# content type hint on the SDL wl_surface (SPEC "Decisions M-Pacing2"); uses the libwayland-client of SDL
+wayland-backend = { version = "0.3", features = ["client_system"] }
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 
 [build-dependencies]
 naga = { version = "30", features = ["glsl-in", "spv-out"] }

@@ -68,6 +68,8 @@ struct BvkPacingCaps {
     int time_domain;        // Vulkan time domain of display_ns with timing (1 = CLOCK_MONOTONIC)
     uint64_t refresh_ns;    // from present timing, 0 = unknown
     int stalled;            // 1: a present wait timed out, nothing displayed since (hidden window)
+    int absolute_time;      // 1: presents can carry absolute target times (grid pacing possible)
+    int cadence;            // 1: grid presents are displayed at the grid cadence (VRR active)
 };
 
 BvkRenderer* bvk_create(const BvkCreateInfo* info, char* error, size_t errorLen);
@@ -76,7 +78,7 @@ int bvk_set_texture(BvkRenderer* r, int slot, int format, unsigned width, unsign
                     char* error, size_t errorLen);
 int bvk_render(BvkRenderer* r, const BvkFrame* frame, char* error, size_t errorLen);
 void bvk_set_present_mode(BvkRenderer* r, int mode);
-void bvk_set_pacing(BvkRenderer* r, unsigned repeat, unsigned queue_depth);
+void bvk_set_pacing(BvkRenderer* r, unsigned repeat, unsigned queue_depth, uint64_t period_ns);
 void bvk_pacing_caps(const BvkRenderer* r, BvkPacingCaps* caps);
 unsigned bvk_take_presents(BvkRenderer* r, BvkPresent* out, unsigned max);
 const char* bvk_device_name(const BvkRenderer* r);

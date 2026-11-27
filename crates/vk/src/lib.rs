@@ -4,6 +4,7 @@
 
 mod renderer;
 mod timing;
+mod wl;
 
 use std::ffi::{c_char, c_int, c_uint, c_ulong, c_void};
 use std::ptr;
@@ -104,6 +105,10 @@ pub struct BvkPacingCaps {
     pub refresh_ns: u64,
     /// 1: a present wait timed out and nothing was displayed since (hidden window)
     pub stalled: c_int,
+    /// 1: presents can carry absolute target times (grid pacing possible)
+    pub absolute_time: c_int,
+    /// 1: grid presents are displayed at the grid cadence (VRR active)
+    pub cadence: c_int,
 }
 
 fn write_error(msg: &str, buf: *mut c_char, len: usize) {
@@ -215,12 +220,15 @@ pub unsafe extern "C" fn bvk_set_present_mode(r: *mut Renderer, mode: c_int) {
 
 /// Pacing: every new picture is presented `repeat` times (1..8); `queue_depth` > 0 blocks present N
 /// (FIFO only) until present N - queue_depth is on screen (video master); 0 = no wait.
+/// `period_ns` > 0 (FIFO with absolute target times, see BvkPacingCaps::absolute_time): every new
+/// picture waits for the next slot of a grid with this period and is presented with the slot as
+/// target time (the grid clocks the emulation); 0 = off.
 ///
 /// # Safety
 /// `r` must come from `bvk_create`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn bvk_set_pacing(r: *mut Renderer, repeat: c_uint, queue_depth: c_uint) {
-    unsafe { (*r).set_pacing(repeat, queue_depth) };
+pub unsafe extern "C" fn bvk_set_pacing(r: *mut Renderer, repeat: c_uint, queue_depth: c_uint, period_ns: u64) {
+    unsafe { (*r).set_pacing(repeat, queue_depth, period_ns) };
 }
 
 /// # Safety
@@ -238,6 +246,8 @@ pub unsafe extern "C" fn bvk_pacing_caps(r: *const Renderer, caps: *mut BvkPacin
     caps.time_domain = if r.timing_active() { r.timing_domain() } else { 0 };
     caps.refresh_ns = r.refresh_ns();
     caps.stalled = r.stalled() as c_int;
+    caps.absolute_time = r.absolute_time() as c_int;
+    caps.cadence = r.grid_cadence() as c_int;
 }
 
 /// Moves up to `max` finished present records (oldest first) into `out`, returns the count.

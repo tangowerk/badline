@@ -6,7 +6,10 @@ optionally autostarts a PRG (default: tests/pacing/softscroll.prg), resets the p
 statistics, waits --seconds and evaluates them.
 
 Acceptance (SPEC "Decisions M-Pacing"): under video master 0 repeated/shortened/skipped
-C64 frames and no audio underflows/drops during the measurement.
+C64 frames and no audio underflows/drops during the measurement. Grid with VRR (grid_vrr,
+SPEC "Decisions M-Pacing2"): every picture interval within 1 ms of the grid period.
+--toggle-fullscreen (with --fullscreen, Hyprland): fullscreen -> window -> fullscreen in thirds
+of --seconds; the fullscreen phases must be clean from 1 s after each switch.
 
     tests/pacing_check.py --seconds 60
     tests/pacing_check.py --attach --port 6464 --seconds 60
@@ -44,6 +47,14 @@ def move_to_monitor(pid, monitor):
         raise RuntimeError(f"window is on {on}, not {monitor}")
 
 
+def set_fullscreen(pid, action):
+    clients = json.loads(subprocess.check_output(["hyprctl", "clients", "-j"]))
+    addr = next(c["address"] for c in clients if c["pid"] == pid)
+    subprocess.run(["hyprctl", "dispatch",
+                    f"hl.dsp.window.fullscreen({{ mode = 'fullscreen', action = '{action}', window = 'address:{addr}' }})"],
+                   capture_output=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--binary", default=os.path.join(HERE, "..", "target", "release", "badline"))
@@ -56,6 +67,9 @@ def main():
     ap.add_argument("--fullscreen", action="store_true")
     ap.add_argument("--ntsc", action="store_true", help="NTSC VIC-II (6567R8)")
     ap.add_argument("--monitor", help="Hyprland: move the test window to this monitor (e.g. eDP-1)")
+    ap.add_argument("--toggle-fullscreen", action="store_true",
+                    help="Hyprland: leave fullscreen after 1/3 of --seconds, enter again after 2/3")
+    ap.add_argument("--log", help="write stderr of the instance to this file")
     ap.add_argument("--json", action="store_true", help="print the raw stats")
     ap.add_argument("--save", help="write the raw stats to this file")
     args = ap.parse_args()
@@ -71,7 +85,8 @@ def main():
             cmd.append("-fullscreen")
         if args.ntsc:
             cmd.append("-vic-6567R8")
-        proc = subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        log = open(args.log, "w") if args.log else subprocess.DEVNULL
+        proc = subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=log)
     try:
         wait_for_server(client, proc)
         if args.monitor and proc:
@@ -82,7 +97,15 @@ def main():
             client.call("load_media", path=os.path.abspath(args.prg))
         time.sleep(args.settle)
         client.call("pacing", action="reset")
-        time.sleep(args.seconds)
+        switches = []
+        if args.toggle_fullscreen and proc:
+            for action in ("unset", "set"):
+                time.sleep(args.seconds / 3)
+                switches.append(time.monotonic_ns())
+                set_fullscreen(proc.pid, action)
+            time.sleep(args.seconds / 3)
+        else:
+            time.sleep(args.seconds)
         stats = json.loads(text_of(client.call("pacing", action="stats")))
     finally:
         if proc:
@@ -111,11 +134,41 @@ def main():
           f"(avg {a.get('buffer_deviation_avg')}), rate adjust {a.get('rate_adjust_min_percent')}.."
           f"{a.get('rate_adjust_max_percent')} %")
 
-    if stats["state"] != "video_master":
-        print("not video master: no acceptance check")
+    g = v.get("grid")
+    if g:
+        print(f"grid {g.get('period_ms')} ms: {g.get('intervals')} intervals, {g.get('within_1ms')} within 1 ms, "
+              f"longer {g.get('longer')} shorter {g.get('shorter')} skipped {g.get('skipped')}, "
+              f"deviation avg {g.get('deviation_ms_avg')} max {g.get('deviation_ms_max')} ms")
+        for o in g.get("outliers", [])[:10]:
+            print(f"  outlier {o}")
+    audio_ok = a.get("underflows") == 0 and a.get("dropped_bytes") == 0
+    if switches:
+        # phases: fullscreen until switches[0], window, fullscreen from switches[1];
+        # each fullscreen phase is checked from 1 s after its start
+        outs = [o["display_ns"] for o in g.get("outliers", [])] if g else []
+        settle = 1_000_000_000
+        bad_fs1 = [t for t in outs if t < switches[0]]
+        bad_fs2 = [t for t in outs if t > switches[1] + settle]
+        late = [round((t - switches[1]) / 1e9, 3) for t in outs if switches[1] < t <= switches[1] + settle]
+        window = [t for t in outs if switches[0] < t <= switches[1]]
+        print(f"fullscreen 1: {len(bad_fs1)} outliers; window: {len(window)} (judder expected); "
+              f"fullscreen 2: {len(bad_fs2)} outliers after 1 s, settling outliers at {late[-5:]} s")
+        # pictures lost while the swapchain is rebuilt count only outside the settle windows
+        gaps = [x["display_ns"] for x in g.get("gaps", [])] if g else []
+        bad_gaps = [t for t in gaps if not any(sw <= t <= sw + settle for sw in switches)]
+        print(f"gaps {len(gaps)} ({len(bad_gaps)} outside the settle windows)")
+        ok = bool(g) and not bad_fs1 and not bad_fs2 and not bad_gaps and audio_ok
+        print("PASS" if ok else "FAIL")
+        return 0 if ok else 1
+    if stats["state"] == "grid_vrr":
+        # acceptance M-Pacing2: every picture interval within 1 ms of the grid period
+        ok = (g and g.get("intervals", 0) > 0 and g.get("within_1ms") == g.get("intervals")
+              and g.get("skipped") == 0 and audio_ok)
+    elif stats["state"] == "video_master":
+        ok = (f.get("repeated") == 0 and f.get("shortened") == 0 and f.get("skipped") == 0 and audio_ok)
+    else:
+        print(f"state {stats['state']}: no acceptance check")
         return 0
-    ok = (f.get("repeated") == 0 and f.get("shortened") == 0 and f.get("skipped") == 0
-          and a.get("underflows") == 0 and a.get("dropped_bytes") == 0)
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1
 

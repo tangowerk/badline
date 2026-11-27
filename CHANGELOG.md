@@ -8,6 +8,26 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ### Added
 
+- **VRR and target-time pacing on Vulkan (M-Pacing2).** When the refresh is
+  no integer multiple of the emulated rate (e.g. PAL on 60 Hz), every C64 frame
+  waits for its slot on a steady grid at the emulated rate (monotonic clock) and
+  is presented with that slot as absolute target time (`VK_EXT_present_timing`,
+  Wayland commit-timing through Mesa); audio follows through dynamic rate
+  control. With VRR (e.g. fullscreen with Hyprland `misc:vrr = 2`) the display
+  follows the grid: PAL on a 40–60 Hz VRR panel scrolls smoothly, measured 60 s
+  with every frame interval within 0.6 ms of 20 ms and ~5 ms present-to-display.
+  Without VRR the known judder stays (frame blending follows in M-Pacing3);
+  without target time support (X11) audio stays the clock. MCP `pacing` reports
+  the state `grid` / `grid_vrr` (VRR detected from the display times) and grid
+  interval statistics; `tests/pacing_check.py --toggle-fullscreen` checks
+  window ↔ fullscreen switches.
+- The Wayland window surface is marked as content type "game"
+  (`wp_content_type_v1`, via the `wayland-client` crate on SDL's display), so
+  compositors can enable VRR for it (Hyprland `misc:vrr = 3`) and keep cursor
+  frames from breaking fullscreen VRR. `BADLINE_NO_CONTENT_TYPE` turns it off.
+- `BADLINE_VK_DEBUG` also logs pacing state changes and renders blocking for
+  more than 30 ms; `BADLINE_VK_LEAD_US` sets how early a grid frame is submitted
+  before its target time (default 4000).
 - **Frame pacing on Vulkan (M-Pacing1).** When the display refresh is an
   integer multiple of the emulated frame rate (within 0.5 %, e.g. PAL on a
   100 Hz monitor, NTSC on 60/120 Hz), the display clocks the emulation: every

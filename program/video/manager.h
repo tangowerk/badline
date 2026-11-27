@@ -81,13 +81,14 @@ struct VideoManager {
 
     // frame pacing decision of the Vulkan renderer (setPacing), read by the MCP `pacing` tool
     struct Pacing {
-        enum State { None, VideoMaster, AudioMaster, LowestLatency, Unthrottled } state = None;
+        enum State { None, VideoMaster, AudioMaster, LowestLatency, Unthrottled, Grid } state = None;
         unsigned mode = 0;      // setting `pacing`: 0 Auto, 1 Lowest latency
         unsigned repeat = 1;    // presents per emulator frame
         double refresh = 0.0;   // host refresh (Hz, SDL)
         double fps = 0.0;       // emulated frame rate incl. speed profile
         double clock = 1.0;     // emulation speed factor under video master (refresh / (repeat * fps))
         unsigned queueDepth = 0; // presents in flight before the emulation waits (0 = no wait)
+        uint64_t gridNs = 0;    // Grid: target time period (ns)
         bool stalled = false;   // renderer stalled (hidden window): audio master
     };
     static Pacing pacing;

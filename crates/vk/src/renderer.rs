@@ -147,6 +147,12 @@ pub struct Renderer {
     /// presents allowed in flight: wait for present N-depth before presenting N (0: no wait;
     /// video master, FIFO only)
     queue_depth: u32,
+    /// present at absolute target times (VK_EXT_present_timing on the surface, FIFO only)
+    absolute_time: bool,
+    /// target time grid of the emulated frame rate (VRR / no integer multiple)
+    grid: Grid,
+    /// target time of the next present (0 = as soon as possible)
+    target_time: u64,
     /// emulator frame sequence of the last render with a new picture
     last_frame: u64,
     /// last present id on the current swapchain (0: none yet)
@@ -171,6 +177,10 @@ pub struct Renderer {
     text: Option<Texture>,
     pending: [Option<PendingTexture>; 2],
     device_name: CString,
+    /// wp_content_type_v1 "game" on the Wayland surface (dropped after the Vulkan objects)
+    content_type: Option<crate::wl::ContentType>,
+    /// BADLINE_VK_DEBUG: log renders that block for long
+    debug_slow: bool,
 }
 
 unsafe extern "system" fn debug_callback(
@@ -282,6 +292,9 @@ impl Renderer {
         match result {
             Ok(mut r) => {
                 r.debug = debug;
+                if info.kind == BVK_SURFACE_WAYLAND && std::env::var_os("BADLINE_NO_CONTENT_TYPE").is_none() {
+                    r.content_type = unsafe { crate::wl::ContentType::game(info.display, info.surface) };
+                }
                 Ok(r)
             }
             Err(e) => {
@@ -331,6 +344,7 @@ impl Renderer {
         let (physical, family) = (choice.physical, choice.family);
         // V2 also needs the surface to support it (e.g. not on every X11 setup)
         let mut timing_stage = 0u32;
+        let mut absolute_time = false;
         let v2 = choice.v2 && caps2 && {
             let caps2_fn = get_surface_capabilities2::Instance::new(&entry, &instance);
             let mut id2 = timing::Bool::surface_present_id2();
@@ -345,6 +359,7 @@ impl Renderer {
             let info = vk::PhysicalDeviceSurfaceInfo2KHR::default().surface(surface);
             let ok = unsafe { caps2_fn.get_physical_device_surface_capabilities2(physical, &info, &mut caps2) }.is_ok();
             if ok && tcaps.present_timing_supported == vk::TRUE {
+                absolute_time = choice.absolute_time && tcaps.present_at_absolute_time_supported == vk::TRUE;
                 let q = tcaps.present_stage_queries;
                 timing_stage = [timing::STAGE_FIRST_PIXEL_VISIBLE, timing::STAGE_FIRST_PIXEL_OUT, timing::STAGE_QUEUE_OPERATIONS_END]
                     .into_iter()
@@ -361,7 +376,7 @@ impl Renderer {
             PresentApi::None
         };
         if std::env::var("BADLINE_VK_DEBUG").is_ok() {
-            eprintln!("badline vulkan: present feedback {present_api:?}, timing stage {timing_stage:#x}");
+            eprintln!("badline vulkan: present feedback {present_api:?}, timing stage {timing_stage:#x}, absolute time {absolute_time}");
         }
         let props = unsafe { instance.get_physical_device_properties(physical) };
         let device_name = props
@@ -491,6 +506,9 @@ impl Renderer {
             feedback,
             repeat: 1,
             queue_depth: 0,
+            absolute_time: absolute_time && present_api == PresentApi::V2,
+            grid: Grid::new(),
+            target_time: 0,
             last_frame: 0,
             swapchain_last_id: 0,
             swapchain_first_id: u64::MAX,
@@ -513,6 +531,8 @@ impl Renderer {
             text: None,
             pending: [None, None],
             device_name,
+            content_type: None,
+            debug_slow: std::env::var_os("BADLINE_VK_DEBUG").is_some(),
         };
         // from here on `Drop` cleans up whatever was created (null handles are skipped);
         // the instance is owned by the caller until build() returns Ok
@@ -1188,9 +1208,24 @@ impl Renderer {
         }
     }
 
-    pub fn set_pacing(&mut self, repeat: u32, queue_depth: u32) {
+    pub fn set_pacing(&mut self, repeat: u32, queue_depth: u32, period_ns: u64) {
         self.repeat = repeat.clamp(1, 8);
         self.queue_depth = queue_depth.min(3);
+        if self.grid.period != period_ns {
+            self.grid = Grid::new();
+            self.grid.period = period_ns;
+        }
+        self.feedback.set_grid(self.grid.period);
+    }
+
+    /// target times can be used (the program only enables the grid then)
+    pub fn absolute_time(&self) -> bool {
+        self.absolute_time && self.feedback.timing_active
+    }
+
+    /// grid presents are displayed at the grid cadence (VRR follows the emulation)
+    pub fn grid_cadence(&self) -> bool {
+        self.feedback.cadence()
     }
 
     pub fn present_api(&self) -> PresentApi {
@@ -1226,6 +1261,18 @@ impl Renderer {
     /// # Safety
     /// pointers in `f` must be valid for their sizes.
     pub unsafe fn render(&mut self, f: &BvkFrame) -> Result<Rendered> {
+        let t0 = timing::now_ns();
+        let res = unsafe { self.render_inner(f) };
+        if self.debug_slow {
+            let dt = timing::now_ns() - t0;
+            if dt > 30_000_000 {
+                eprintln!("badline vulkan: render took {} ms (seq {})", dt / 1_000_000, f.frame_seq);
+            }
+        }
+        res
+    }
+
+    unsafe fn render_inner(&mut self, f: &BvkFrame) -> Result<Rendered> {
         // recovered once a present is displayed again (polled without waiting); no time based
         // retry: every stall/recover flip re-evaluates the pacing in the program
         // (only presents made after the stall count: older ones may have been shown before)
@@ -1243,7 +1290,18 @@ impl Renderer {
             self.last_frame = f.frame_seq;
         }
         let flags = if new_frame { 0 } else { timing::REC_REDRAW };
+        // grid: a new picture waits for its slot and is presented with the slot as target
+        // time; redraws (paused emulation) go out at once. The wait also clocks the emulation
+        // when a rebuilt swapchain lost the target time support (presented as soon as possible)
+        self.target_time = 0;
+        if new_frame && self.grid.period > 0 && !self.stalled && self.present_pref == BVK_PRESENT_FIFO {
+            let slot = self.grid.next_slot();
+            if self.absolute_time() {
+                self.target_time = slot;
+            }
+        }
         let first = unsafe { self.render_once(f, 0, flags) }?;
+        self.target_time = 0;
         if !new_frame || self.repeat <= 1 || matches!(first, Rendered::Skipped) {
             return Ok(first);
         }
@@ -1680,7 +1738,15 @@ impl Renderer {
             let ids = [id];
             let mut present_ids = vk::PresentIdKHR::default().present_ids(&ids);
             let mut present_id2 = timing::PresentId2::new(&ids[0]);
-            let timing_info = self.feedback.timing_info();
+            let mut timing_info = self.feedback.timing_info();
+            if let Some(t) = timing_info.as_mut()
+                && self.target_time != 0
+            {
+                // the target refers to the stage that is queried (display), required for the
+                // PRESENT_STAGE_LOCAL time domain
+                t.target_time = self.target_time;
+                t.target_time_domain_present_stage = t.present_stage_queries;
+            }
             let mut timings = timing_info.as_ref().map(timing::PresentTimingsInfo::new);
             let mut present = vk::PresentInfoKHR::default()
                 .wait_semaphores(&wait)
@@ -1887,4 +1953,39 @@ fn record_upload(d: &Device, cmd: vk::CommandBuffer, tex: &mut Texture, buffer: 
         (vk::PipelineStageFlags2::FRAGMENT_SHADER, vk::AccessFlags2::SHADER_SAMPLED_READ),
     );
     tex.ready = true;
+}
+
+/// Target time grid (M-Pacing2): slot k is displayed at `base + k * period`; the emulation thread
+/// sleeps until `lead` before its slot, so the emulated frame rate follows the monotonic clock
+/// (audio follows via DRC). With VRR the display refreshes at the slot cadence, without it the
+/// compositor shows each picture at the first vblank after its slot.
+struct Grid {
+    period: u64,
+    /// submit this long before the slot (render + compositor latency)
+    lead: u64,
+    next: u64,
+}
+
+impl Grid {
+    fn new() -> Self {
+        let lead = std::env::var("BADLINE_VK_LEAD_US")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(|us| us * 1000)
+            .unwrap_or(4_000_000);
+        Grid { period: 0, lead, next: 0 }
+    }
+
+    /// waits for the next slot and returns its target time; a late frame (slot closer than
+    /// half the lead, e.g. after a pause) restarts the grid
+    fn next_slot(&mut self) -> u64 {
+        let now = timing::now_ns();
+        if self.next == 0 || self.next < now + self.lead / 2 || self.next > now + self.lead + 2 * self.period {
+            self.next = now + self.lead;
+        }
+        let slot = self.next;
+        self.next += self.period;
+        timing::sleep_until(slot - self.lead);
+        slot
+    }
 }

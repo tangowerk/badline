@@ -38,6 +38,7 @@ struct SDLVK : public Video, Freetype {
     int presentMode = BVK_PRESENT_FIFO;
     unsigned repeat = 1;
     unsigned queueDepth = 0;
+    uint64_t gridNs = 0;     // target time grid period (0 = off)
     uint64_t frameSeq = 0;
     // presents for the MCP `pacing` tool (~2 min at 100 Hz x 2 copies)
     std::deque<PacingSample> samples;
@@ -105,7 +106,7 @@ struct SDLVK : public Video, Freetype {
             return false;
         }
         bvk_set_present_mode(vk, presentMode);
-        bvk_set_pacing(vk, repeat, queueDepth);
+        bvk_set_pacing(vk, repeat, queueDepth, gridNs);
         samples.clear();
         ftInitialized = true;
         reportedError = false;
@@ -130,7 +131,7 @@ struct SDLVK : public Video, Freetype {
 
     // VSync off (warp): MAILBOX first, the emulation is not held at display rate
     auto synchronize(bool state) -> void {
-        setPacing(repeat, queueDepth, state ? BVK_PRESENT_FIFO : BVK_PRESENT_MAILBOX);
+        setPacing(repeat, queueDepth, state ? BVK_PRESENT_FIFO : BVK_PRESENT_MAILBOX, gridNs);
     }
 
     auto hasSynchronized() -> bool { return presentMode == BVK_PRESENT_FIFO; }
@@ -139,14 +140,15 @@ struct SDLVK : public Video, Freetype {
 
     auto supportsPacing() -> bool { return true; }
 
-    auto setPacing(unsigned _repeat, unsigned _queueDepth, int _presentMode) -> void {
+    auto setPacing(unsigned _repeat, unsigned _queueDepth, int _presentMode, uint64_t _gridNs = 0) -> void {
         std::lock_guard<std::recursive_mutex> lock(mutex);
+        gridNs = _gridNs;
         repeat = std::max(1u, _repeat);
         queueDepth = _queueDepth;
         presentMode = _presentMode;
         if (vk) {
             bvk_set_present_mode(vk, presentMode);
-            bvk_set_pacing(vk, repeat, queueDepth);
+            bvk_set_pacing(vk, repeat, queueDepth, gridNs);
         }
     }
 
@@ -160,6 +162,8 @@ struct SDLVK : public Video, Freetype {
             caps.timeDomain = c.time_domain;
             caps.refreshNs = c.refresh_ns;
             caps.stalled = c.stalled != 0;
+            caps.absoluteTime = c.absolute_time != 0;
+            caps.cadence = c.cadence != 0;
         }
         return caps;
     }

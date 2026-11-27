@@ -176,6 +176,12 @@ badline -help                    # all options
 mouse, numeric keypad = joystick #1 (8/2/4/6, 0 = fire). The C64 keyboard is
 mapped by key position.
 
+**Smooth scrolling** (Vulkan): on a display whose refresh is a multiple of the
+C64 rate (PAL on 100 Hz, NTSC on 60/120 Hz) the display clocks the emulation.
+Otherwise frames are presented at exact target times, which a VRR display
+follows (on Hyprland VRR is used in fullscreen with `misc:vrr = 2`, or for
+every window with `1`); without VRR such rates still judder.
+
 **Testing**: `tests/mcp_smoke.py` runs every MCP tool against a fresh instance
 (`--headless` for the headless variant, `--renderer vulkan` for the Vulkan
 renderer); `tests/renderer_ab.py` compares OpenGL and Vulkan screenshots;
