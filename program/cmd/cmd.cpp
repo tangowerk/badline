@@ -15,6 +15,7 @@ Cmd::Cmd(int argc, char** argv) {
     std::string appendedArg;
     std::string configIdent;
     bool mcpPortNext = false;
+    bool romDirNext = false;
     std::vector<std::string> out;
     hasContent = false;
     invalidParam = "";
@@ -42,6 +43,12 @@ Cmd::Cmd(int argc, char** argv) {
         if (configIdent != "") {
             setCustomConfig(configIdent, arg);
             configIdent = "";
+            continue;
+        }
+
+        if (romDirNext) {
+            romDirNext = false;
+            romDir = arg;
             continue;
         }
 
@@ -80,6 +87,10 @@ Cmd::Cmd(int argc, char** argv) {
 
         else if ( arg == "-fullscreen" )
             startInFullscreen = true;
+        else if ( arg == "-fetch-roms" )
+            fetchRoms = true;
+        else if ( arg == "-rom-dir" )
+            romDirNext = true;
         else if ( arg == "-binarymonitor" )
             binaryMonitor = true;
         else if ( arg == "-mcp" ) {
@@ -192,6 +203,8 @@ auto Cmd::prepareOptions() -> void {
 	options.push_back({"-debugcart", "Generate exit codes for VICE Testbench", ""});
 	options.push_back({"-limitcycles", "Specify number of cycles to run before quitting with an error (checks at complete frames)", "<cycles>"});
 	options.push_back({"-exitscreenshot", "Save screen to PNG file, when exiting App", "<filePath>"});
+	options.push_back({"-rom-dir", "Additional folder with C64/drive ROMs (default ~/.local/share/badline/roms)", "<path>"});
+	options.push_back({"-fetch-roms", "Download missing Commodore ROMs from zimmers.net (SHA-1 checked) into the user ROM folder", ""});
 	options.push_back({"-no-driver", "Run without video, audio, input drivers", ""});
 	options.push_back({"-headless", "Run without window and audio, controlled via MCP (implies -no-driver and -mcp; alias -no-gui)", ""});
 	options.push_back({"-no-gui", "Alias of -headless", ""});
@@ -224,7 +237,7 @@ auto Cmd::printHelp() -> void {
         return;
     }
 
-    GUIKIT::System::printToCmd( "Usage: Denise [option]... [image paths]... \n\n" );
+    GUIKIT::System::printToCmd( "Usage: badline [option]... [image paths]... \n\n" );
     GUIKIT::System::printToCmd( "Available command-line options:\n" );
 
     for(auto& option : options) {

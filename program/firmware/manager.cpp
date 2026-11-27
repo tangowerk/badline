@@ -4,6 +4,7 @@
 #include "../program.h"
 #include "../states/states.h"
 #include "../cmd/cmd.h"
+#include "roms.h"
 #include <cstring>
 
 std::vector<FirmwareManager*> firmwareManagers;
@@ -272,7 +273,7 @@ auto FirmwareManager::getSetting( Emulator::Interface::Firmware* firmware, unsig
             fSetting->path = "";
             fSetting->file = "";
         } else {
-            fSetting->path = program->dataFolder() + firmware->name;
+            fSetting->path = Roms::path(firmware->name);
             fSetting->file = firmware->name;
         }
 

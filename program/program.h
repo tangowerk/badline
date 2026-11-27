@@ -2,7 +2,7 @@
 #pragma once
 
 #ifndef APP_NAME
-#define APP_NAME "Denise"
+#define APP_NAME "Badline"
 #endif
 #ifndef TRANSLATION_FOLDER
 #define TRANSLATION_FOLDER "translation/"
@@ -24,9 +24,9 @@
 #endif
 #define SETTINGS_FILE "settings.ini"
 #define DEFAULT_TRANS_FILE "english.txt"
-#define VERSION "2.9"
+#define VERSION "0.1.0"
 #define LICENSE "GPLv3"
-#define AUTHOR "PiCiJi"
+#define AUTHOR "Badline contributors"
 
 #define ERROR_COLOR 0xff4500
 #define SUCCESS_COLOR 0x009911

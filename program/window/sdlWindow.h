@@ -37,12 +37,23 @@ struct SdlWindow {
     // persist window size/fullscreen in the global settings
     auto saveState() -> void;
 
+    // missing Commodore ROMs: Return downloads them (background thread), Esc skips
+    auto askRomDownload(const std::vector<std::string>& missing) -> void;
+
 private:
     auto handleEvent(SDL_Event& ev) -> void;
     auto handleDrop(SDL_Event& ev) -> void;
     auto updateMouseCapture() -> void;
     auto requestQuit() -> void;
     auto splashHit(float x, float y) -> int;
+    auto handleRomPrompt(SDL_Event& ev) -> bool;
+    auto romDownloadFinished() -> void;
+    auto showText(const std::string& text, bool warn, unsigned seconds) -> void;
+
+    enum class RomPrompt { None, Asking, Downloading } romPrompt = RomPrompt::None;
+    std::atomic<bool> romDownloadDone{false};
+    bool romDownloadOk = false;
+    std::string romDownloadError;
 
     SDL_Window* window = nullptr;
     bool fullscreen = false;

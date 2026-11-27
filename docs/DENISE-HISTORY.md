@@ -1,3 +1,5 @@
+> **Archived from Denise.** This is the README and changelog of [Denise](https://github.com/piciji/denise) by PiCiJi, as it was when Badline was forked from Denise 2.9. It is kept unchanged as a record of the work Badline is built on. Links, download locations, platforms and features described here refer to Denise, not to Badline. For Badline's own changes see [CHANGELOG.md](../CHANGELOG.md).
+
 
 [![Build status](https://ci.appveyor.com/api/projects/status/96jroj40a83wfqg2?svg=true)](https://ci.appveyor.com/project/piciji/denise)
 

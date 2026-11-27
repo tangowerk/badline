@@ -45,6 +45,7 @@
 #include "debugger/dmaDebugger.h"
 #include "mcp/server.h"
 #include "window/sdlWindow.h"
+#include "firmware/roms.h"
 #include <chrono>
 #include <thread>
 #include "view/message.h"
@@ -178,8 +179,32 @@ auto Program::finishStartup() -> void {
     if (cmd->mcp)
         Message::capture = &startupMessages;
 
+    if (cmd->fetchRoms && !cmd->debug) {
+        std::string error;
+        bool ok = Roms::download([](const std::string& line) { std::fprintf(stderr, "%s\n", line.c_str()); }, error);
+        if (ok)
+            std::fprintf(stderr, "ROMs are in %s\n", Roms::userDir().c_str());
+        else
+            std::fprintf(stderr, "ROM download failed: %s\n", error.c_str());
+    }
+
     if (!activeEmulator)
         power(binaryMonitor.clientConnected() ? getEmulator("C64") : getLastUsedEmu(), false);
+
+    // Commodore ROMs are not shipped: offer the download (window) or explain how to get them
+    if (!cmd->debug) {
+        auto missing = Roms::missing();
+        if (!missing.empty()) {
+            if (sdlWindow)
+                sdlWindow->askRomDownload(missing);
+            else {
+                std::string list;
+                for (auto& m : missing) list += (list.empty() ? "" : ", ") + m;
+                std::fprintf(stderr, "Missing ROMs: %s. Run with -fetch-roms to download them from %s, "
+                    "or copy them into %s\n", list.c_str(), Roms::sourceHost().c_str(), Roms::userDir().c_str());
+            }
+        }
+    }
 
     Message::capture = nullptr;
     for (auto& m : startupMessages)

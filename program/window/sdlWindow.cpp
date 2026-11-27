@@ -8,6 +8,9 @@
 #include "../input/manager.h"
 #include "../media/autoloader.h"
 #include "../view/status.h"
+#include "../firmware/roms.h"
+#include "../firmware/manager.h"
+#include <thread>
 
 SdlWindow* sdlWindow = nullptr;
 
@@ -16,7 +19,7 @@ static const int DefaultWidth = 384 * 3;
 static const int DefaultHeight = 272 * 3;
 
 auto SdlWindow::create() -> bool {
-    SDL_SetHint(SDL_HINT_APP_ID, "denise");
+    SDL_SetHint(SDL_HINT_APP_ID, "badline");
     // emulator hotkeys must reach us, also Alt+Tab-like combos are left to the compositor
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
@@ -117,6 +120,9 @@ auto SdlWindow::pumpEvents() -> void {
             return;
     }
 
+    if (romDownloadDone.exchange(false))
+        romDownloadFinished();
+
     updateMouseCapture();
 
     // hide an idle cursor over the picture
@@ -140,6 +146,9 @@ auto SdlWindow::updateMouseCapture() -> void {
 }
 
 auto SdlWindow::handleEvent(SDL_Event& ev) -> void {
+    if (romPrompt != RomPrompt::None && handleRomPrompt(ev))
+        return;
+
     switch (ev.type) {
         case SDL_EVENT_QUIT:
         case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
@@ -335,4 +344,80 @@ auto SdlWindow::loadSplashScreen() -> void {
     };
 
     videoDriver->showSplashScreen(110, cb);
+}
+
+auto SdlWindow::showText(const std::string& text, bool warn, unsigned seconds) -> void {
+    if (!statusHandler)
+        return;
+    emuThread->lockStatus();
+    statusHandler->setMessage(text, warn, true, seconds);
+    emuThread->unlockStatus();
+}
+
+auto SdlWindow::askRomDownload(const std::vector<std::string>& missing) -> void {
+    std::string list;
+    for (auto& m : missing)
+        list += (list.empty() ? "" : ", ") + m;
+    std::fprintf(stderr, "Missing ROMs: %s\n", list.c_str());
+
+    romPrompt = RomPrompt::Asking;
+    showText("C64 ROMs missing. Return: download from " + Roms::sourceHost() + "   Esc: skip", true, 3600);
+}
+
+// true = event consumed
+auto SdlWindow::handleRomPrompt(SDL_Event& ev) -> bool {
+    if (ev.type != SDL_EVENT_KEY_DOWN && ev.type != SDL_EVENT_KEY_UP)
+        return false;
+    if (romPrompt == RomPrompt::Downloading)
+        return true;
+    if (ev.type == SDL_EVENT_KEY_UP || ev.key.repeat)
+        return true;
+
+    if (ev.key.scancode == SDL_SCANCODE_RETURN || ev.key.scancode == SDL_SCANCODE_KP_ENTER) {
+        romPrompt = RomPrompt::Downloading;
+        showText("Downloading ROMs from " + Roms::sourceHost() + " ...", false, 3600);
+        std::thread([this]() {
+            std::string error;
+            romDownloadOk = Roms::download([](const std::string& line) {
+                std::fprintf(stderr, "%s\n", line.c_str());
+            }, error);
+            romDownloadError = error;
+            romDownloadDone = true;
+        }).detach();
+        return true;
+    }
+
+    if (ev.key.scancode == SDL_SCANCODE_ESCAPE) {
+        romPrompt = RomPrompt::None;
+        std::string hint = "ROMs skipped. Copy them into " + Roms::userDir() + " or start with -fetch-roms";
+        std::fprintf(stderr, "%s\n", hint.c_str());
+        showText(hint, true, 8);
+        return true;
+    }
+    // other keys are swallowed while asking
+    return true;
+}
+
+// UI thread
+auto SdlWindow::romDownloadFinished() -> void {
+    romPrompt = RomPrompt::None;
+
+    if (!romDownloadOk) {
+        std::fprintf(stderr, "ROM download failed: %s\n", romDownloadError.c_str());
+        showText("ROM download failed: " + romDownloadError, true, 10);
+    }
+
+    // power on with whatever is available now
+    if (activeEmulator) {
+        emuThread->lock(true);
+        if (auto manager = FirmwareManager::getInstance(activeEmulator))
+            manager->clear();
+        program->power(activeEmulator);
+        emuThread->unlock();
+    }
+
+    if (romDownloadOk) {
+        std::fprintf(stderr, "ROMs installed in %s\n", Roms::userDir().c_str());
+        showText("ROMs installed in " + Roms::userDir(), false, 5);
+    }
 }

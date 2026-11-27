@@ -48,8 +48,8 @@
     <comment>C64 Program Image</comment>
     <glob pattern="*.prg"/>
   </mime-type>
-  <mime-type type="application/x-denise-save">
-    <comment>Denise Save Image</comment>
+  <mime-type type="application/x-badline-save">
+    <comment>Badline Save State</comment>
     <glob pattern="*.sav"/>
     <glob pattern="*.sav.images"/>
   </mime-type>

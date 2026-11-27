@@ -73,6 +73,7 @@ set(headers
         mcp/server.h
         video/screenshot.h
         window/sdlWindow.h
+        firmware/roms.h
 )
 
 set_source_files_properties(${PROJECT_NAME} ${headers}
@@ -144,6 +145,7 @@ set(srcs
         mcp/server.cpp
         mcp/tools.cpp
         window/sdlWindow.cpp
+        firmware/roms.cpp
         
         ${headers}
 )
@@ -166,7 +168,10 @@ SET_SOURCE_FILES_PROPERTIES(program.cpp
         PROPERTIES COMPILE_FLAGS "-DAPP_NAME=\"\\\"${AppName}\\\"\" -DTRANSLATION_FOLDER=\"\\\"${translationFolder}/\\\"\" -DDATA_FOLDER=\"\\\"${dataFolder}/\\\"\" -DPRESET_FOLDER=\"\\\"${presetFolder}/\\\"\" -DIMAGES_FOLDER=\"\\\"${imagesFolder}/\\\"\" -DSOUND_FOLDER=\"\\\"${soundFolder}/\\\"\" ")
 
 target_link_libraries(${PROJECT_NAME} PUBLIC pthread rt dl -no-pie)
+pkg_check_modules(CURL REQUIRED libcurl)
+target_include_directories(${PROJECT_NAME} PRIVATE ${CURL_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PUBLIC ${CURL_LIBRARIES})
 
 target_sources(${PROJECT_NAME} PUBLIC ${srcs} )
 
-target_link_libraries(${PROJECT_NAME} PUBLIC guikit driver coreC64 logos icons)
+target_link_libraries(${PROJECT_NAME} PUBLIC guikit driver coreC64 icons)

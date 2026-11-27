@@ -10,6 +10,7 @@
 #include "../states/states.h"
 #include "../view/view.h"
 #include "../window/sdlWindow.h"
+#include "../firmware/roms.h"
 #include "../view/status.h"
 #include "../video/manager.h"
 #include "../../emulation/libc64/system/system.h"
@@ -51,7 +52,7 @@ struct EmuLock {
 };
 
 auto tempDir() -> std::string {
-    std::string dir = "/tmp/underground64-mcp-" + std::to_string(getpid());
+    std::string dir = "/tmp/badline-mcp-" + std::to_string(getpid());
     mkdir(dir.c_str(), 0700);
     return dir;
 }
@@ -189,6 +190,14 @@ auto McpServer::registerTools() -> void {
                     s.set("stop", stopStatus());
                 s.set("mcp_breakpoints", (unsigned)breakpoints.size());
                 s.set("headless", cmd->noGui);
+                {
+                    auto missing = Roms::missing();
+                    if (!missing.empty()) {
+                        std::string list;
+                        for (auto& m : missing) list += (list.empty() ? "" : ", ") + m;
+                        s.set("roms_missing", list + " (run with -fetch-roms or put them into " + Roms::userDir() + ")");
+                    }
+                }
                 s.set("warp", warpOn());
                 s.set("region", activeEmulator->getRegionGeometry() == Emulator::Interface::Region::Ntsc ? "NTSC" : "PAL");
                 s.set("frame", frameCounter);

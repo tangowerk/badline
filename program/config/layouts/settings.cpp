@@ -1,6 +1,5 @@
 
 #include "settings.h"
-#include "../../../data/logos.h"
 #include "../../view/view.h"
 #include "../archiveViewer.h"
 #include "../../emuconfig/config.h"
@@ -83,9 +82,8 @@ StyleLayout::StyleLayout() {
 SettingsLayout::SettingsLayout() {
     setMargin(10);
 
-    denise.loadPng((uint8_t*)Logos::denise, sizeof(Logos::denise));
     about.denise.setImage( &denise );
-    about.denise.setUri( "https://sourceforge.net/projects/deniseemu/" );
+    about.denise.setUri( "https://github.com/tangowerk/badline" );
     about.denise.setTooltip( APP_NAME );
 
     upperLayout.append(lang, {~0u, ~0u}, 10);

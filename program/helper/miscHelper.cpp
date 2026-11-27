@@ -1,5 +1,6 @@
 
 #include "miscHelper.h"
+#include "../firmware/roms.h"
 
 #include "../../emulation/libc64/interface.h"
 #include "../program.h"
@@ -236,7 +237,7 @@ auto MiscHelper::prepareSocket(Emulator::Interface::Media* media, Emulator::Inte
 
 auto MiscHelper::initExpansionRom(Emulator::Interface* emulator, const std::string& ident, const std::string& file) -> void {
     auto fSetting = FileSetting::getInstance( emulator, _underscore(ident) );
-    fSetting->setPath(program->dataFolder() + file);
+    fSetting->setPath(Roms::path(file));
     fSetting->setFile(file);
     fSetting->setId(0);
     fSetting->setSaveable(false);

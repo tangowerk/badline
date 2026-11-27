@@ -2,7 +2,7 @@
 """Smoke test for the embedded MCP server (standard library only).
 
 Usage:
-  tests/mcp_smoke.py [--binary builds/release/program/denise] [--port 6465] [--attach] [--headless]
+  tests/mcp_smoke.py [--binary builds/release/program/badline] [--port 6465] [--attach] [--headless]
 
 Without --attach the script starts the emulator with -mcp <port> (or -headless
 with --headless), runs all tools once and stops the emulator afterwards (quit
@@ -263,7 +263,7 @@ def run(client, tmp, headless=False):
     print("protocol")
     init = client.rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
                                      "clientInfo": {"name": "smoke", "version": "1"}})
-    check("initialize", init["result"]["serverInfo"]["name"] == "underground64")
+    check("initialize", init["result"]["serverInfo"]["name"] == "badline")
     tools = {t["name"] for t in client.rpc("tools/list")["result"]["tools"]}
     expected = {"status", "reset", "pause", "resume", "warp", "load_media", "eject", "savestate_save",
                 "savestate_load", "type_text", "key", "joystick", "run_frames", "wait_for_text",
@@ -390,7 +390,7 @@ def run_headless_checks(client):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--binary", default=os.path.join(os.path.dirname(__file__), "..", "builds", "release", "program", "denise"))
+    ap.add_argument("--binary", default=os.path.join(os.path.dirname(__file__), "..", "builds", "release", "program", "badline"))
     ap.add_argument("--port", type=int, default=6465)
     ap.add_argument("--attach", action="store_true")
     ap.add_argument("--headless", action="store_true")

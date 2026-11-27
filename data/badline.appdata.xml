@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.tangowerk.Badline</id>
+  <launchable type="desktop-id">badline.desktop</launchable>
+  <name>Badline</name>
+  <summary>Cycle-accurate Commodore 64 emulator for Linux</summary>
+  <developer_name>Badline contributors</developer_name>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>Badline is a Commodore 64 emulator for Linux, forked from Denise by PiCiJi. It keeps Denise's accurate C64 core and adds an SDL3 window, agent control via an embedded MCP server and a headless mode for automated testing.</p>
+  </description>
+  <url type="homepage">https://github.com/tangowerk/badline</url>
+  <url type="bugtracker">https://github.com/tangowerk/badline/issues</url>
+  <content_rating type="oars-1.1"/>
+</component>

@@ -1,9 +1,9 @@
-Package: denise
+Package: badline
 Version: _VERSION
 Architecture: amd64
 Essential: no
 Priority: optional
-Depends: libgtk-3-0,libpulse0,libudev1,libxcb-xinput0,libxcb-xfixes0,libmp3lame0,libfreetype6
-Maintainer: PiCiJi <PiCiJi@gmx.de>
+Depends: libsdl3-0,libcurl4,libgtk-3-0,libpulse0,libmp3lame0,libfreetype6
+Maintainer: Badline contributors <https://github.com/tangowerk/badline>
 Installed-Size: _INSTALLED_SIZE
-Description: a C64/Amiga emulator
+Description: cycle-accurate Commodore 64 emulator (fork of Denise)

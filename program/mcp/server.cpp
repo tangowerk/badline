@@ -12,7 +12,7 @@ static auto hex4(unsigned v) -> std::string {
     return buf;
 }
 
-static const char* SERVER_NAME = "underground64";
+static const char* SERVER_NAME = "badline";
 static const char* SERVER_VERSION = "0.1";
 static const char* DEFAULT_PROTOCOL = "2025-06-18";
 static const char* PROTOCOLS[] = {"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"};
