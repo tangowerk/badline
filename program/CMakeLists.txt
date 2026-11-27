@@ -136,6 +136,7 @@ set(srcs
         helper/miscHelper.cpp
         helper/settingsHelper.cpp
         monitor/binaryMonitor.cpp
+        mcp/debug.cpp
         mcp/json.cpp
         mcp/screen.cpp
         mcp/server.cpp

@@ -32,7 +32,8 @@ struct Cmd {
     bool autoload = false;
     bool attach = false;
     bool noDriver = false;
-    bool noGui = false;
+    bool noGui = false;   // -headless / -no-gui: no window, no audio, MCP server on
+    bool unthrottled = false;
     bool debug = false;
 	bool aggressiveWarp = false;
     bool helpRequested = false;

@@ -58,10 +58,14 @@ Cmd::Cmd(int argc, char** argv) {
 		if ( arg == "-no-driver" ) {
 			noDriver = true;
 			
-        } else if ( arg == "-no-gui" ) {
+        } else if ( arg == "-headless" || arg == "-no-gui" ) {
 			noGui = true;
 			noDriver = true;
-			
+			mcp = true;
+
+        } else if ( arg == "-unthrottled" ) {
+			unthrottled = true;
+
         } else if ( arg == "-debugcart" )
             debug = true;
         
@@ -189,7 +193,9 @@ auto Cmd::prepareOptions() -> void {
 	options.push_back({"-limitcycles", "Specify number of cycles to run before quitting with an error (checks at complete frames)", "<cycles>"});
 	options.push_back({"-exitscreenshot", "Save screen to PNG file, when exiting App", "<filePath>"});
 	options.push_back({"-no-driver", "Run without video, audio, input drivers", ""});
-	options.push_back({"-no-gui", "Open without graphical user interface and force -no-driver", ""});
+	options.push_back({"-headless", "Run without window and audio, controlled via MCP (implies -no-driver and -mcp; alias -no-gui)", ""});
+	options.push_back({"-no-gui", "Alias of -headless", ""});
+	options.push_back({"-unthrottled", "Headless: run as fast as possible instead of real-time speed", ""});
 	options.push_back({"-autostart-prg", "Set autostart mode for PRG files (1: Inject, 2: Disk image)", "<value>"});
 	options.push_back({"-aggressive-warp", "aggressive Warp mode (emulates VIC sequencer every 15 frames only)", ""});
 	options.push_back({"-fast-testbench", "analyze passed options and then decides on the use of aggressive warp and/or PRG memory injection", ""});
@@ -554,7 +560,7 @@ auto Cmd::autoloadImages() -> void {
         attachImages();
 
     if (!autoload) {
-        if (noGui)
+        if (noGui && !mcp)
             return program->exit(1);
         
         goto end;
@@ -586,6 +592,9 @@ auto Cmd::autoloadImages() -> void {
 
         if (aggressiveWarp)
             activeEmulator->setWarpMode( (unsigned)EmuInt::WarpMode::NoAudioOut | (unsigned)EmuInt::WarpMode::ReduceVideoOutputEach16th | (unsigned)EmuInt::WarpMode::NoVideoSequencer );
+        else if (noGui && mcp && !debug)
+            // headless: keep video output, MCP screenshots read the frame buffer
+            activeEmulator->setWarpMode( (unsigned)EmuInt::WarpMode::NoAudioOut );
         else if (noDriver || noGui)
             activeEmulator->setWarpMode( (unsigned)EmuInt::WarpMode::NoAudioOut | (unsigned)EmuInt::WarpMode::NoVideoOut );
         else if (debug)

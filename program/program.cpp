@@ -44,6 +44,8 @@
 #include "debugger/sidDebugger.h"
 #include "debugger/dmaDebugger.h"
 #include "mcp/server.h"
+#include <chrono>
+#include <thread>
 #include "view/message.h"
 
 Program* program = nullptr;
@@ -193,6 +195,9 @@ auto Program::initUserInterface() -> void {
 
     if (cmd->noGui) {
 		emuThread->enable( false );
+        // no audio manager: never produce samples (autostart may have set a warp mode already)
+        if (activeEmulator && !cmd->debug && !cmd->aggressiveWarp)
+            activeEmulator->setWarpMode( (unsigned)Emulator::Interface::WarpMode::NoAudioOut );
         GUIKIT::Application::loop = [this]() { loopNoGui(); };
     } else if (cmd->debug) {
         emuThread->enable( false );
@@ -218,12 +223,13 @@ auto Program::addEmulators() -> void {
 
         firmwareManagers.push_back( new FirmwareManager( emulator, emulatorC64 == emulator ) );
 
+        // headless: MCP savestates
+        states.push_back( new States( emulator ) );
+
 		if (cmd->noGui)
 			continue;
 
         inputManagers.push_back( new InputManager( emulator ) );
-
-        states.push_back( new States( emulator ) );
 
         videoManagers.push_back( new VideoManager( emulator ) );
         
@@ -510,16 +516,52 @@ auto Program::powerOff() -> void {
 }
 
 auto Program::loopNoGui() -> void {
+    using Clock = std::chrono::steady_clock;
+    auto next = Clock::now();
 
-	while (!GUIKIT::Application::isQuit)
-		activeEmulator->run();
+	while (!GUIKIT::Application::isQuit) {
+        if (!mcpServer) {
+            activeEmulator->run();
+            continue;
+        }
+
+        mcpServer->uiTick();
+        if (mcpHandleQuit())
+            return;
+        mcpServer->emuTick();
+
+        if (isPause && !mcpServer->wantsFrame()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            next = Clock::now();
+            continue;
+        }
+
+        activeEmulator->run();
+        mcpServer->frameDone();
+
+        // real-time speed unless unthrottled (warp, -unthrottled, testbench)
+        if (cmd->unthrottled || cmd->debug || warp.mode != Warp::Off) {
+            next = Clock::now();
+            continue;
+        }
+        double fps = activeEmulator->getRegionGeometry() == Emulator::Interface::Region::Ntsc ? 59.826 : 50.125;
+        next += std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(1.0 / fps));
+        auto now = Clock::now();
+        if (next > now)
+            std::this_thread::sleep_until(next);
+        else if (now - next > std::chrono::milliseconds(100))
+            next = now; // fell behind (e.g. long MCP call): do not catch up
+    }
 }
 
 auto Program::loop() -> void {
     if (!emuThread->enabled) {
         focused = view->focused();
-        if (mcpServer)
+        if (mcpServer) {
             mcpServer->uiTick();
+            if (mcpHandleQuit())
+                return;
+        }
     }
 
     InputManager::poll();
@@ -577,8 +619,11 @@ auto Program::loopUserInterface() -> void {
     emuThread->handleStatusUpdate();
     emuThread->handleUIEvents();
 
-    if (mcpServer)
+    if (mcpServer) {
         mcpServer->uiTick();
+        if (mcpHandleQuit())
+            return;
+    }
 
     if (binaryMonitor.serverRunning()) {
         if (!binaryMonitor.clientConnected()) {
@@ -624,7 +669,8 @@ auto Program::quit() -> void {
     delete emuThread;
     fpsChangeTimer.setEnabled(false);
 
-    if (!cmd->debug) {
+    // headless sessions (pipelines, agents) never write the desktop settings
+    if (!cmd->debug && !cmd->noGui) {
         for(auto rF : fileloader->recentFiles)
             rF->save();
 
@@ -1037,9 +1083,71 @@ auto Program::getSettings( Emulator::Interface* emulator ) -> GUIKIT::Settings* 
 }
 
 auto Program::debugger(Emulator::Interface::DebuggerSnapshot* snapshot) -> void {
+    auto mcp = McpServer::StopDecision::Ignore;
+    if (mcpServer && !quitInProgress && !Debugger::lock)
+        mcp = mcpServer->debuggerEvent(snapshot);
+
+    if (mcp == McpServer::StopDecision::Continue) {
+        // MCP step sequence in progress: keep running silently
+        snapshot->mutex.unlock();
+        return;
+    }
+
     if (hasActiveDebugger() || binaryMonitor.clientConnected()) {
         Debugger::Callback( snapshot );
+        return;
     }
+
+    snapshot->mutex.unlock();
+
+    if (mcp == McpServer::StopDecision::Stop) {
+        if (emuThread->enabled)
+            emuThread->lockDebugger();
+        else
+            loopStopped();
+    }
+}
+
+// CPU stopped by an MCP breakpoint/step without emu thread (headless, -debugcart)
+auto Program::loopStopped() -> void {
+    emuThread->debugging = true;
+    while (emuThread->debugging && !GUIKIT::Application::isQuit && !quitInProgress) {
+        if (mcpServer) {
+            // Ui jobs that power/reset/load must not run inside the CPU: leave first,
+            // they run after the current frame (like EmuLock(true) in GUI mode)
+            if (mcpServer->stopLoopShouldExit()) {
+                emuThread->debugging = false;
+                break;
+            }
+            mcpServer->uiTick();
+            mcpServer->emuTick();
+        }
+        if (!cmd->noGui)
+            GUIKIT::Application::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    emuThread->debugging = false;
+}
+
+// UI thread: after uiTick; returns true when the app is quitting
+auto Program::mcpHandleQuit() -> bool {
+    if (!mcpServer || !mcpServer->quitRequested)
+        return false;
+    // give the HTTP thread time to send the response of the quit call
+    static auto since = std::chrono::steady_clock::now();
+    static bool seen = false;
+    if (!seen) {
+        seen = true;
+        since = std::chrono::steady_clock::now();
+    }
+    if (std::chrono::steady_clock::now() - since < std::chrono::milliseconds(200))
+        return false;
+    mcpServer->quitRequested = false;
+    if (cmd->noGui || !view)
+        exit(0);
+    else
+        view->onClose();
+    return true;
 }
 
 auto Program::readMedia(Emulator::Interface::Media* media, uint8_t* buffer, unsigned length, uint64_t offset) -> unsigned {

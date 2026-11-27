@@ -183,7 +183,11 @@ auto McpServer::registerTools() -> void {
                 if (!requireEmu(job)) return;
                 Json s = Json::object();
                 s.set("paused", program->isPause != 0);
-                s.set("debugger_stopped", (bool)emuThread->debugging);
+                s.set("debugger_stopped", cpuStopped());
+                if (cpuStopped())
+                    s.set("stop", stopStatus());
+                s.set("mcp_breakpoints", (unsigned)breakpoints.size());
+                s.set("headless", cmd->noGui);
                 s.set("warp", warpOn());
                 s.set("region", activeEmulator->getRegionGeometry() == Emulator::Interface::Region::Ntsc ? "NTSC" : "PAL");
                 s.set("frame", frameCounter);
@@ -214,6 +218,7 @@ auto McpServer::registerTools() -> void {
             auto type = job.args.getString("type", "soft");
             if (type != "soft" && type != "hard")
                 return job.fail("type must be 'soft' or 'hard'");
+            job.resumesCpu = true;
             job.phase = Job::Ui;
             job.onUi = [type](Job& job) {
                 if (!activeEmulator) return job.fail("No emulator running");
@@ -300,6 +305,7 @@ auto McpServer::registerTools() -> void {
             job.text = path;
             job.counter = (uint64_t)std::max<int64_t>(0, job.args.getInt("listing_index", 0));
             bool autostart = job.args.getBool("autostart", true);
+            job.resumesCpu = true;
             job.phase = Job::Ui;
             job.onUi = [autostart](Job& job) {
                 EmuLock lock(true);
@@ -321,6 +327,7 @@ auto McpServer::registerTools() -> void {
             static const std::vector<std::string> valid = {"drive8", "drive9", "drive10", "drive11", "tape", "cartridge", "all"};
             if (std::find(valid.begin(), valid.end(), target) == valid.end())
                 return job.fail("Invalid target");
+            job.resumesCpu = true;
             job.phase = Job::Ui;
             job.onUi = [target](Job& job) {
                 auto emu = activeEmulator;
@@ -372,6 +379,7 @@ auto McpServer::registerTools() -> void {
             job.text = job.args.getString("path");
             if (job.text.empty() || job.text[0] != '/')
                 return job.fail("Absolute 'path' required");
+            job.resumesCpu = true;
             job.phase = Job::Ui;
             job.onUi = [](Job& job) {
                 if (!activeEmulator) return job.fail("No emulator running");
@@ -394,6 +402,7 @@ auto McpServer::registerTools() -> void {
             job.text = job.args.getString("path");
             if (!fileExists(job.text))
                 return job.fail("File not found: " + job.text);
+            job.resumesCpu = true;
             job.phase = Job::Ui;
             job.onUi = [](Job& job) {
                 auto emu = activeEmulator ? activeEmulator : program->getEmulator("C64");
@@ -441,7 +450,7 @@ auto McpServer::registerTools() -> void {
                     job.finish();
                 }
             };
-        });
+        }, true);
 
     // ------------------------------------------------------------ key
     addTool("key",
@@ -485,7 +494,7 @@ auto McpServer::registerTools() -> void {
                     job.finish();
                 }
             };
-        });
+        }, true);
 
     // ------------------------------------------------------------ joystick
     addTool("joystick",
@@ -524,6 +533,10 @@ auto McpServer::registerTools() -> void {
                 if (job.limit == 0) {
                     job.addText("Port " + std::to_string(port) + ": " + state);
                     return job.finish();
+                }
+                if (cpuStopped()) {
+                    releaseDevice(job.deviceId);
+                    return job.fail("CPU stopped by the debugger; use frames=0 or continue first");
                 }
                 job.text = "Port " + std::to_string(port) + ": " + state + " for " + std::to_string(job.limit) + " frames";
                 job.counter = 0;
@@ -575,7 +588,7 @@ auto McpServer::registerTools() -> void {
                 endWarp(job);
                 job.finish();
             };
-        });
+        }, true);
 
     // ------------------------------------------------------------ wait_for_text
     addTool("wait_for_text",
@@ -641,7 +654,7 @@ auto McpServer::registerTools() -> void {
                 endWarp(job);
                 job.finish();
             };
-        });
+        }, true);
 
     // ------------------------------------------------------------ read_screen
     addTool("read_screen",

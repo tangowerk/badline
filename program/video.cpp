@@ -529,6 +529,10 @@ auto Program::setWarp( Warp::Mode mode, bool manuell ) -> void {
     if (statusHandler && resetFrameCounter)
         statusHandler->resetFrameCounter();
 
+    // headless: there is no audio manager to receive samples
+    if (cmd->noGui)
+        forward |= (unsigned)Emulator::Interface::WarpMode::NoAudioOut;
+
     activeEmulator->setWarpMode( forward );
 
     if (view)

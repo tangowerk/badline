@@ -54,7 +54,8 @@ auto States::load( std::string path, bool prependFolder ) -> void {
         
     FileHelper::errorOpen( errorPaths, true );
 
-    audioManager->drive.reset();
+    if (audioManager)
+        audioManager->drive.reset();
     emulator->loadstate( data, file.getSize() );
 
     updateWriteProtection( loadedMedia );
@@ -67,7 +68,8 @@ auto States::load( std::string path, bool prependFolder ) -> void {
     
     updateExpansionJumper();
 
-    view->updateCartButtons( emulator );
+    if (view)
+        view->updateCartButtons( emulator );
     
     InputManager::resetJit();
     
@@ -366,6 +368,8 @@ auto States::changeSlot( bool down ) -> void {
 }
 
 auto States::statusMessage( std::string langKey, std::string replacer ) -> void {
+    if (!statusHandler || !trans)
+        return;
     statusHandler->setMessage(trans->get(langKey,{
         {"%ident%", replacer}
     }), GUIKIT::String::foundSubStr(langKey, "error") || GUIKIT::String::foundSubStr(langKey, "incompatible"), true, 4 );
@@ -383,6 +387,8 @@ auto States::generateAutoPath(bool createFolder) -> std::string {
 
 auto States::updateTapeMenu() -> void {
     
+    if (!view)
+        return;
     auto media = activeEmulator->getTape(0);
     if (!media)
         return view->showTapeMenu( false );
@@ -450,11 +456,12 @@ auto States::updateConnectedDevices() -> void {
         
         settings->set<unsigned>( _underscore(connector.name), device->id);
 
-        view->checkInputDevice( emulator, &connector, device );
+        if (view)
+            view->checkInputDevice( emulator, &connector, device );
     }
     
-    if (deviceIds.size() > 0) {
-        auto manager = InputManager::getManager(emulator);
+    auto manager = InputManager::getManager(emulator);
+    if (manager && deviceIds.size() > 0) {
         manager->updateMappingsInUse();
     }
 
@@ -463,7 +470,8 @@ auto States::updateConnectedDevices() -> void {
     if (emuView && emuView->inputLayout)
         emuView->inputLayout->updateConnectorButtons();
 
-    view->setCursor( emulator );
+    if (view)
+        view->setCursor( emulator );
 }
 
 auto States::updateModels() -> void {
@@ -528,7 +536,7 @@ auto States::updateModels() -> void {
             activeVideoManager->reloadSettings(false);
     }
     
-    if (regionChange || resamplerChange) {
+    if (audioManager && (regionChange || resamplerChange)) {
         audioManager->power();
     }
 

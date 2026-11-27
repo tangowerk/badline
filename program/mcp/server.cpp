@@ -6,6 +6,12 @@
 
 McpServer* mcpServer = nullptr;
 
+static auto hex4(unsigned v) -> std::string {
+    char buf[8];
+    std::snprintf(buf, sizeof buf, "%04x", v & 0xffff);
+    return buf;
+}
+
 static const char* SERVER_NAME = "underground64";
 static const char* SERVER_VERSION = "0.1";
 static const char* DEFAULT_PROTOCOL = "2025-06-18";
@@ -50,6 +56,7 @@ auto McpServer::Job::waitDone(double seconds) -> bool {
 
 McpServer::McpServer() {
     registerTools();
+    registerDebugTools();
 }
 
 McpServer::~McpServer() {
@@ -192,7 +199,9 @@ auto McpServer::handleRpc(const Json& request, Json& response) -> bool {
         result.set("instructions",
             "Commodore 64 emulator. Typical flow: load_media (autostart) -> wait_for_text / run_frames -> "
             "read_screen or screenshot. Frames are PAL 50 Hz / NTSC 60 Hz. Waiting tools step the emulation "
-            "even when it is paused.");
+            "even when it is paused. Debugging: breakpoint_set -> continue (blocks until the CPU stops) -> "
+            "registers / memory_read / disassemble / step. While the CPU is stopped, frame based tools fail; "
+            "addresses accept numbers or hex strings like \"$c000\", \"0xc000\", \"c000\".");
         response.set("result", result);
 
     } else if (method == "ping") {
@@ -253,7 +262,16 @@ auto McpServer::callTool(const Json& params) -> Json {
     } else {
         for (auto& tool : tools) {
             if (tool.name == job->tool) {
-                tool.prepare(*job);
+                if (tool.needsRunning && cpuStopped()) {
+                    std::string where;
+                    {
+                        std::lock_guard<std::mutex> lock(stopMutex);
+                        if (lastStop.valid)
+                            where = " at $" + hex4(lastStop.address) + " (" + lastStop.cpu + ")";
+                    }
+                    job->fail("CPU stopped by the debugger" + where + ". Frames do not advance; use continue or step first.");
+                } else
+                    tool.prepare(*job);
                 break;
             }
         }
@@ -410,7 +428,7 @@ auto McpServer::releaseDevice(unsigned deviceId) -> void {
     inputActive = any;
 }
 
-auto McpServer::addTool(const std::string& name, const std::string& description, const std::string& schema, std::function<void(Job&)> prepare) -> void {
+auto McpServer::addTool(const std::string& name, const std::string& description, const std::string& schema, std::function<void(Job&)> prepare, bool needsRunning) -> void {
     Json s;
     std::string error;
     if (!Json::parse(schema, s, error)) {
@@ -418,5 +436,5 @@ auto McpServer::addTool(const std::string& name, const std::string& description,
         s = Json::object();
         s.set("type", "object");
     }
-    tools.push_back({name, description, s, std::move(prepare)});
+    tools.push_back({name, description, s, needsRunning, std::move(prepare)});
 }
