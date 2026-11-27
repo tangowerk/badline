@@ -87,6 +87,10 @@ struct Video {
 
     virtual auto init(uintptr_t handle) -> bool { return true; }
     virtual auto term() -> void {}
+    // reason of a failed init (empty if unknown)
+    virtual auto lastError() -> std::string { return ""; }
+    // GPU used by the renderer (empty if unknown)
+    virtual auto deviceName() -> std::string { return ""; }
 
     virtual auto lock(unsigned*& data, unsigned& pitch, unsigned _width, unsigned _height, uint8_t options = 0) -> bool { return false; }
     virtual auto redraw() -> void {}
@@ -190,6 +194,8 @@ struct Input {
 
     virtual auto init(uintptr_t handle) -> bool { return true; }
     virtual auto term() -> void {}
+    // the window was recreated (renderer switch); devices and mappings stay
+    virtual auto setWindow(uintptr_t handle) -> void {}
     virtual auto mAcquire() -> void {}
     virtual auto mUnacquire() -> void {}
     virtual auto mIsAcquired() -> bool { return false; }

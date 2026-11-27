@@ -1,5 +1,8 @@
 //! Badline entry point: hands the command line to the C++ program (program/program.cpp).
 
+// Vulkan renderer: only referenced from C++ (bvk_* symbols), so link the crate explicitly
+extern crate badline_vk;
+
 use std::ffi::{CString, c_char, c_int};
 use std::os::unix::ffi::OsStringExt;
 

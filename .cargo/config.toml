@@ -1,6 +1,2 @@
 [alias]
 xtask = "run --quiet --package xtask --"
-
-# non-PIE executable as with the former CMake build (-no-pie)
-[target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "relocation-model=static"]

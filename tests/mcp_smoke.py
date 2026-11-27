@@ -311,6 +311,9 @@ def run_debug(client):
     client.call("reset", type="hard")
 
 
+RENDERER = "gl"
+
+
 def run(client, tmp, headless=False):
     print("protocol")
     init = client.rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
@@ -321,7 +324,7 @@ def run(client, tmp, headless=False):
                 "savestate_load", "type_text", "key", "joystick", "run_frames", "wait_for_text",
                 "read_screen", "screenshot", "breakpoint_set", "breakpoint_list", "breakpoint_delete",
                 "continue", "break", "step", "registers", "memory_read", "memory_write", "load_memory",
-                "disassemble", "cpu_history", "chip_state", "quit", "overlay"}
+                "disassemble", "cpu_history", "chip_state", "quit", "overlay", "renderer"}
     check("tools/list", expected <= tools, str(expected - tools))
     unknown = client.rpc("tools/call", {"name": "nope", "arguments": {}})
     check("unknown tool -> error", "error" in unknown)
@@ -385,6 +388,26 @@ def run(client, tmp, headless=False):
         check("screenshot rendered -> isError headless", r["isError"], text_of(r))
     else:
         check("screenshot rendered", bool(imgs) and png_size(base64.b64decode(imgs[0]["data"])) is not None, text_of(r))
+
+    print("renderer")
+    r = client.call("renderer")
+    info = json.loads(text_of(r))
+    if headless:
+        check("renderer headless -> none", info.get("renderer") == "none", text_of(r))
+        r = client.call("renderer", set="vulkan")
+        check("renderer set headless -> isError", r["isError"], text_of(r))
+    else:
+        check(f"renderer is {RENDERER}", info.get("renderer") == RENDERER, text_of(r))
+        other = "gl" if RENDERER == "vulkan" else "vulkan"
+        for target in (other, RENDERER):
+            r = client.call("renderer", set=target)
+            ok = not r["isError"] and json.loads(text_of(r)).get("renderer") == target
+            check(f"renderer switch to {target}", ok, text_of(r))
+            client.call("run_frames", frames=2)
+            r = client.call("screenshot", rendered=True)
+            check(f"screenshot rendered with {target}", any(c["type"] == "image" for c in r["content"]), text_of(r))
+    r = client.call("renderer", set="metal")
+    check("renderer set unknown -> isError", r["isError"], text_of(r))
 
     print("media")
     # 10 PRINT "MCP OK"
@@ -848,14 +871,17 @@ def main():
     ap.add_argument("--port", type=int, default=6465)
     ap.add_argument("--attach", action="store_true")
     ap.add_argument("--headless", action="store_true")
+    ap.add_argument("--renderer", choices=["gl", "vulkan"], default="gl", help="window mode: renderer at start")
     args = ap.parse_args()
+    global RENDERER
+    RENDERER = args.renderer
 
     client = Client(args.port)
     proc = None
     if not args.attach:
         # fresh C64 config, so stale media paths from the user config cannot pop up dialogs
         cfgdir = tempfile.mkdtemp(prefix="u64-smoke-")
-        mode = ["-headless", "-mcp", str(args.port)] if args.headless else ["-mcp", str(args.port)]
+        mode = ["-headless", "-mcp", str(args.port)] if args.headless else ["-renderer", args.renderer, "-mcp", str(args.port)]
         cfg = os.path.join(cfgdir, "c64.ini")
         # own config folder: settings and recent files of the user stay untouched
         env = dict(os.environ, XDG_CONFIG_HOME=cfgdir)

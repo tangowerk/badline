@@ -1,0 +1,383 @@
+// Vulkan output into an SDL3 window (M-VK1). The renderer itself is Rust (crates/vk, C API in
+// bvk.h); this adapter keeps the picture buffer, geometry, overlay frame and screen text state.
+// The window is created by the program layer with SDL_WINDOW_VULKAN; init() receives it.
+
+#include <SDL3/SDL.h>
+#include <algorithm>
+#include <mutex>
+#include <vector>
+#include "bvk.h"
+#include "../viewport.h"
+#include "../freetype.h"
+#include "../../tools/tools.h"
+
+namespace DRIVER {
+
+struct SDLVK : public Video, Freetype {
+
+    SDL_Window* window = nullptr;
+    BvkRenderer* vk = nullptr;
+    std::string error;
+    bool reportedError = false;
+
+    // emu thread (lock/unlockAndRedraw) and UI thread (redraw, settings) both render
+    std::recursive_mutex mutex;
+
+    ViewScreen viewScreen;
+    Viewport viewport;
+    Rotation rotation = ROT_0;
+    bool linearFilter = false;
+    bool vsync = true;
+    float mvp[16];
+
+    std::vector<uint32_t> buffer;
+    unsigned frameWidth = 0;
+    unsigned frameHeight = 0;
+    bool hasFrame = false;
+    uint8_t options = 0;
+
+    std::mutex overlayMutex;
+    std::shared_ptr<const OverlayFrame> overlayFrame;
+    unsigned atlasId = 0;
+    bool atlasUploaded = false;
+
+    FtColNorm textColor = {1, 1, 1, 1};
+    FtColNorm textBgColor = {0, 0, 0, 0};
+
+    ScreenshotCallback screenshotCallback;
+
+    SDLVK() {
+        updateMvp();
+    }
+
+    ~SDLVK() {
+        term();
+    }
+
+    auto init(uintptr_t handle) -> bool {
+        term();
+        window = (SDL_Window*)handle;
+        if (!window) {
+            error = "no window";
+            return false;
+        }
+
+        BvkCreateInfo info = {};
+        SDL_PropertiesID props = SDL_GetWindowProperties(window);
+        const char* videoDriver = SDL_GetCurrentVideoDriver();
+        if (videoDriver && std::string(videoDriver) == "wayland") {
+            info.kind = BVK_SURFACE_WAYLAND;
+            info.display = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, nullptr);
+            info.surface = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, nullptr);
+        } else if (videoDriver && std::string(videoDriver) == "x11") {
+            info.kind = BVK_SURFACE_XLIB;
+            info.display = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, nullptr);
+            info.window = (unsigned long)SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+        } else {
+            error = std::string("unsupported SDL video driver ") + (videoDriver ? videoDriver : "(none)");
+            return false;
+        }
+        if (!info.display || (!info.surface && !info.window)) {
+            error = "SDL window has no native handles";
+            return false;
+        }
+
+        char err[512] = {0};
+        vk = bvk_create(&info, err, sizeof err);
+        if (!vk) {
+            error = err;
+            return false;
+        }
+        bvk_set_vsync(vk, vsync);
+        ftInitialized = true;
+        reportedError = false;
+        return true;
+    }
+
+    auto term() -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        if (vk)
+            bvk_destroy(vk);
+        vk = nullptr;
+        atlasUploaded = false;
+        ftInitialized = false;
+    }
+
+    auto lastError() -> std::string { return error; }
+
+    auto deviceName() -> std::string {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        return vk ? bvk_device_name(vk) : "";
+    }
+
+    // VSync off (warp, `video_sync` off): MAILBOX/IMMEDIATE, the emulation is not held at display rate
+    auto synchronize(bool state) -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        vsync = state;
+        if (vk)
+            bvk_set_vsync(vk, state);
+    }
+
+    auto hasSynchronized() -> bool { return vsync; }
+
+    // ------------------------------------------------------------ frame
+
+    auto lock(unsigned*& data, unsigned& pitch, unsigned _width, unsigned _height, uint8_t _options = 0) -> bool {
+        if (!vk || (_options & OPT_RGB10)) // 10 bit YUV input needs a shader (M-VK3)
+            return false;
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        if (_width != frameWidth || _height != frameHeight) {
+            frameWidth = _width;
+            frameHeight = _height;
+            buffer.assign((size_t)_width * _height, 0);
+            viewScreen.update(viewport);
+        }
+        options = _options;
+        pitch = _width;
+        data = buffer.data();
+        return data != nullptr;
+    }
+
+    auto unlockAndRedraw() -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        hasFrame = frameWidth && frameHeight;
+        render(true, true, options & OPT_TakeScreenshot, true);
+    }
+
+    auto redraw() -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        render(false, true, false, true);
+    }
+
+    // like GL: only a black window (no overlay, no text)
+    auto clear() -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        render(false, false, false, false);
+    }
+
+    auto updateWindowSize(bool force = false) -> void {
+        int w = 0, h = 0;
+        SDL_GetWindowSizeInPixels(window, &w, &h);
+        if (w <= 0 || h <= 0)
+            return;
+        if (!force && (unsigned)w == viewScreen.windowWidth && (unsigned)h == viewScreen.windowHeight)
+            return;
+        viewScreen.update(viewport, w, h);
+        ftUpdateCoords();
+    }
+
+    auto render(bool upload, bool showFrame, bool screenshot, bool decorations) -> void {
+        if (!vk || !window)
+            return;
+        updateWindowSize();
+
+        BvkFrame f = {};
+        f.window_width = viewScreen.windowWidth;
+        f.window_height = viewScreen.windowHeight;
+        if (upload && hasFrame) {
+            f.frame = buffer.data();
+            f.frame_width = frameWidth;
+            f.frame_height = frameHeight;
+            f.frame_pitch = frameWidth;
+        }
+        f.show_frame = showFrame && hasFrame;
+        // GL viewports count from the bottom: mirror so both renderers place the picture identically
+        f.vp_x = viewport.x;
+        f.vp_y = (int)viewScreen.windowHeight - viewport.y - (int)viewport.height;
+        f.vp_width = viewport.width;
+        f.vp_height = viewport.height;
+        std::memcpy(f.mvp, mvp, sizeof mvp);
+        f.linear = linearFilter && !(options & OPT_DisallowFilter);
+
+        std::shared_ptr<const OverlayFrame> overlay;
+        {
+            std::lock_guard<std::mutex> lock(overlayMutex);
+            overlay = overlayFrame;
+        }
+        if (decorations && overlay && !overlay->vertices.empty() && overlay->atlas) {
+            if (!atlasUploaded || atlasId != overlay->atlasId) {
+                setTexture(BVK_TEX_ATLAS, BVK_FMT_R8, overlay->atlasWidth, overlay->atlasHeight, overlay->atlas->data());
+                atlasId = overlay->atlasId;
+                atlasUploaded = true;
+            }
+            f.overlay_vertices = overlay->vertices.data();
+            f.overlay_vertex_count = overlay->vertices.size() / 8;
+            f.overlay_width = overlay->width;
+            f.overlay_height = overlay->height;
+        }
+
+        if (decorations && ftUpdated)
+            ftProcessUpdates(viewport);
+        bool textVisible = decorations && ftTextBuffer && ftTotalWidth && ftTotalHeight;
+        if (textVisible && ftTs && ftHandleAnimation(viewport))
+            textVisible = false;
+        f.text_visible = textVisible;
+        if (textVisible) {
+            std::memcpy(f.text_quad, ftPosCoords, sizeof f.text_quad);
+            f.text_color[0] = textColor.r, f.text_color[1] = textColor.g, f.text_color[2] = textColor.b, f.text_color[3] = textColor.a;
+            f.text_bg_color[0] = textBgColor.r, f.text_bg_color[1] = textBgColor.g, f.text_bg_color[2] = textBgColor.b, f.text_bg_color[3] = textBgColor.a;
+        }
+
+        std::vector<uint8_t> shot;
+        if (screenshot && screenshotCallback) {
+            // with a visible overlay the whole window is captured, otherwise the picture area
+            if (f.overlay_vertex_count) {
+                f.shot_x = 0, f.shot_y = 0, f.shot_width = f.window_width, f.shot_height = f.window_height;
+            } else {
+                f.shot_x = f.vp_x, f.shot_y = f.vp_y, f.shot_width = f.vp_width, f.shot_height = f.vp_height;
+            }
+            // clip to the window (picture larger than the window)
+            int x0 = std::max(f.shot_x, 0), y0 = std::max(f.shot_y, 0);
+            int x1 = std::min(f.shot_x + f.shot_width, (int)f.window_width);
+            int y1 = std::min(f.shot_y + f.shot_height, (int)f.window_height);
+            f.shot_x = x0, f.shot_y = y0, f.shot_width = x1 - x0, f.shot_height = y1 - y0;
+            if (f.shot_width > 0 && f.shot_height > 0) {
+                shot.resize((size_t)f.shot_width * f.shot_height * 3);
+                f.screenshot = shot.data();
+            }
+        }
+
+        char err[512] = {0};
+        int res = bvk_render(vk, &f, err, sizeof err);
+        if (res == BVK_ERROR) {
+            if (!reportedError)
+                fprintf(stderr, "Vulkan: %s\n", err);
+            reportedError = true;
+            return;
+        }
+        // no black file when nothing was captured: a skipped frame loses the shot (MCP reports it)
+        if (res == BVK_OK && f.screenshot)
+            screenshotCallback(shot.data(), f.shot_width, f.shot_height);
+        else if (res == BVK_NO_SHOT || (res == BVK_SKIPPED && f.screenshot))
+            fprintf(stderr, "Vulkan: screenshot not captured\n");
+    }
+
+    auto setTexture(int slot, int format, unsigned w, unsigned h, const void* data) -> void {
+        char err[512] = {0};
+        if (bvk_set_texture(vk, slot, format, w, h, data, err, sizeof err) != BVK_OK)
+            fprintf(stderr, "Vulkan: %s\n", err);
+    }
+
+    // ------------------------------------------------------------ overlay
+
+    auto setOverlay(std::shared_ptr<const OverlayFrame> frame) -> void {
+        std::lock_guard<std::mutex> lock(overlayMutex);
+        overlayFrame = frame;
+    }
+
+    auto hasOverlay() -> bool { return vk != nullptr; }
+
+    // ------------------------------------------------------------ screen text (Freetype base)
+
+    auto ftSetColor(FtColNorm& col, FtColNorm& bg) -> void {
+        textColor = col;
+        textBgColor = bg;
+    }
+
+    auto ftBuildTexture(std::string text, bool keepOldSize = false) -> void {
+        if (!ftBuildText(text, keepOldSize))
+            return;
+        setTexture(BVK_TEX_TEXT, BVK_FMT_R8, ftTotalWidth, ftTotalHeight, ftTextBuffer);
+    }
+
+    auto showScreenText(const std::string text, unsigned duration, bool warn = false) -> void {
+        ftUpdateMessage(text, duration, warn);
+    }
+
+    auto setScreenTextDescription(ScreenTextDescription& desc) -> void {
+        ftSetScreenTextDescription(desc);
+    }
+
+    auto freeFont() -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        ftUnload();
+    }
+
+    // ------------------------------------------------------------ geometry
+
+    auto updateMvp() -> void {
+        Matrix4x4 projection = {
+            2.0f,  0.0f, 0.0f, 0.0f,
+            0.0f,  2.0f, 0.0f, 0.0f,
+            0.0f,  0.0f, 2.0f, 0.0f,
+            -1.0f,-1.0f, 0.0f, 1.0f,
+        };
+        projection.data[10] = -1.0;
+
+        // same matrix as GL3::updateRotation
+        if (rotation) {
+            float radian = M_PI * ((float)rotation * 270.0 / 180.0f);
+            Matrix4x4 rot = {
+                {cosf(radian), sinf(radian), 0.0f, 0.0f,
+                 -sinf(radian), cosf(radian), 0.0f, 0.0f,
+                 0.0f, 0.0f, 0.0f, 0.0f,
+                 0.0f, 0.0f, 0.0f, 1.0f}};
+            MatrixMultiply(mvp, projection.data, 4, 4, rot.data, 4, 4);
+        } else
+            std::memcpy(mvp, projection.data, sizeof mvp);
+
+        mvp[1] *= -1.0f;
+        mvp[5] *= -1.0f;
+        mvp[9] *= -1.0f;
+        mvp[13] *= -1.0f;
+    }
+
+    auto setLinearFilter(bool state) -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        linearFilter = state;
+    }
+
+    auto setAspectRatio(int mode, bool _integerScaling) -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        viewScreen.mode = (ViewScreen::Mode)mode;
+        viewScreen.hasIntegerScaling = _integerScaling;
+        viewScreen.update(viewport);
+        ftUpdateCoords();
+    }
+
+    auto getAspectRatio() -> int { return (int)viewScreen.mode; }
+
+    auto setRotation(Rotation _rotation) -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        rotation = _rotation;
+        viewScreen.flipped = rotation == ROT_90 || rotation == ROT_270;
+        viewScreen.update(viewport);
+        updateMvp();
+    }
+
+    auto getRotation() -> Rotation { return rotation; }
+
+    auto setIntegerScalingDimension(unsigned _w, unsigned _h, bool _ds) -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        viewScreen.scaling.width = _w;
+        viewScreen.scaling.height = _h;
+        viewScreen.scaling.doubleSize = _ds;
+    }
+
+    auto getIntegerScalingDimension(unsigned& _w, unsigned& _h) -> void {
+        _w = viewScreen.scaling.width >> 1;
+        _h = viewScreen.scaling.height >> 1;
+    }
+
+    auto getViewport() -> Viewport& { return viewport; }
+
+    auto forceResize() -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        if (window)
+            updateWindowSize(true);
+    }
+
+    auto lockResize() -> void { mutex.lock(); }
+
+    auto unlockResize() -> void {
+        if (window)
+            updateWindowSize();
+        mutex.unlock();
+    }
+
+    auto setScreenshotCallback(ScreenshotCallback callback) -> void {
+        screenshotCallback = callback;
+    }
+};
+
+}

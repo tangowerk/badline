@@ -54,6 +54,8 @@ struct Overlay {
     auto setSize(int width, int height) -> void;
     // UI thread: animation + hand the frame to the video driver
     auto tick() -> void;
+    // republish the current frame (new video driver)
+    auto invalidate() -> void { dirty = true; frameShown = false; }
 
     auto describe(Json& out) -> void;
     auto scale() const -> int { return scaleFactor; }

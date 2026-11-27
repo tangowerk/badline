@@ -126,7 +126,13 @@ Program::Program() {
 auto Program::finishStartup() -> void {
     InputManager::initDriver();
     AudioManager::initDriver();
-    initVideo();
+    if (!initVideo() && !cmd->noDriver && getVideoDriver() == "Vulkan") {
+        // no silent fallback (SPEC "Decisions M-VK1")
+        fprintf(stderr, "Vulkan renderer failed: %s\n", videoDriverError.c_str());
+        GUIKIT::Application::exitCode = 1;
+        GUIKIT::Application::isQuit = true;
+        return;
+    }
 
     cmd->autoloadImages();
 

@@ -15,6 +15,7 @@ Cmd::Cmd(int argc, char** argv) {
     std::string configIdent;
     bool mcpPortNext = false;
     bool romDirNext = false;
+    bool rendererNext = false;
     std::vector<std::string> out;
     hasContent = false;
     invalidParam = "";
@@ -48,6 +49,19 @@ Cmd::Cmd(int argc, char** argv) {
         if (romDirNext) {
             romDirNext = false;
             romDir = arg;
+            continue;
+        }
+
+        if (rendererNext) {
+            rendererNext = false;
+            if (arg == "gl" || arg == "opengl")
+                renderer = "OpenGL";
+            else if (arg == "vulkan" || arg == "vk")
+                renderer = "Vulkan";
+            else {
+                invalidParam = "-renderer " + arg;
+                break;
+            }
             continue;
         }
 
@@ -90,6 +104,8 @@ Cmd::Cmd(int argc, char** argv) {
             fetchRoms = true;
         else if ( arg == "-rom-dir" )
             romDirNext = true;
+        else if ( arg == "-renderer" )
+            rendererNext = true;
         else if ( arg == "-binarymonitor" )
             binaryMonitor = true;
         else if ( arg == "-mcp" ) {
@@ -202,6 +218,7 @@ auto Cmd::prepareOptions() -> void {
 	options.push_back({"-debugcart", "Generate exit codes for VICE Testbench", ""});
 	options.push_back({"-limitcycles", "Specify number of cycles to run before quitting with an error (checks at complete frames)", "<cycles>"});
 	options.push_back({"-exitscreenshot", "Save screen to PNG file, when exiting App", "<filePath>"});
+	options.push_back({"-renderer", "Video renderer for this session (default: setting video_driver, OpenGL)", "<gl|vulkan>"});
 	options.push_back({"-rom-dir", "Additional folder with C64/drive ROMs (default ~/.local/share/badline/roms)", "<path>"});
 	options.push_back({"-fetch-roms", "Download missing Commodore ROMs from zimmers.net (SHA-1 checked) into the user ROM folder", ""});
 	options.push_back({"-no-driver", "Run without video, audio, input drivers", ""});

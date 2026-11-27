@@ -124,6 +124,12 @@ auto EmuThread::initWorker() -> void {
 
             if (attention) {
                 attention = false;
+                // lock() sets freeContext before attention: release the context even if both were
+                // set after the check above (a renderer switch destroys the context while locked)
+                if (freeContext) {
+                    freeContext = false;
+                    videoDriver->freeContext();
+                }
                 acknowledged = true;
 
                 while(acknowledged) {

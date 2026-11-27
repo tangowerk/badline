@@ -12,5 +12,8 @@ build = "build.rs"
 name = "badline"
 path = "src/main.rs"
 
+[dependencies]
+badline-vk = { path = "../vk" }
+
 [build-dependencies]
 cc = "1"

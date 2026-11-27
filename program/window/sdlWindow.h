@@ -15,6 +15,10 @@ union SDL_Event;
 struct SdlWindow {
     auto create() -> bool;
     auto destroy() -> void;
+    // UI thread: destroy and create the window again for another video API (size/fullscreen kept)
+    auto recreate(bool vulkan) -> bool;
+    // reason of the last failed window creation
+    auto lastError() const -> const std::string& { return error; }
     auto handle() const -> uintptr_t { return (uintptr_t)window; }
 
     // UI thread: pump SDL events, apply pending state (mouse capture, cursor)
@@ -41,6 +45,8 @@ struct SdlWindow {
     auto askRomDownload(const std::vector<std::string>& missing) -> void;
 
 private:
+    auto createWindow(bool vulkan) -> bool;
+    auto showWindow() -> void;
     auto handleEvent(SDL_Event& ev) -> void;
     auto updateRefreshRate() -> void;
     auto handleDrop(SDL_Event& ev) -> void;
@@ -56,6 +62,7 @@ private:
     std::string romDownloadError;
 
     SDL_Window* window = nullptr;
+    std::string error;
     std::atomic<float> currentRefreshRate{0.0f};
     bool fullscreen = false;
     bool hasFocus = false;

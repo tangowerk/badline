@@ -281,6 +281,34 @@ auto McpServer::registerTools() -> void {
             };
         });
 
+    // ------------------------------------------------------------ renderer
+    addTool("renderer",
+        "Get or switch the video renderer (window mode only). Without 'set' it reports the active one; "
+        "'set' switches at runtime (the window is recreated, the emulation state stays). "
+        "A failed switch restores the previous renderer and returns an error.",
+        R"({"type":"object","properties":{"set":{"type":"string","enum":["gl","vulkan"]}}})",
+        [](Job& job) {
+            std::string set = job.args.getString("set");
+            if (!set.empty() && set != "gl" && set != "vulkan")
+                return job.fail("set must be 'gl' or 'vulkan'");
+            job.phase = Job::Ui;
+            job.onUi = [set](Job& job) {
+                if (!set.empty()) {
+                    std::string error;
+                    if (!program->switchRenderer(set == "vulkan" ? "Vulkan" : "OpenGL", error))
+                        return job.fail("Renderer switch failed: " + error);
+                }
+                Json s = Json::object();
+                bool headless = cmd->noGui || cmd->noDriver;
+                s.set("renderer", headless ? "none" : (program->getVideoDriver() == "Vulkan" ? "vulkan" : "gl"));
+                std::string device = videoDriver->deviceName();
+                if (!device.empty())
+                    s.set("device", device);
+                job.addText(s.dump());
+                job.finish();
+            };
+        });
+
     // ------------------------------------------------------------ load_media
     addTool("load_media",
         "Insert a PRG/D64/G64/T64/TAP/CRT/... file (type detected from content/suffix) and optionally autostart it. "

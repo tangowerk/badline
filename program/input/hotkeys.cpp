@@ -36,6 +36,7 @@ auto InputManager::setHotkeys() -> void {
 
     //hotkeys.push_back( {Hotkey::Id::ToggleSCVideo, "toggle S/C-Video"} );
     hotkeys.push_back( {Hotkey::Id::ToggleShader, "toggle Shader"} );
+    hotkeys.push_back( {Hotkey::Id::ToggleRenderer, "Toggle Renderer (OpenGL/Vulkan)"} );
     hotkeys.push_back( {Hotkey::Id::ToggleBorder, "toggle border"} );
     hotkeys.push_back( {Hotkey::Id::ToggleBorderPrev, "toggle border prev"} );
     hotkeys.push_back( {Hotkey::Id::ToggleScaling, "toggle scaling"} );
@@ -251,6 +252,14 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
                 program->setWarp(Program::Warp::Off);
             }
             break;
+
+        case Hotkey::Id::ToggleRenderer: {
+            std::string target = program->getVideoDriver() == "Vulkan" ? "OpenGL" : "Vulkan";
+            std::string error;
+            bool ok = program->switchRenderer(target, error);
+            if (statusHandler)
+                statusHandler->setMessage(ok ? "Renderer: " + target : target + " failed: " + error, !ok);
+        } break;
 
         case Hotkey::Id::Fullscreen:
             if (sdlWindow)

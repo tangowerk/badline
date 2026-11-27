@@ -152,8 +152,14 @@ struct Program : Emulator::Interface::Bind {
     
     //video
     auto setVideoDimension(Emulator::Interface* emulator = nullptr) -> void;
-    auto initVideo(bool driverChange = false) -> void;
+    // false: the driver failed to initialize (reason in videoDriverError), a dummy driver is active
+    auto initVideo(bool driverChange = false) -> bool;
 	auto getVideoDriver() -> std::string;
+    // UI thread: switch the video driver ("OpenGL"/"Vulkan") at runtime, the window is recreated;
+    // on failure the previous driver is restored and the reason returned in `error`
+    auto switchRenderer(const std::string& driver, std::string& error) -> bool;
+    auto applyRenderer(const std::string& driver, std::string& error) -> bool;
+    std::string videoDriverError;
     auto videoRefresh(const uint16_t* frame, unsigned width, unsigned height, unsigned linePitch, unsigned options) -> void override;
 	auto videoRefresh8(const uint8_t* frame, unsigned width, unsigned height, unsigned linePitch) -> void override;
 	auto repeatLastFrame() -> void;

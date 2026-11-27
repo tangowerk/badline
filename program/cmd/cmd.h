@@ -45,6 +45,7 @@ struct Cmd {
     bool startInFullscreen = false;
     bool fetchRoms = false;      // -fetch-roms: download missing ROMs at startup
     std::string romDir = "";     // -rom-dir <path>
+    std::string renderer = "";   // -renderer gl|vulkan: video driver for this session
 
 	std::string invalidParam;
 	bool ambiguousParam = false;

@@ -2,7 +2,7 @@
 #include "cmd/cmd.h"
 #include <cstring>
 
-auto Program::initVideo(bool driverChange) -> void {
+auto Program::initVideo(bool driverChange) -> bool {
 
     DRIVER::Rotation rotation = DRIVER::ROT_0;
 
@@ -13,7 +13,7 @@ auto Program::initVideo(bool driverChange) -> void {
     
     if (cmd->noDriver) {
         videoDriver = new DRIVER::Video;
-        return;
+        return true;
     }
 
     videoDriver = DRIVER::Video::create( getVideoDriver() );
@@ -26,7 +26,11 @@ auto Program::initVideo(bool driverChange) -> void {
     updateHDR();
     updateBFI();
 	    
-    if ( !videoDriver->init( sdlWindow ? sdlWindow->handle() : 0 ) ) {
+    bool ok = videoDriver->init( sdlWindow ? sdlWindow->handle() : 0 );
+    videoDriverError = ok ? "" : videoDriver->lastError();
+    if (!ok) {
+        if (videoDriverError.empty())
+            videoDriverError = getVideoDriver() + " initialization failed";
         delete videoDriver;
         videoDriver = new DRIVER::Video;
     }
@@ -116,6 +120,7 @@ auto Program::initVideo(bool driverChange) -> void {
     updateOnScreenText();
 
     loadProgress();
+    return ok;
 }
 
 auto Program::bufferScreenshot(uint8_t* _data, unsigned _size) -> void {
@@ -235,7 +240,7 @@ auto Program::setVideoDimension(Emulator::Interface* emulator) -> void {
 }
 
 auto Program::getVideoDriver() -> std::string {
-	auto curDriver = globalSettings->get<std::string>("video_driver", "");
+	auto curDriver = cmd->renderer.empty() ? globalSettings->get<std::string>("video_driver", "") : cmd->renderer;
 	auto drivers = DRIVER::Video::available();
 	
 	for(auto& driver : drivers) {
@@ -711,3 +716,64 @@ auto Program::requestScreenshot() -> void {
     screenshot.sharedMutex.unlock();
 }
 
+
+auto Program::applyRenderer(const std::string& driver, std::string& error) -> bool {
+    delete videoDriver;
+    videoDriver = new DRIVER::Video;
+    cmd->renderer = driver; // getVideoDriver() follows it
+
+    // the SDL window is bound to GL or Vulkan at creation
+    if (!sdlWindow->recreate(driver == "Vulkan")) {
+        error = sdlWindow->lastError();
+        return false;
+    }
+    inputDriver->setWindow(sdlWindow->handle());
+
+    if (!initVideo(true)) {
+        error = videoDriverError;
+        return false;
+    }
+    return true;
+}
+
+auto Program::switchRenderer(const std::string& driver, std::string& error) -> bool {
+    if (cmd->noGui || cmd->noDriver || !sdlWindow) {
+        error = "no window (headless)";
+        return false;
+    }
+    auto drivers = DRIVER::Video::available();
+    if (std::find(drivers.begin(), drivers.end(), driver) == drivers.end()) {
+        error = "unknown renderer " + driver;
+        return false;
+    }
+    std::string previous = getVideoDriver();
+    if (driver == previous)
+        return true;
+
+    bool locked = emuThread->lock();
+    auto rotation = videoDriver->getRotation();
+
+    bool ok = applyRenderer(driver, error);
+    if (ok) {
+        globalSettings->set<std::string>("video_driver", driver);
+    } else {
+        std::string restoreError;
+        if (!applyRenderer(previous, restoreError)) {
+            // no usable window left: quit instead of running blind
+            fprintf(stderr, "%s could not be restored: %s\n", previous.c_str(), restoreError.c_str());
+            if (locked)
+                emuThread->unlock();
+            GUIKIT::Application::exitCode = 1;
+            program->quit();
+            GUIKIT::Application::quit();
+            return false;
+        }
+    }
+    videoDriver->setRotation(rotation);
+    if (overlay)
+        overlay->invalidate();
+
+    if (locked)
+        emuThread->unlock();
+    return ok;
+}

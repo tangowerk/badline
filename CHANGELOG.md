@@ -6,6 +6,25 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ## Unreleased
 
+### Added
+
+- **Vulkan renderer (preview).** A second video renderer written in Rust
+  (`crates/vk`, Vulkan 1.3 via `ash`, Wayland and X11 surfaces) draws the C64
+  picture, the overlay menu, drag & drop tiles and screen messages; screenshots
+  without shaders are bit-identical to OpenGL. It is opt-in for now:
+  `-renderer vulkan` (for one session), the `video_driver` setting
+  (`OpenGL`/`Vulkan`), the new hotkey "Toggle Renderer (OpenGL/Vulkan)" (no
+  default key) or the new MCP tool `renderer` switch it, also at runtime (the
+  window is recreated, the emulation keeps running). If Vulkan cannot start,
+  Badline exits with an error instead of falling back silently; a failed
+  runtime switch returns to OpenGL. Warp and `video_sync` off use a
+  non-blocking present mode. Not yet in Vulkan: shader presets, HDR,
+  10 bit (YUV) input and the shader-build progress animation. Validation layers
+  are enabled in dev builds when installed (`BADLINE_VK_VALIDATION=1/0`
+  overrides).
+- `tests/renderer_ab.py` compares rendered screenshots of both renderers;
+  `tests/mcp_smoke.py --renderer vulkan` runs the smoke test on Vulkan.
+
 ### Removed
 
 - **GTK is gone.** The GTK toolkit layer (guikit widgets, windows, menus,
@@ -49,11 +68,17 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
   pinned in `rust-toolchain.toml` (1.99). Installed files and the release
   tarball contents are unchanged; warp speed is the same as the CMake build.
 - The version is set once in `Cargo.toml` (was `program/program.h`).
+- The binary is linked with `-no-pie` instead of building all Rust code with
+  `relocation-model=static` (that broke proc-macro dependencies).
 - Removed the untested Debian package script (`data/build_deb.sh`,
   `data/control`), the CMake `uninstall` target and the Denise-era entries in
   `.gitignore`.
 
 ### Fixed
+
+- Pausing the emulation thread (settings changes, media, MCP calls) could
+  leave the OpenGL context bound to it when both requests arrived at once
+  (Denise bug); harmless before, a renderer switch now relies on it.
 
 - Changed disks and flash cartridges are written back into the image file
   again when the question is turned off (`question_media_write = false`);

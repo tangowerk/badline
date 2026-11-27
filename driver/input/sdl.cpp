@@ -89,6 +89,10 @@ struct SDLInput : public Input {
         return table;
     }
 
+    auto setWindow(uintptr_t _handle) -> void {
+        window = (SDL_Window*)_handle;
+    }
+
     auto init(uintptr_t _handle) -> bool {
         term();
         window = (SDL_Window*)_handle;

@@ -187,6 +187,9 @@ fn main() {
     for lib in ["GL", "pulse", "pthread", "rt", "dl", "stdc++", "m"] {
         println!("cargo:rustc-link-lib=dylib={lib}");
     }
+    // non-PIE executable as with the former CMake build (-no-pie); a global
+    // `relocation-model=static` would also hit proc-macro crates (shared objects)
+    println!("cargo:rustc-link-arg-bins=-no-pie");
     if let Some(rpath) = rpath {
         // RUNPATH (new dtags) like the former CMake build
         println!("cargo:rustc-link-arg-bins=-Wl,--enable-new-dtags,-rpath,{rpath}");

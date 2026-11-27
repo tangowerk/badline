@@ -82,7 +82,7 @@ struct Hotkey {
         Rotation, CropWindow, PowerWithUnplugCart, ToggleScaling, ToggleFPS, ToggleAudioStats, RemovedTurboToggle, // keep slot: ids are saved as hotkey_<id>
         TakeScreenShot, Toggle2MHzCpuTurbo, PowerWithEjectDisks, Rewind,
         DebuggerToggle, DebuggerStepInto, DebuggerStepOver, DebuggerStepOut, DebuggerLine, DebuggerFrame, Misc,
-        PrioDoubleAssignment, ToggleFastForward,
+        PrioDoubleAssignment, ToggleFastForward, ToggleRenderer,
         Autofire = 1000,
     } id;
     std::string name;

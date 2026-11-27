@@ -4,6 +4,7 @@
 #include "driver.h"
 
 #include "video/opengl3/sdl.cpp"
+#include "video/vulkan/vulkan.cpp"
 
 #ifdef DRV_OPENAL
 	#include "audio/openal.cpp"
@@ -19,7 +20,7 @@ auto Video::getFontNames(const std::string& fontPath) -> std::vector<std::string
 }
 
 auto Video::available() -> std::vector<std::string> {
-    return { "OpenGL" };
+    return { "OpenGL", "Vulkan" };
 }
 
 auto Video::preferred() -> std::string {
@@ -28,6 +29,7 @@ auto Video::preferred() -> std::string {
 
 auto Video::create(const std::string& driver) -> Video* {
     if(driver == "OpenGL") return new SDLGL();
+    if(driver == "Vulkan") return new SDLVK();
 
     return new Video;
 }

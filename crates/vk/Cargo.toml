@@ -1,0 +1,17 @@
+[package]
+name = "badline-vk"
+version.workspace = true
+description = "Vulkan renderer of Badline (ash)"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+ash = "0.38"
+
+[build-dependencies]
+naga = { version = "30", features = ["glsl-in", "spv-out"] }

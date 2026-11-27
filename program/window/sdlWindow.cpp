@@ -33,25 +33,57 @@ auto SdlWindow::create() -> bool {
     windowedHeight = globalSettings->get<int>("window_height", DefaultHeight, {120, 16384});
     bool startFullscreen = globalSettings->get<bool>("window_fullscreen", false) || cmd->startInFullscreen;
 
-    window = SDL_CreateWindow(APP_NAME " " VERSION, windowedWidth, windowedHeight,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
-
-    if (!window) {
-        std::fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
+    if (!createWindow(program->getVideoDriver() == "Vulkan"))
         return false;
-    }
 
     if (startFullscreen)
         setFullScreen(true);
 
+    showWindow();
+    return true;
+}
+
+auto SdlWindow::createWindow(bool vulkan) -> bool {
+    // the window is bound to its API at creation (EGL/GLX window or plain Vulkan surface)
+    window = SDL_CreateWindow(APP_NAME " " VERSION, windowedWidth, windowedHeight,
+        (vulkan ? SDL_WINDOW_VULKAN : SDL_WINDOW_OPENGL) | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+
+    if (!window) {
+        error = std::string("SDL_CreateWindow: ") + SDL_GetError();
+        std::fprintf(stderr, "%s%s\n", vulkan ? "Vulkan renderer failed: " : "", error.c_str());
+        return false;
+    }
+    error.clear();
+    return true;
+}
+
+auto SdlWindow::showWindow() -> void {
     SDL_ShowWindow(window);
-    // let the compositor map the window before the GL context is created
+    // let the compositor map the window before the GL context / Vulkan swapchain is created
     for (int i = 0; i < 10; i++) {
         SDL_PumpEvents();
         SDL_Delay(5);
     }
     lastMouseMove = SDL_GetTicks();
     updateRefreshRate();
+}
+
+auto SdlWindow::recreate(bool vulkan) -> bool {
+    bool wasFullscreen = fullscreen;
+    if (window) {
+        SDL_DestroyWindow(window);
+        window = nullptr;
+    }
+    // per-window state is applied again by pumpEvents
+    captured = false;
+    cursorHidden = false;
+    textInput = false;
+
+    if (!createWindow(vulkan))
+        return false;
+    if (wasFullscreen)
+        setFullScreen(true);
+    showWindow();
     return true;
 }
 
