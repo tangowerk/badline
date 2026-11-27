@@ -1,5 +1,6 @@
 
 #include "cmd.h"
+#include <algorithm>
 #include "../view/view.h"
 #include "../media/autoloader.h"
 #include "../media/fileloader.h"
@@ -13,6 +14,7 @@ Cmd::Cmd(int argc, char** argv) {
 	std::string arg;
     std::string appendedArg;
     std::string configIdent;
+    bool mcpPortNext = false;
     std::vector<std::string> out;
     hasContent = false;
     invalidParam = "";
@@ -43,6 +45,16 @@ Cmd::Cmd(int argc, char** argv) {
             continue;
         }
 
+        if (mcpPortNext) {
+            mcpPortNext = false;
+            if (!arg.empty() && arg.size() <= 5 && std::all_of(arg.begin(), arg.end(), ::isdigit)) {
+                unsigned p = std::stoul(arg);
+                if (p > 0 && p < 65536)
+                    mcpPort = p;
+                continue;
+            }
+        }
+
 		if ( arg == "-no-driver" ) {
 			noDriver = true;
 			
@@ -66,6 +78,10 @@ Cmd::Cmd(int argc, char** argv) {
             startInFullscreen = true;
         else if ( arg == "-binarymonitor" )
             binaryMonitor = true;
+        else if ( arg == "-mcp" ) {
+            mcp = true;
+            mcpPortNext = true;
+        }
 		else
             arguments.push_back(arg);
 
@@ -181,6 +197,7 @@ auto Cmd::prepareOptions() -> void {
     options.push_back({"-binarymonitor", "Enable binary monitor", ""});
     options.push_back({"-binarymonitoraddress", "The local address the binary monitor should bind to", "<address>"});
     options.push_back({"-initbreak", "Set an initial breakpoint for the monitor: reset", "<value>"});
+    options.push_back({"-mcp", "Enable the MCP server on 127.0.0.1 (Streamable HTTP, path /mcp), default port 6464", "[port]"});
 }
 
 auto Cmd::printInvalidParam() -> void {

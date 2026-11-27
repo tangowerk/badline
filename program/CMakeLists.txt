@@ -68,6 +68,9 @@ set(headers
         helper/miscHelper.h
         helper/settingsHelper.h
         monitor/binaryMonitor.h
+        mcp/json.h
+        mcp/screen.h
+        mcp/server.h
 )
 
 set_source_files_properties(${PROJECT_NAME} ${headers}
@@ -133,6 +136,10 @@ set(srcs
         helper/miscHelper.cpp
         helper/settingsHelper.cpp
         monitor/binaryMonitor.cpp
+        mcp/json.cpp
+        mcp/screen.cpp
+        mcp/server.cpp
+        mcp/tools.cpp
         
         ${headers}
 )

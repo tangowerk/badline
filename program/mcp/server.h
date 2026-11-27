@@ -1,0 +1,126 @@
+#pragma once
+
+// Embedded MCP server (Streamable HTTP, JSON responses only, localhost).
+//
+// Threading: httplib handler threads parse JSON-RPC and submit tool calls as
+// jobs. A job moves through phases, each owned by one thread:
+//   Ui       -> UI thread (uiTick), for operations that touch GTK (media, states, power, warp, pause)
+//   Emu      -> emu thread before a frame (emuTick), for input and observation
+//   Frames   -> emu thread after every emulated frame (frameDone), for waits/holds
+//   UiFinish -> UI thread, cleanup after frame jobs (e.g. restore warp)
+// Calls are processed strictly one after another.
+
+#include "json.h"
+#include <atomic>
+#include <condition_variable>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <vector>
+
+namespace httplib { class Server; }
+
+struct McpServer {
+
+    struct Job {
+        enum Phase : int { Ui, Emu, Frames, UiFinish, Done };
+
+        std::string tool;
+        Json args;
+        std::atomic<int> phase{Emu};
+        std::atomic<bool> cancelled{false};
+
+        std::function<void(Job&)> onUi;
+        std::function<void(Job&)> onEmu;
+        // called after each frame; frame jobs advance the phase themselves
+        std::function<void(Job&)> onFrame;
+        std::function<void(Job&)> onUiFinish;
+        // runs on the HTTP thread after the job is done (e.g. waiting for a file)
+        std::function<void(Job&)> postProcess;
+
+        // free state for tools
+        uint64_t counter = 0;
+        uint64_t limit = 0;
+        int warpBefore = -1;
+        std::string text;
+        std::vector<unsigned> inputs;
+        unsigned deviceId = 0;
+        double wallTimeout = 60.0;
+
+        // dialogs suppressed during UI phases (warnings, errors), appended to the result
+        std::vector<std::string> messages;
+
+        // result
+        Json content = Json::array();
+        bool isError = false;
+
+        auto addText(const std::string& t) -> void;
+        auto addImage(const std::string& base64Png) -> void;
+        auto fail(const std::string& message) -> void; // adds text, marks error, finishes
+        auto finish() -> void;
+        auto waitDone(double seconds) -> bool;
+
+    private:
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool done = false;
+    };
+    using JobPtr = std::shared_ptr<Job>;
+
+    struct Tool {
+        std::string name;
+        std::string description;
+        Json schema;
+        // runs on the HTTP thread: validate args and set up phase/callbacks,
+        // or fail() immediately
+        std::function<void(Job&)> prepare;
+    };
+
+    McpServer();
+    ~McpServer();
+
+    auto start(unsigned port) -> bool;
+    auto stop() -> void;
+
+    // UI thread
+    auto uiTick() -> void;
+    // emu thread, once per loop iteration (also while paused / in debugger)
+    auto emuTick() -> void;
+    // emu thread, after each emulated frame
+    auto frameDone() -> void;
+    // emu thread: run a frame although the emulation is paused
+    auto wantsFrame() -> bool;
+
+    // emu thread: input injection
+    std::atomic<bool> inputActive{false};
+    auto inputState(unsigned deviceId, unsigned inputId) -> int16_t;
+    auto setInput(unsigned deviceId, unsigned inputId, bool pressed) -> void;
+    auto releaseDevice(unsigned deviceId) -> void;
+
+    uint64_t frameCounter = 0;
+    unsigned port = 0;
+
+private:
+    std::unique_ptr<httplib::Server> http;
+    std::thread httpThread;
+    std::mutex callMutex;   // one tool call at a time
+    std::mutex jobMutex;    // guards 'current'
+    JobPtr current;
+    std::atomic<bool> hasJob{false};
+    std::atomic<bool> resetInputs{false};
+    std::atomic<bool> stopping{false};
+    std::vector<Tool> tools;
+
+    std::vector<std::vector<uint8_t>> inputs; // [deviceId][inputId]
+
+    auto currentJob() -> JobPtr;
+    auto clearJob(const JobPtr& job) -> void;
+    auto handleRpc(const Json& request, Json& response) -> bool;
+    auto callTool(const Json& params) -> Json;
+    auto registerTools() -> void;
+    auto addTool(const std::string& name, const std::string& description, const std::string& schema, std::function<void(Job&)> prepare) -> void;
+};
+
+extern McpServer* mcpServer;

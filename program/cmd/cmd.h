@@ -50,6 +50,9 @@ struct Cmd {
 	bool initbreak = false;
     std::string binaryMonitorAddress;
 
+    bool mcp = false;
+    unsigned mcpPort = 6464;
+
     auto parse() -> void;
     
     auto autoloadImages() -> void;

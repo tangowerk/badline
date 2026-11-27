@@ -43,6 +43,8 @@
 #include "debugger/videoDebugger.h"
 #include "debugger/sidDebugger.h"
 #include "debugger/dmaDebugger.h"
+#include "mcp/server.h"
+#include "view/message.h"
 
 Program* program = nullptr;
 DRIVER::Input* inputDriver = new DRIVER::Input;
@@ -160,8 +162,25 @@ auto Program::finishStartup() -> void {
         }
     }
 
+    // agent-driven sessions must not block on startup dialogs (e.g. missing media)
+    std::vector<std::string> startupMessages;
+    if (cmd->mcp)
+        Message::capture = &startupMessages;
+
     if (!activeEmulator)
         power(binaryMonitor.clientConnected() ? getEmulator("C64") : getLastUsedEmu(), false);
+
+    Message::capture = nullptr;
+    for (auto& m : startupMessages)
+        std::fprintf(stderr, "%s\n", m.c_str());
+
+    if (cmd->mcp && !mcpServer) {
+        mcpServer = new McpServer;
+        if (!mcpServer->start(cmd->mcpPort)) {
+            delete mcpServer;
+            mcpServer = nullptr;
+        }
+    }
 
 	initUserInterface();
     
@@ -499,18 +518,33 @@ auto Program::loopNoGui() -> void {
 auto Program::loop() -> void {
     if (!emuThread->enabled) {
         focused = view->focused();
+        if (mcpServer)
+            mcpServer->uiTick();
     }
 
     InputManager::poll();
 
-    if (!isPause) {
+    if (mcpServer)
+        mcpServer->emuTick();
+
+    if (!isPause || (mcpServer && mcpServer->wantsFrame())) {
 		unsigned frames = loopFrames;
 		
 		if (frames) {
-			while(frames--)
+			while(frames--) {
 			    activeEmulator->run();
-		} else
+                if (mcpServer) {
+                    mcpServer->frameDone();
+                    // frame stepping while paused ends exactly
+                    if (isPause && !mcpServer->wantsFrame())
+                        break;
+                }
+            }
+		} else {
 			activeEmulator->run();
+            if (mcpServer)
+                mcpServer->frameDone();
+        }
 
         if (audioManager->rewind)
             audioManager->reverseAndFlushBuffer();
@@ -526,6 +560,8 @@ auto Program::loop() -> void {
 
 auto Program::loopDebugging() -> void {
     InputManager::poll();
+    if (mcpServer)
+        mcpServer->emuTick();
     GUIKIT::System::sleep( 10 );
     audioDriver->clear();
     repeatLastFrame();
@@ -540,6 +576,9 @@ auto Program::loopUserInterface() -> void {
     focused = view->focused();
     emuThread->handleStatusUpdate();
     emuThread->handleUIEvents();
+
+    if (mcpServer)
+        mcpServer->uiTick();
 
     if (binaryMonitor.serverRunning()) {
         if (!binaryMonitor.clientConnected()) {
@@ -570,6 +609,10 @@ auto Program::hasFocus() -> bool {
 auto Program::quit() -> void {
     videoDriver->disableExclusiveFullscreen();
     quitInProgress = true;
+    if (mcpServer) {
+        // stop before locking: pending calls get cancelled
+        mcpServer->stop();
+    }
     emuThread->lock(true);
     for(auto emuView : emuConfigViews) {
         if (emuView->inputLayout)
@@ -1053,10 +1096,12 @@ auto Program::jitPoll(int delay) -> bool {
 auto Program::inputPoll( uint16_t deviceId, uint16_t inputId) -> int16_t {
     auto guid = activeEmulator->devices[deviceId].inputs[inputId].guid;
     auto mapping = (InputMapping*)guid;
-    if(mapping)
-        return mapping->state;
+    int16_t state = mapping ? mapping->state : 0;
 
-    return 0;
+    if (unlikely(mcpServer && mcpServer->inputActive))
+        state |= mcpServer->inputState(deviceId, inputId);
+
+    return state;
 }
 
 auto Program::audioSample(int16_t sampleLeft, int16_t sampleRight) -> void {
