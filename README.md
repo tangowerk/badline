@@ -115,13 +115,13 @@ Using the ROMs is your responsibility.
 
 ## Download
 
-Releases on GitHub ship `badline-<version>-linux-x86_64.tar.gz`: built on
-Ubuntu 24.04 (needs glibc 2.39 or newer), SDL3 included. Unpack anywhere and
-run `bin/badline`; the other libraries come from the system, on Ubuntu/Debian:
+Releases on GitHub ship `badline-<version>-linux-x86_64.tar.gz`, built on current
+Arch Linux with the patched SDL3 included. Only current rolling distributions
+(Arch and derivatives) are supported. Unpack anywhere and run `bin/badline`; the
+other libraries come from the system:
 
 ```
-sudo apt install libpulse0 libcurl4t64 libopenal1 \
-                 libfreetype6 libgl1 libegl1
+sudo pacman -S --needed libpulse curl openal freetype2 libglvnd vulkan-icd-loader
 ```
 
 `cargo xtask dist` builds the same tarball (used by the GitHub Actions
@@ -131,10 +131,10 @@ workflow).
 
 ## Building
 
-Requirements (Arch Linux package names; other distributions are similar):
+Requirements (Arch Linux package names; only current rolling distributions are supported):
 
 ```
-rust (or rustup) gcc pkgconf git curl libpulse freetype2
+rust (or rustup) gcc pkgconf git curl libpulse freetype2 vulkan-icd-loader
 for the patched SDL3: cmake ninja
 optional: openal
 ```

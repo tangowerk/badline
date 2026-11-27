@@ -48,6 +48,11 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ### Changed
 
+- **Only current rolling distributions are supported.** The release tarball is
+  now built on current Arch Linux (CI container `archlinux:base-devel`) instead
+  of Ubuntu 24.04; `cargo xtask dist --deps` installs the build dependencies via
+  pacman. The patched SDL3 stays bundled. README and INSTALL.txt list the Arch
+  packages instead of Ubuntu/Debian ones.
 - Headless mode (`-headless`) needs no display server anymore (no X/Wayland
   connection is opened), errors of the autoloader are printed to stderr and
   captured by MCP calls there too.

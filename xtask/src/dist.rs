@@ -1,8 +1,8 @@
 //! `cargo xtask dist`: relocatable Linux release tarball dist/badline-<version>-linux-x86_64.tar.gz.
 //!
-//! Meant for Ubuntu 24.04 (GitHub Actions runner or container): the binary then runs on
-//! glibc 2.39+ systems. SDL3 is not packaged there, so it is built from source and shipped
-//! in lib/ (RUNPATH $ORIGIN/../lib); everything else comes from the target system.
+//! Built on current Arch Linux (CI container `archlinux:base-devel`); only current rolling
+//! distributions are supported. The patched SDL3 is built from source and shipped in lib/
+//! (RUNPATH $ORIGIN/../lib); everything else comes from the target system.
 //! The build goes to target/dist, so the dev binary in target/release keeps its RUNPATH.
 
 use crate::{Args, Result, VERSION, absolute, exec, install, output, root, sdl3};
@@ -10,40 +10,42 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-const APT_DEPS: &[&str] = &[
-    "build-essential",
-    "cmake",
-    "ninja-build",
-    "pkg-config",
+/// Arch Linux build dependencies (CI container `archlinux:base-devel`): Badline itself plus
+/// the SDL3 backends (SDL loads most of them at runtime, the headers decide what is built).
+const PACMAN_DEPS: &[&str] = &[
+    "base-devel",
     "git",
-    "ca-certificates",
-    "libpulse-dev",
-    "libcurl4-openssl-dev",
-    "libfreetype-dev",
-    "libx11-dev",
-    "libxrandr-dev",
-    "libxfixes-dev",
-    "libxext-dev",
-    "libopenal-dev",
-    "libwayland-dev",
-    "libxkbcommon-dev",
+    "cmake",
+    "ninja",
+    "pkgconf",
+    "rustup",
+    "libpulse",
+    "curl",
+    "freetype2",
+    "openal",
+    "libx11",
+    "libxrandr",
+    "libxfixes",
+    "libxext",
+    "libxcursor",
+    "libxi",
+    "libxss",
+    "libxtst",
+    "libxinerama",
+    "wayland",
     "wayland-protocols",
-    "libdecor-0-dev",
-    "libegl-dev",
-    "libgl-dev",
-    "libgles-dev",
-    "libdrm-dev",
-    "libgbm-dev",
-    "libxcursor-dev",
-    "libxi-dev",
-    "libxss-dev",
-    "libxtst-dev",
-    "libxinerama-dev",
-    "libpipewire-0.3-dev",
-    "libasound2-dev",
-    "libudev-dev",
-    "libdbus-1-dev",
-    "libibus-1.0-dev",
+    "libxkbcommon",
+    "libdecor",
+    "libglvnd",
+    "mesa",
+    "libdrm",
+    "pipewire",
+    "alsa-lib",
+    "systemd-libs",
+    "dbus",
+    "ibus",
+    "vulkan-headers",
+    "vulkan-icd-loader",
 ];
 
 pub fn run(args: &[String]) -> Result {
@@ -59,12 +61,16 @@ pub fn run(args: &[String]) -> Result {
     let name = format!("badline-{VERSION}-linux-x86_64");
 
     if deps {
-        exec(Command::new("sudo").args(["apt-get", "update"]))?;
-        exec(
-            Command::new("sudo")
-                .args(["apt-get", "install", "-y", "--no-install-recommends"])
-                .args(APT_DEPS),
-        )?;
+        // root in the CI container, sudo elsewhere
+        let root_user = output(Command::new("id").arg("-u"))?.trim() == "0";
+        let mut cmd = if root_user {
+            Command::new("pacman")
+        } else {
+            let mut c = Command::new("sudo");
+            c.arg("pacman");
+            c
+        };
+        exec(cmd.args(["-Syu", "--needed", "--noconfirm"]).args(PACMAN_DEPS))?;
     }
 
     sdl3::build(&sdl_prefix)?;
@@ -146,16 +152,16 @@ fn check(stage: &Path) -> Result {
 
 fn install_txt() -> String {
     format!(
-        "Badline {VERSION} for Linux x86_64 (built on Ubuntu 24.04, needs glibc 2.39 or newer)
+        "Badline {VERSION} for Linux x86_64 (built on current Arch Linux; only current
+rolling distributions are supported)
 
 Run in place:   ./bin/badline
 Install:        copy the folder anywhere (e.g. ~/.local/opt/badline) and start bin/badline;
                 share/applications/badline.desktop can be adapted for a launcher entry.
 
-SDL3 is included (lib/). The other libraries come from your system; on Ubuntu/Debian:
-  sudo apt install libpulse0 libcurl4t64 libopenal1 \\
-                   libfreetype6 libgl1 libegl1
-(Debian 13 / Ubuntu 24.04 names; most desktops have them already.)
+SDL3 is included (lib/, patched). The other libraries come from your system; on Arch:
+  sudo pacman -S --needed libpulse curl openal freetype2 libglvnd vulkan-icd-loader
+(most desktops have them already).
 
 On first start Badline offers to download the C64 ROMs (see share/doc/badline/README.md).
 "

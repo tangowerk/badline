@@ -30,7 +30,7 @@ fn main() -> ExitCode {
                 "usage: cargo xtask <command>\n\
                  \x20 sdl3    [--prefix DIR]               patched SDL3 from source (default builds/sdl3)\n\
                  \x20 install [--prefix DIR] [--mime] [--no-build]  release build + install (default /usr/local)\n\
-                 \x20 dist    [--deps] [--sdl-prefix DIR]  release tarball in dist/ (Ubuntu 24.04)"
+                 \x20 dist    [--deps] [--sdl-prefix DIR]  release tarball in dist/ (Arch Linux)"
             );
             return ExitCode::from(2);
         }

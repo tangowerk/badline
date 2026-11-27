@@ -10,7 +10,12 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    # only current rolling distributions are supported: build on current Arch Linux
+    container: archlinux:base-devel
     steps:
+      - name: Bootstrap (git for checkout, rustup for cargo xtask)
+        run: pacman -Syu --needed --noconfirm git rustup
+
       - uses: actions/checkout@v4
 
       - name: Rust toolchain (rust-toolchain.toml)
@@ -20,7 +25,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: builds/sdl3
-          key: sdl3-${{ hashFiles('xtask/src/sdl3.rs', 'tools/patches/sdl3-*.patch') }}-ubuntu-24.04
+          key: sdl3-${{ hashFiles('xtask/src/sdl3.rs', 'tools/patches/sdl3-*.patch') }}-archlinux
 
       - name: Build tarball
         run: cargo xtask dist --deps
