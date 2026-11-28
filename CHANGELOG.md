@@ -8,6 +8,27 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ### Added
 
+- **Slang preset browser, shader sources and corpus test (M-VK3c).** The
+  overlay Video page is partly real now: the active slang preset with its load
+  status (passes, time, or the compile error while the plain picture stays),
+  palette, PAL pass and the brightness/contrast/saturation/gamma sliders (DEL
+  resets a slider); on this page the menu is see-through so changes show
+  live behind it. RETURN on "Preset" opens a preset browser over the page
+  with the sources System (`libretro-shaders-slang`), Downloaded and any
+  folder, "(no preset)" on top, a type-ahead filter; RETURN loads and keeps
+  the browser open for trying presets. Presets load on a worker thread with
+  the busy spinner. New C64 setting `video_slang_preset`, command line options
+  `-shader <file|none>` (session only) and `-fetch-shaders` (downloads a
+  pinned libretro/slang-shaders commit, SHA-1 checked, into
+  `~/.local/share/badline/shaders`; also from the browser). The MCP `shader`
+  tool saves loaded presets and reports the sources. Window-less corpus test
+  (`slang_corpus --render`): every preset of the collection is built and
+  rendered for three frames; 2499 of 2526 presets pass on RADV and lavapipe
+  without validation errors, the 27 others are broken in the collection itself
+  (`tests/slang_known_broken.txt`). New CI workflow `shaders`: all presets
+  compiled and 21 reference presets rendered with the validation layer on
+  every change, the full render run weekly in four shards.
+
 - **Colour decoding on the GPU and C64 PAL pass (M-VK3b).** With Vulkan the
   emulator hands the C64 colour indices to the GPU; palette, saturation,
   contrast, brightness and gamma are applied in a decode shader (within 1/255
@@ -72,6 +93,12 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ### Changed
 
+- Overlay Video page: the shader choice, brightness/saturation preview widgets
+  are replaced by the real preset row and picture settings; integer scaling
+  and border stay preview. Sliders accept DEL for their default value.
+- `tests/slang_presets.py` covers `#reference` overrides with crt-yah
+  (pixel_transparency is gone from the current collection);
+  `tests/mcp_smoke.py` checks the new Video page and the preset browser.
 - The own Vulkan shaders (picture, blend, overlay) are compiled at runtime by
   glslang (disk cached) instead of naga at build time; naga is gone.
 - glslang is no longer vendored: both renderers use the system library
@@ -119,6 +146,11 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
   system anyway, also before M-VK3a.)
 
 ### Fixed
+
+- Slang presets with Windows path separators (`..\..\shaders\x.slang`, 606
+  presets of the current collection, e.g. all of scanline-classic) failed to
+  load; backslashes are converted like RetroArch does (Badline bug since
+  M-VK3a).
 
 - Overlay Media page: showing it stalled the UI for up to a second when a
   bookmark or recent file lies on a network share (each existence check is a

@@ -67,7 +67,7 @@ SDL3, no Windows/macOS code paths.
 | Media | D64, G64, P64, D71, G71, D81, TAP, T64, PRG, CRT, REU images; archives |
 | Cartridges | EasyFlash, Retro Replay, Action Replay-type freezers, GMod, Trilogic Expert, REU, GeoRAM and more (from Denise) |
 | Window | SDL3, native Wayland (EGL) with X11 fallback, HiDPI, fullscreen (F11 / Alt+Enter), size remembered |
-| Video | OpenGL 3.2 renderer, slang shaders (internal presets), optional render thread, VSync; Vulkan renderer (Rust, default; no shaders yet; the display clocks the emulation on integer-multiple refresh rates) |
+| Video | Vulkan renderer (Rust, default): C64 colour decoding and PAL pass on the GPU, RetroArch slang presets (libretro collection), frame pacing (the display clocks the emulation on integer-multiple refresh rates, VRR, frame blending); OpenGL 3.2 renderer (being removed) |
 | Input | Keyboard (positional), mouse capture (middle button), gamepads with hotplug – the first pad drives joystick #1 |
 | Drag & drop | Drop images onto the window: slot overlay for drive/autostart |
 | Automation | Embedded MCP server, 32 tools; headless mode (no display server needed); VICE binary monitor (API v2) |
@@ -110,6 +110,26 @@ Alternatives:
 - `badline -rom-dir <path>` – use an additional ROM folder.
 
 Using the ROMs is your responsibility.
+
+---
+
+## Shaders
+
+With the Vulkan renderer Badline runs RetroArch slang presets (`.slangp`): CRT
+masks, scanlines, bezels (Mega Bezel, koko-aio), NTSC/PAL signal emulation and
+more. Pick one in the menu (F12 → Video → Preset); the browser shows
+
+- **System**: the libretro collection of your distribution
+  (`sudo pacman -S libretro-shaders-slang`),
+- **Downloaded**: the same collection fetched by Badline (menu entry
+  "Download" or `badline -fetch-shaders`; a pinned libretro/slang-shaders
+  commit from github.com, 52 MB, SHA-1 checked, stored in
+  `~/.local/share/badline/shaders/`),
+- **Folder**: any folder with your own presets.
+
+The chosen preset is saved; `badline -shader <file.slangp|none>` overrides it
+for one session. Badline's own C64 PAL pass (Video → PAL pass) runs before the
+preset.
 
 ---
 
@@ -169,6 +189,7 @@ badline -headless -fetch-roms    # no window/audio, MCP on, ROM download
 badline -headless -unthrottled   # as fast as possible (CI)
 badline -binarymonitor           # VICE binary monitor for C64 Studio, VS64, ...
 badline -renderer gl             # OpenGL renderer for this session (default: Vulkan)
+badline -shader crt-royale.slangp  # slang preset for this session
 badline -help                    # all options
 ```
 

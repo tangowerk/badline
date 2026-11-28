@@ -157,8 +157,19 @@ auto Slider::nav(Nav n) -> bool {
         case Nav::PageDown: set(current - big); return true;
         case Nav::Home: set(min); return true;
         case Nav::End: set(max); return true;
+        case Nav::Delete:
+            if (defaultValue < min || defaultValue > max)
+                return false;
+            set(defaultValue);
+            return true;
         default: return false;
     }
+}
+
+auto Slider::hints() const -> std::vector<Hint> {
+    if (defaultValue < min || defaultValue > max)
+        return {{"\u2190\u2192", "change"}};
+    return {{"\u2190\u2192", "change"}, {"DEL", "default"}};
 }
 
 auto Slider::click(int x, int, int) -> bool {

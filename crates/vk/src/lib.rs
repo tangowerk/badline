@@ -4,6 +4,7 @@
 
 mod chain;
 mod gpu;
+pub mod headless;
 mod renderer;
 pub mod slang;
 mod timing;

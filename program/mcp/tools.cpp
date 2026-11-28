@@ -14,6 +14,7 @@
 #include "../overlay/overlay.h"
 #include "../view/status.h"
 #include "../video/manager.h"
+#include "../video/slang.h"
 #include "../audio/manager.h"
 #include "../../emulation/libc64/system/system.h"
 #include "../../emulation/libc64/system/keyBuffer.h"
@@ -541,10 +542,12 @@ auto McpServer::registerTools() -> void {
     // ------------------------------------------------------------ shader
     addTool("shader",
         "RetroArch slang shader preset of the Vulkan renderer (window mode). Without arguments it reports "
-        "the active preset (path, passes, parameters with values; null = none). 'load' parses, compiles "
-        "(disk cache ~/.cache/badline/shaders) and activates a .slangp file and returns its summary "
-        "(passes, LUTs, history depth, compile statistics, warnings); 'clear' removes it; 'set_param' "
-        "with 'value' changes a parameter of the active preset. Not saved in the settings yet.",
+        "the active preset (path, passes, parameters with values; null = none), the load status and the "
+        "preset sources (system collection, downloaded collection). 'load' parses, compiles (disk cache "
+        "~/.cache/badline/shaders) and activates a .slangp file, saves it in the C64 settings "
+        "(video_slang_preset) and returns its summary (passes, LUTs, history depth, compile statistics, "
+        "warnings); 'clear' removes it (saved too); 'set_param' with 'value' changes a parameter of the "
+        "active preset (not saved).",
         R"({"type":"object","properties":{)"
         R"("load":{"type":"string","description":"Absolute path of a .slangp preset"},)"
         R"("clear":{"type":"boolean"},)"
@@ -559,18 +562,31 @@ auto McpServer::registerTools() -> void {
             double value = job.args.getNumber("value");
             job.phase = Job::Ui;
             job.onUi = [load, clear, param, value](Job& job) {
-                if (!videoDriver || program->getVideoDriver() != "Vulkan" || cmd->noGui || cmd->noDriver)
+                if (!SlangPresets::supported())
                     return job.fail("Shader presets need the Vulkan renderer in window mode");
                 if (!load.empty() || clear) {
                     std::string result;
-                    if (!videoDriver->setSlangPreset(clear ? "" : load, "", result))
+                    if (!SlangPresets::loadNow(clear ? "" : load, true, result))
                         return job.fail("Preset failed: " + result);
                     job.addText(result);
                     return job.finish();
                 }
                 if (!param.empty() && !videoDriver->setSlangParam(param, (float)value))
                     return job.fail("No such parameter in the active preset: " + param);
-                job.addText(videoDriver->slangState());
+                SlangPresets::wait();
+                auto st = SlangPresets::state();
+                Json s = Json::object();
+                std::string parseError;
+                Json active;
+                if (!Json::parse(videoDriver->slangState(), active, parseError))
+                    active = Json();
+                s.set("active", active);
+                s.set("status", st.status);
+                s.set("error", st.error);
+                s.set("wanted", SlangPresets::wanted()); // -shader or the setting
+                s.set("system_dir", SlangPresets::systemDir());
+                s.set("downloaded_dir", SlangPresets::downloadedDir());
+                job.addText(s.dump());
                 job.finish();
             };
         });

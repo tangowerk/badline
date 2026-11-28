@@ -1,5 +1,6 @@
 
 #include "cmd/cmd.h"
+#include "video/slang.h"
 #include <cstring>
 
 auto Program::initVideo(bool driverChange) -> bool {
@@ -7,6 +8,7 @@ auto Program::initVideo(bool driverChange) -> bool {
     DRIVER::Rotation rotation = DRIVER::ROT_0;
 
 	if (videoDriver) {
+        SlangPresets::wait(); // a preset load uses the driver
         rotation = videoDriver->getRotation();
         delete videoDriver;
     }
@@ -121,6 +123,10 @@ auto Program::initVideo(bool driverChange) -> bool {
         if (overlay)
             overlay->busy("shader", on);
     });
+
+    // Vulkan: the saved slang preset (or -shader), compiled on a worker thread
+    if (ok)
+        SlangPresets::applyWanted();
 
     updateOnScreenText();
     return ok;
@@ -622,6 +628,7 @@ auto Program::requestScreenshot() -> void {
 
 
 auto Program::applyRenderer(const std::string& driver, std::string& error) -> bool {
+    SlangPresets::wait();
     delete videoDriver;
     videoDriver = new DRIVER::Video;
     cmd->renderer = driver; // getVideoDriver() follows it

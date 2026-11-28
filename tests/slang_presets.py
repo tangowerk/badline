@@ -38,7 +38,7 @@ PRESETS = [
     ("test/format.slangp", "#pragma format"),
     ("test/pragma-name.slangp", "#pragma name aliases"),
     ("test/frame_count.slangp", "frame_count_mod"),
-    ("presets/pixel_transparency/pixel_transparency-accurate.slangp", "#reference + parameter override"),
+    ("crt/shaders/crt-yah/presets/pure-crt.slangp", "#reference + parameter overrides"),
     # MBZ__5__POTATO reads an unwritten vertex output (corpus bug, validation error)
     ("bezel/Mega_Bezel/Presets/MBZ__3__STD-GLASS.slangp", "Mega Bezel"),
 ]

@@ -22,6 +22,7 @@
 #include "window/sdlWindow.h"
 #include "overlay/overlay.h"
 #include "firmware/roms.h"
+#include "video/slang.h"
 #include <chrono>
 #include <clocale>
 #include <thread>
@@ -160,6 +161,15 @@ auto Program::finishStartup() -> void {
             std::fprintf(stderr, "ROMs are in %s\n", Roms::userDir().c_str());
         else
             std::fprintf(stderr, "ROM download failed: %s\n", error.c_str());
+    }
+
+    if (cmd->fetchShaders && !cmd->debug) {
+        std::string error;
+        bool ok = SlangPresets::download([](const std::string& line) { std::fprintf(stderr, "%s\n", line.c_str()); }, error);
+        if (ok)
+            std::fprintf(stderr, "Slang shaders are in %s\n", SlangPresets::downloadTarget().c_str());
+        else
+            std::fprintf(stderr, "Shader download failed: %s\n", error.c_str());
     }
 
     if (!activeEmulator)
@@ -685,6 +695,7 @@ auto Program::loopUserInterface() -> void {
         focused = sdlWindow->focused();
     }
     emuThread->handleUIEvents();
+    SlangPresets::poll();
 
     if (mcpServer) {
         mcpServer->uiTick();
@@ -711,6 +722,7 @@ auto Program::hasFocus() -> bool {
 auto Program::quit() -> void {
     videoDriver->disableExclusiveFullscreen();
     quitInProgress = true;
+    SlangPresets::wait();
     if (mcpServer) {
         // stop before locking: pending calls get cancelled
         mcpServer->stop();

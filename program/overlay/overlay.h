@@ -22,11 +22,15 @@ struct Overlay {
         std::string id, title, subtitle;
         bool preview = false;
         bool bare = false; // no title: the widgets fill the whole content area
+        bool seeThrough = false; // lighter dim + panel: picture changes stay visible (Video page)
         // sidebar entry without content: runs on select (Resume, Quit)
         std::function<void()> action;
         std::function<void(Page&)> refresh; // when the page is shown
         std::vector<std::unique_ptr<OverlayUi::Widget>> widgets;
         int focus = -1;
+        // sub page shown instead of this one (preset browser over Video); the sidebar keeps
+        // this page selected
+        std::unique_ptr<Page> sub;
 
         template<typename T> auto add(T* w) -> T* { widgets.emplace_back(w); return w; }
     };
@@ -84,7 +88,10 @@ struct Overlay {
 
 private:
     auto buildPages() -> void;
-    auto currentPage() -> Page& { return *pages[pageIndex]; }
+    auto currentPage() const -> Page& { auto& p = *pages[pageIndex]; return p.sub ? *p.sub : p; }
+    // sub pages: opened from a widget action, closed later (the closing widget is still running)
+    auto openSub(std::unique_ptr<Page> sub) -> void;
+    auto closeSub() -> void;
     auto focusedWidget() -> OverlayUi::Widget*;
     auto moveFocus(int dir) -> bool;
     auto firstFocusable(Page& p) -> int;
@@ -125,6 +132,7 @@ private:
     OverlayFont font;
     std::vector<std::unique_ptr<Page>> pages;
     int pageIndex = 0;
+    std::unique_ptr<Page> retiredSub; // closed sub page, freed on the next event
     Zone zone = Zone::Sidebar;
     std::unique_ptr<OverlayUi::Dialog> dialog;
     int hoverSidebar = -1;

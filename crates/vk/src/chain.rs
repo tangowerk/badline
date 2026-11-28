@@ -23,7 +23,7 @@ pub const FRAMES: usize = 2;
 const QUAD: [f32; 16] = [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0];
 
 /// MVP of the intermediate passes: [0, 1] -> [-1, 1] (column major)
-const MVP_OFFSCREEN: [f32; 16] = [2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, -1.0, 0.0, 1.0];
+pub(crate) const MVP_OFFSCREEN: [f32; 16] = [2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, -1.0, 0.0, 1.0];
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 struct SamplerKey {
@@ -811,6 +811,39 @@ impl Chain {
 
     pub fn pass_count(&self) -> usize {
         self.passes.len()
+    }
+
+    /// copies the output (SHADER_READ_ONLY after `record`) into a host buffer, tightly packed
+    /// (corpus test readback); the output stays shader readable
+    pub(crate) fn copy_output(&self, cmd: vk::CommandBuffer, dst: vk::Buffer) {
+        let d = &self.gpu.device;
+        let Some(out) = self.output.as_ref() else { return };
+        let read = (vk::PipelineStageFlags2::ALL_GRAPHICS, vk::AccessFlags2::SHADER_SAMPLED_READ);
+        let copy = (vk::PipelineStageFlags2::COPY, vk::AccessFlags2::TRANSFER_READ);
+        gpu::barrier(
+            d,
+            cmd,
+            out.image,
+            gpu::range(0, 1),
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            (vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT, vk::AccessFlags2::COLOR_ATTACHMENT_WRITE),
+            copy,
+        );
+        let region = vk::BufferImageCopy::default()
+            .image_subresource(gpu::layers(0))
+            .image_extent(vk::Extent3D { width: out.width, height: out.height, depth: 1 });
+        unsafe { d.cmd_copy_image_to_buffer(cmd, out.image, vk::ImageLayout::TRANSFER_SRC_OPTIMAL, dst, &[region]) };
+        gpu::barrier(
+            d,
+            cmd,
+            out.image,
+            gpu::range(0, 1),
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            copy,
+            read,
+        );
     }
 }
 

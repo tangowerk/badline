@@ -1,0 +1,24 @@
+# Reference presets of the CI corpus job (rendered on every push, lavapipe + validation layer).
+# One per special feature of the slang format plus popular big presets; paths relative to
+# shaders_slang (libretro/slang-shaders).
+crt/crt-geom.slangp                        # single pass, parameters
+crt/crt-lottes.slangp                      # single pass
+crt/zfast-crt.slangp                       # cheap default choice
+crt/crt-easymode.slangp
+crt/crt-royale.slangp                      # LUTs, mipmaps, float + sRGB FBOs, aliases
+crt/crt-guest-advanced-ntsc.slangp         # many passes, history
+crt/shaders/crt-yah/presets/pure-crt.slangp  # #reference + parameter overrides
+ntsc/ntsc-adaptive.slangp                  # absolute/source scales
+motionblur/motionblur-simple.slangp        # OriginalHistory
+motionblur/feedback.slangp                 # PassFeedback
+test/history.slangp                        # RetroArch tests
+test/feedback.slangp
+test/format.slangp                         # #pragma format
+test/pragma-name.slangp                    # #pragma name aliases
+test/frame_count.slangp                    # frame_count_mod
+edge-smoothing/xbrz/xbrz-freescale-multipass.slangp
+scanlines/scanline.slangp
+interpolation/bicubic.slangp
+bezel/Mega_Bezel/Presets/MBZ__3__STD-GLASS.slangp   # Mega Bezel
+bezel/koko-aio/koko-aio-ng.slangp          # koko-aio
+bezel/scanline-classic/presets/fhd-hdr/consumer/aaa-generic-pal-composite.slangp  # Windows paths

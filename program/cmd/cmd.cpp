@@ -1,6 +1,7 @@
 
 #include "cmd.h"
 #include <algorithm>
+#include <cstdlib>
 #include "../media/autoloader.h"
 #include "../media/fileloader.h"
 #include "../thread/emuThread.h"
@@ -16,6 +17,7 @@ Cmd::Cmd(int argc, char** argv) {
     bool mcpPortNext = false;
     bool romDirNext = false;
     bool rendererNext = false;
+    bool shaderNext = false;
     std::vector<std::string> out;
     hasContent = false;
     invalidParam = "";
@@ -49,6 +51,19 @@ Cmd::Cmd(int argc, char** argv) {
         if (romDirNext) {
             romDirNext = false;
             romDir = arg;
+            continue;
+        }
+
+        if (shaderNext) {
+            shaderNext = false;
+            shaderSet = true;
+            if (arg == "none")
+                shader = "";
+            else {
+                char* full = ::realpath(arg.c_str(), nullptr);
+                shader = full ? full : arg; // a missing file reports its error when loading
+                std::free(full);
+            }
             continue;
         }
 
@@ -106,6 +121,10 @@ Cmd::Cmd(int argc, char** argv) {
             romDirNext = true;
         else if ( arg == "-renderer" )
             rendererNext = true;
+        else if ( arg == "-shader" )
+            shaderNext = true;
+        else if ( arg == "-fetch-shaders" )
+            fetchShaders = true;
         else if ( arg == "-binarymonitor" )
             binaryMonitor = true;
         else if ( arg == "-mcp" ) {
@@ -219,6 +238,8 @@ auto Cmd::prepareOptions() -> void {
 	options.push_back({"-limitcycles", "Specify number of cycles to run before quitting with an error (checks at complete frames)", "<cycles>"});
 	options.push_back({"-exitscreenshot", "Save screen to PNG file, when exiting App", "<filePath>"});
 	options.push_back({"-renderer", "Video renderer for this session (default: setting video_driver, OpenGL)", "<gl|vulkan>"});
+	options.push_back({"-shader", "RetroArch slang preset for this session (Vulkan; default: setting video_slang_preset)", "<file.slangp|none>"});
+	options.push_back({"-fetch-shaders", "Download the libretro slang shader collection (pinned commit, SHA-1 checked) into ~/.local/share/badline/shaders", ""});
 	options.push_back({"-rom-dir", "Additional folder with C64/drive ROMs (default ~/.local/share/badline/roms)", "<path>"});
 	options.push_back({"-fetch-roms", "Download missing Commodore ROMs from zimmers.net (SHA-1 checked) into the user ROM folder", ""});
 	options.push_back({"-no-driver", "Run without video, audio, input drivers", ""});

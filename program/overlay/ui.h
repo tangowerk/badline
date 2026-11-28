@@ -149,13 +149,14 @@ struct Slider : Widget {
         : min(min), max(max), step(step), current(value), unit(std::move(unit)) { label = std::move(text); }
     int min, max, step, current;
     std::string unit;
+    int defaultValue = -1000000; // DEL resets to it when in range
     auto kind() const -> std::string override { return "slider"; }
     auto draw(Painter& p, bool focused) -> void override;
     auto nav(Nav n) -> bool override;
     auto click(int x, int y, int clicks) -> bool override;
     auto wheel(int dy) -> bool override;
     auto value() const -> std::string override { return std::to_string(current) + unit; }
-    auto hints() const -> std::vector<Hint> override { return {{"\u2190\u2192", "change"}}; }
+    auto hints() const -> std::vector<Hint> override;
     auto set(int v) -> void;
 private:
     auto track() const -> Rect;

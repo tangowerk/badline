@@ -1,0 +1,36 @@
+# Presets of libretro/slang-shaders that are broken in the collection itself (they fail in
+# RetroArch too). The corpus test reports them as KNOWN and fails if one starts to pass (stale).
+# Checked against libretro-shaders-slang 8ec4c82cf61a (2026-06-20).
+#
+# referenced files missing in the collection (moved/removed upstream)
+bezel/koko-aio/Presets-4.1/monitor-Commodore_1084S-Night-wider.slangp
+bezel/koko-aio/Presets-4.1/monitor-Commodore_1084S-Night.slangp
+bezel/koko-aio/Presets-ng/Monitor-Ambilight-immersive.slangp
+bezel/koko-aio/Presets_HiresGames_Fast/Presets-4.1/monitor-Commodore_1084S-Night-wider.slangp
+bezel/koko-aio/Presets_HiresGames_Fast/Presets-4.1/monitor-Commodore_1084S-Night.slangp
+bezel/koko-aio/Presets_HiresGames_Fast/Presets-ng/Monitor-Ambilight-immersive.slangp
+bezel/uborder/base_presets/uborder-bezel-reflections/crt/phosphor-persistence.slangp
+bezel/uborder/base_presets/uborder-koko-ambi/crt/phosphor-persistence.slangp
+crt/crt-effects/glow_trails.slangp
+crt/crt-effects/ray_traced_curvature.slangp
+crt/crt-effects/royale-curve-append.slangp
+hdr/sony_megatron_v2_presets/crt-sony-megatron-v2-gba-gbi.slangp
+presets/crt-plus-signal/ntsc-phosphorlut.slangp
+presets/crt-plus-signal/ntsclut-phosphorlut.slangp
+# texture 'play' used by vhs.slang but not declared by these presets
+edge-smoothing/nedi/presets/bilateral-variant.slangp
+edge-smoothing/nedi/presets/bilateral-variant3.slangp
+edge-smoothing/nedi/presets/bilateral-variant4.slangp
+edge-smoothing/nedi/presets/bilateral-variant5.slangp
+edge-smoothing/nedi/presets/bilateral-variant6.slangp
+edge-smoothing/nedi/presets/bilateral-variant7.slangp
+# fragments meant to be #referenced / appended, not loaded alone
+bezel/koko-aio/Presets_HiresGames_Fast/refs/bezel-dark.slangp
+bezel/koko-aio/Presets_HiresGames_Fast/refs/deconvergence-std.slangp
+bezel/koko-aio/refs/bezel-dark.slangp
+bezel/koko-aio/refs/deconvergence-std.slangp
+bezel/uborder/preset_tools/append-uborder-koko-ambi.slangp
+# shader error (HSM_GetInverseScaledCoord overload missing in this Mega Bezel copy)
+bezel/Mega_Bezel/shaders/hyllian/crt-super-xbr/crt-super-xbr.slangp
+# intentionally invalid test preset
+test/feedback-noncausal.slangp

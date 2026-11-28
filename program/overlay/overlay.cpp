@@ -11,6 +11,9 @@
 #include "../window/sdlWindow.h"
 #include "../firmware/roms.h"
 #include "media.h"
+#include "video.h"
+#include "../video/manager.h"
+#include "../video/slang.h"
 
 using namespace OverlayUi;
 
@@ -123,13 +126,86 @@ auto Overlay::buildPages() -> void {
         p.add(new Button("Load from slot", [this]() { notify("Preview: no effect yet"); }));
     }
     {
-        auto& p = page("video", "Video", true);
-        p.add(new Choice("Shader", {"None", "CRT", "CRT + bezel"}, 0));
+        auto& p = page("video", "Video");
+        p.seeThrough = true; // also covers the preset browser sub page        p.add(new Label("Shader", Label::Style::Subtitle));
+        auto preset = p.add(new PresetRow());
+        preset->openBrowser = [this]() {
+            auto sub = std::make_unique<Page>();
+            sub->id = "shader_browser";
+            sub->title = "Shader presets";
+            sub->bare = true;
+            auto browser = sub->add(new ShaderBrowser());
+            browser->font = &font;
+            browser->closeBrowser = [this]() { closeSub(); };
+            browser->refresh();
+            sub->focus = 0;
+            openSub(std::move(sub));
+        };
+        p.add(new Label("Colour", Label::Style::Subtitle));
+        auto palette = p.add(new Choice("Palette", {}, 0));
+        auto palPass = p.add(new Toggle("PAL pass", true));
+        auto brightness = p.add(new Slider("Brightness", 0, 200, 5, 100, "%"));
+        auto contrast = p.add(new Slider("Contrast", 0, 200, 5, 100, "%"));
+        auto saturation = p.add(new Slider("Saturation", 0, 200, 5, 100, "%"));
+        auto gamma = p.add(new Slider("Gamma", 30, 280, 5, 100, "%"));
+        for (auto s : {brightness, contrast, saturation, gamma})
+            s->defaultValue = 100;
+        p.add(new Label("Display (preview, no effect yet)", Label::Style::Dim));
         p.add(new Toggle("Integer scaling", true));
         p.add(new Choice("Border", {"Visible", "None", "Full"}, 0));
-        p.add(new Slider("Brightness", 0, 200, 5, 100, "%"));
-        p.add(new Slider("Saturation", 0, 200, 5, 100, "%"));
-        p.add(new Choice("Region", {"PAL", "NTSC"}, 0));
+
+        // the picture settings of the C64 (VideoManager; none headless)
+        auto apply = [=]() {
+            auto vm = activeVideoManager;
+            if (!vm)
+                return;
+            bool locked = emuThread->lock();
+            auto& pic = vm->picture;
+            pic.palPass = palPass->state;
+            pic.brightness = (unsigned)brightness->current;
+            pic.contrast = (unsigned)contrast->current;
+            pic.saturation = (unsigned)saturation->current;
+            pic.gamma = (unsigned)gamma->current;
+            vm->savePicture();
+            if (locked)
+                emuThread->unlock();
+        };
+        for (Widget* w : std::initializer_list<Widget*>{palPass, brightness, contrast, saturation, gamma})
+            w->onChange = apply;
+        // palettes also headless (settings only; no VideoManager without a window)
+        auto c64 = []() { return activeEmulator ? activeEmulator : program->getEmulator("C64"); };
+        palette->onChange = [palette, c64]() {
+            auto emu = c64();
+            if (!emu || palette->index >= emu->palettes.size())
+                return;
+            bool locked = emuThread->lock();
+            Program::getSettings(emu)->set<unsigned>("palette", emu->palettes[palette->index].id);
+            if (activeVideoManager)
+                program->setPalette(emu);
+            if (locked)
+                emuThread->unlock();
+        };
+        p.refresh = [=](Page&) {
+            if (auto emu = c64()) {
+                unsigned id = Program::getSettings(emu)->get<unsigned>("palette", 0u);
+                palette->options.clear();
+                palette->index = 0;
+                for (unsigned i = 0; i < emu->palettes.size(); i++) {
+                    palette->options.push_back(emu->palettes[i].name);
+                    if (emu->palettes[i].id == id)
+                        palette->index = i;
+                }
+            }
+            auto vm = activeVideoManager;
+            if (!vm)
+                return;
+            auto& pic = vm->picture;
+            palPass->state = pic.palPass;
+            brightness->current = (int)pic.brightness;
+            contrast->current = (int)pic.contrast;
+            saturation->current = (int)pic.saturation;
+            gamma->current = (int)pic.gamma;
+        };
     }
     {
         auto& p = page("audio", "Audio", true);
@@ -232,12 +308,34 @@ auto Overlay::moveFocus(int dir) -> bool {
     return false;
 }
 
+auto Overlay::openSub(std::unique_ptr<Page> sub) -> void {
+    auto& p = *pages[pageIndex];
+    retiredSub = std::move(p.sub);
+    p.sub = std::move(sub);
+    zone = Zone::Content;
+    hoverWidget = -1;
+    dirty = true;
+}
+
+auto Overlay::closeSub() -> void {
+    auto& p = *pages[pageIndex];
+    if (!p.sub)
+        return;
+    retiredSub = std::move(p.sub); // the calling widget belongs to it: freed on the next event
+    hoverWidget = -1;
+    if (p.refresh)
+        p.refresh(p);
+    dirty = true;
+}
+
 auto Overlay::showPage(int index) -> void {
     index = std::clamp(index, 0, (int)pages.size() - 1);
     if (index == pageIndex)
         return;
     if (auto w = focusedWidget(); w && w->editing())
         w->nav(Nav::Back);
+    if (pages[pageIndex]->sub)
+        retiredSub = std::move(pages[pageIndex]->sub);
     pageIndex = index;
     hoverWidget = -1;
     if (currentPage().refresh)
@@ -266,7 +364,7 @@ auto Overlay::activateSidebar() -> void {
 auto Overlay::wantsTextInput() const -> bool {
     if (!opened || dialog || zone != Zone::Content)
         return false;
-    auto& p = *pages[pageIndex];
+    auto& p = currentPage();
     if (p.focus < 0 || p.focus >= (int)p.widgets.size())
         return false;
     auto& w = p.widgets[p.focus];
@@ -279,6 +377,7 @@ auto Overlay::nav(Nav n) -> void {
     if (!opened)
         return;
     dirty = true;
+    retiredSub.reset();
 
     // pad B / Shift+Return mean Back / Return outside the media browser
     auto editingWidget = focusedWidget();
@@ -332,6 +431,7 @@ auto Overlay::nav(Nav n) -> void {
 }
 
 auto Overlay::textInput(const std::string& s) -> void {
+    retiredSub.reset();
     if (!opened || dialog)
         return;
     if (auto w = focusedWidget())
@@ -352,6 +452,7 @@ auto Overlay::hitWidget(int x, int y) -> int {
 }
 
 auto Overlay::pointer(int x, int y, int clicks) -> void {
+    retiredSub.reset();
     if (!opened)
         return;
     layout();
@@ -408,6 +509,7 @@ auto Overlay::pointer(int x, int y, int clicks) -> void {
 }
 
 auto Overlay::wheel(int x, int y, int dy) -> void {
+    retiredSub.reset();
     if (!opened || dialog || !dy)
         return;
     layout();
@@ -422,6 +524,7 @@ auto Overlay::wheel(int x, int y, int dy) -> void {
 }
 
 auto Overlay::rightClick(int x, int y) -> void {
+    retiredSub.reset();
     if (!opened)
         return;
     layout();
@@ -876,8 +979,9 @@ auto Overlay::drawBusy(Painter& p) -> void {
 }
 
 auto Overlay::drawMenu(Painter& p) -> void {
-    p.rawRect(0, 0, pixelWidth, pixelHeight, Theme::Dim);
-    p.rect(panel.x, panel.y, panel.w, panel.h, Theme::Panel);
+    bool seeThrough = pages[pageIndex]->seeThrough && !dialog;
+    p.rawRect(0, 0, pixelWidth, pixelHeight, seeThrough ? Color::hex(0x000000, 0.2f) : Theme::Dim);
+    p.rect(panel.x, panel.y, panel.w, panel.h, seeThrough ? Color::hex(0x14103c, 0.6f) : Theme::Panel);
     p.rect(panel.x, panel.y, SidebarWidth, panel.h, Theme::Sidebar);
     p.text(panel.x + 8, panel.y + 8, "BADLINE", Theme::TextDim);
 

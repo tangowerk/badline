@@ -541,13 +541,25 @@ def run_overlay(client, headless):
     st, _ = ov(action="page", page="video")
     st, _ = ov(action="nav", keys=["right"])
     w = focused(st)
-    check("enter content focuses first widget", st["zone"] == "content" and w and w["label"] == "Shader", str(w))
+    check("enter content focuses first widget", st["zone"] == "content" and w and w["label"] == "Preset", str(w))
+    if w and w.get("detail", {}).get("supported"):
+        # Vulkan window: RETURN opens the preset browser as a sub page, ESC returns
+        st, _ = ov(action="nav", keys=["ok"])
+        b = st["widgets"][0]
+        check("preset row opens the browser", st["page"] == "shader_browser" and b["kind"] == "shader_browser", str(b)[:200])
+        check("browser starts with (no preset)", b.get("detail", {}).get("entries", [{}])[0].get("kind") == "none", str(b)[:300])
+        st, _ = ov(action="nav", keys=["back"])
+        check("browser back -> video page", st["page"] == "video" and focused(st)["label"] == "Preset", str(focused(st)))
+    st, _ = ov(action="nav", keys=["down"])
+    first = focused(st)["value"]
     st, _ = ov(action="nav", keys=["right"])
-    check("choice right", focused(st)["value"] == "CRT", str(focused(st)))
-    st, _ = ov(action="nav", keys=["down", "ok"])
+    check("choice right", focused(st)["label"] == "Palette" and focused(st)["value"] != first, str(focused(st)))
+    st, _ = ov(action="nav", keys=["left", "down", "ok"])
     check("toggle ok", focused(st)["kind"] == "toggle" and focused(st)["value"] == "off", str(focused(st)))
-    st, _ = ov(action="nav", keys=["down", "down", "right"])
+    st, _ = ov(action="nav", keys=["ok", "down", "right"])
     check("slider right", focused(st)["label"] == "Brightness" and focused(st)["value"] == "105%", str(focused(st)))
+    st, _ = ov(action="nav", keys=["delete"])
+    check("slider delete -> default", focused(st)["value"] == "100%", str(focused(st)))
     st, _ = ov(action="nav", keys=["back"])
     check("back -> sidebar", st["zone"] == "sidebar" and st["page"] == "video")
 

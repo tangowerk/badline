@@ -50,13 +50,12 @@ fn expand(path: &Path, depth: usize, out: &mut Vec<String>) -> Result<(), String
         return Err(format!("{}: includes nested too deeply", path.display()));
     }
     let text = read(path)?;
-    let dir = path.parent().unwrap_or(Path::new("."));
     for line in text.split('\n') {
         if let Some(inc) = directive(line, &["include"]) {
-            let p = dir.join(inc);
+            let p = relative(path, inc);
             expand(&p, depth + 1, out).map_err(|e| format!("{e}\n  included from {}", path.display()))?;
         } else if let Some(inc) = directive(line, &["pragma", "include_optional"]) {
-            let p = dir.join(inc);
+            let p = relative(path, inc);
             if p.exists() {
                 expand(&p, depth + 1, out)?;
             }
@@ -225,9 +224,11 @@ impl ShaderSource {
     }
 }
 
-/// path of an include/reference relative to the file that names it
+/// path of an include/reference relative to the file that names it; Windows separators are
+/// converted like RetroArch does (`pathname_conform_slashes_to_os`; many presets use `..\\`)
 pub fn relative(base: &Path, name: &str) -> PathBuf {
-    let p = Path::new(name);
+    let name = name.replace('\\', "/");
+    let p = Path::new(&name);
     if p.is_absolute() {
         p.to_path_buf()
     } else {
@@ -250,6 +251,12 @@ mod tests {
         assert_eq!(s.parameters[0].step, 0.1);
         assert_eq!(s.vertex, "#version 450\n\n\nshared\n\nvert\n");
         assert_eq!(s.fragment, "#version 450\n\n\nshared\n\n\nfrag\n\n");
+    }
+
+    #[test]
+    fn windows_separators() {
+        let base = Path::new("/s/presets/a/x.slangp");
+        assert_eq!(relative(base, "..\\..\\shaders\\m.slang"), Path::new("/s/presets/a/../../shaders/m.slang"));
     }
 
     #[test]

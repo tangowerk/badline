@@ -1,0 +1,100 @@
+name: shaders
+
+# Slang corpus test (SPEC "Decisions M-VK3c"): every push compiles all presets of the Arch
+# libretro-shaders-slang package and renders the reference presets on lavapipe with the
+# validation layer; the full render run (one window-less chain per preset) runs weekly and
+# on demand.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'crates/vk/**'
+      - 'tests/slang_*.txt'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.github/workflows/shaders.yml'
+  pull_request:
+    paths:
+      - 'crates/vk/**'
+      - 'tests/slang_*.txt'
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Render every preset'
+        type: boolean
+        default: true
+
+jobs:
+  corpus:
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash  # -eo pipefail: the corpus exit code survives the WARN filter
+    env:
+      SHADERS: /usr/share/libretro/shaders/shaders_slang
+      VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.json
+      XDG_CACHE_HOME: ${{ github.workspace }}/.cache
+    steps:
+      - name: Packages (glslang, lavapipe, validation layer, shader collection)
+        run: pacman -Syu --needed --noconfirm git rustup glslang vulkan-icd-loader vulkan-swrast vulkan-validation-layers libretro-shaders-slang
+
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+
+      - name: Build corpus test
+        run: cargo build --release -p badline-vk --example slang_corpus
+
+      - name: Unit tests
+        run: cargo test --release -p badline-vk
+
+      - name: Compile all presets
+        run: target/release/examples/slang_corpus "$SHADERS" --known tests/slang_known_broken.txt | grep -v '^WARN'
+
+      - name: Render reference presets (validation layer)
+        run: target/release/examples/slang_corpus "$SHADERS" --list tests/slang_reference.txt --render --validation --png renders | grep -v '^WARN'
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reference-renders
+          path: renders/
+          if-no-files-found: ignore
+
+  # every preset rendered once (lavapipe needs ~40 min for all on 16 threads): four shards
+  full:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.full)
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    defaults:
+      run:
+        shell: bash
+    env:
+      SHADERS: /usr/share/libretro/shaders/shaders_slang
+      VK_DRIVER_FILES: /usr/share/vulkan/icd.d/lvp_icd.json
+      XDG_CACHE_HOME: ${{ github.workspace }}/.cache
+    steps:
+      - name: Packages
+        run: pacman -Syu --needed --noconfirm git rustup glslang vulkan-icd-loader vulkan-swrast libretro-shaders-slang
+
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
+
+      - name: Build corpus test
+        run: cargo build --release -p badline-vk --example slang_corpus
+
+      - name: Render shard ${{ matrix.shard }}/4
+        run: target/release/examples/slang_corpus "$SHADERS" --known tests/slang_known_broken.txt --render --viewport 640x480 --shard ${{ matrix.shard }}/4 --times | grep -v '^WARN'
