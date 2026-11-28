@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "badline"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "badline-glyphs",
  "badline-vk",
@@ -28,14 +28,14 @@ dependencies = [
 
 [[package]]
 name = "badline-glyphs"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ttf-parser",
 ]
 
 [[package]]
 name = "badline-vk"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ash",
  "png",
@@ -353,7 +353,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "zlib-rs"
