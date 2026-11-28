@@ -66,11 +66,11 @@ SDL3, no Windows/macOS code paths.
 | C64 emulation | Denise 2.9 core: cycle-exact VIC-II, reSID / libresidfp, CIA, drives with true drive emulation, tape, savestates, run-ahead |
 | Media | D64, G64, P64, D71, G71, D81, TAP, T64, PRG, CRT, REU images; archives |
 | Cartridges | EasyFlash, Retro Replay, Action Replay-type freezers, GMod, Trilogic Expert, REU, GeoRAM and more (from Denise) |
-| Window | SDL3, native Wayland (EGL) with X11 fallback, HiDPI, fullscreen (F11 / Alt+Enter), size remembered |
-| Video | Vulkan renderer (Rust, default): C64 colour decoding and PAL pass on the GPU, RetroArch slang presets (libretro collection), frame pacing (the display clocks the emulation on integer-multiple refresh rates, VRR, frame blending); OpenGL 3.2 renderer (being removed) |
+| Window | SDL3, native Wayland with X11 fallback, HiDPI, fullscreen (F11 / Alt+Enter), size remembered |
+| Video | Vulkan renderer (Rust, default): C64 colour decoding and PAL pass on the GPU, RetroArch slang presets (libretro collection), frame pacing (the display clocks the emulation on integer-multiple refresh rates, VRR, frame blending). Needs a Vulkan driver (without a GPU driver: `vulkan-swrast`) |
 | Input | Keyboard (positional), mouse capture (middle button), gamepads with hotplug – the first pad drives joystick #1 |
 | Drag & drop | Drop images onto the window: slot overlay for drive/autostart |
-| Automation | Embedded MCP server, 32 tools; headless mode (no display server needed); VICE binary monitor (API v2) |
+| Automation | Embedded MCP server, 34 tools; headless mode (no display server needed); VICE binary monitor (API v2) |
 | Overlay menu | F12 / gamepad Guide: Media page (drives, cartridge, tape, file browser with archives and directory preview), reset, quit. Other pages are previews. |
 | Settings | Settings without an overlay page yet live in `~/.config/badline/*.ini` and can be changed via MCP. |
 
@@ -141,7 +141,7 @@ Arch Linux with the patched SDL3 included. Only current rolling distributions
 other libraries come from the system:
 
 ```
-sudo pacman -S --needed libpulse curl openal libglvnd vulkan-icd-loader glslang
+sudo pacman -S --needed libpulse curl openal vulkan-icd-loader glslang
 ```
 
 `cargo xtask dist` builds the same tarball (used by the GitHub Actions
@@ -188,7 +188,6 @@ badline -mcp                     # with MCP server on 127.0.0.1:6464
 badline -headless -fetch-roms    # no window/audio, MCP on, ROM download
 badline -headless -unthrottled   # as fast as possible (CI)
 badline -binarymonitor           # VICE binary monitor for C64 Studio, VS64, ...
-badline -renderer gl             # OpenGL renderer for this session (default: Vulkan)
 badline -shader crt-royale.slangp  # slang preset for this session
 badline -help                    # all options
 ```
@@ -207,8 +206,8 @@ slight ghosting, about one frame more latency; `BADLINE_VK_BLEND=off` turns it
 off).
 
 **Testing**: `tests/mcp_smoke.py` runs every MCP tool against a fresh instance
-(`--headless` for the headless variant, `--renderer vulkan` for the Vulkan
-renderer); `tests/renderer_ab.py` compares OpenGL and Vulkan screenshots;
+(`--headless` for the headless variant); `tests/color_check.py` checks the
+colour path, `tests/slang_presets.py` reference slang presets;
 `tests/pacing_check.py` measures frame pacing with `tests/pacing/softscroll.prg`.
 
 ---
@@ -225,8 +224,7 @@ claude mcp add --transport http badline http://127.0.0.1:6464/mcp
 Tools include:
 
 - **Control & media**: `status`, `reset`, `pause`/`resume`, `warp`, `load_media`
-  (with autostart), `eject`, `savestate_save`/`savestate_load`, `renderer`
-  (OpenGL/Vulkan), `pacing` (frame pacing state and statistics), `quit`
+  (with autostart), `eject`, `savestate_save`/`savestate_load`, `pacing` (frame pacing state and statistics), `quit`
 - **Input & observation**: `type_text`, `key`, `joystick`, `run_frames`,
   `wait_for_text`, `read_screen` (screen RAM as text), `screenshot` (raw or as
   rendered with shaders)
@@ -258,7 +256,7 @@ with PiCiJi and the Denise contributors; Badline's changes are © the Badline
 contributors.
 
 Third-party components (reSID, libresidfp, VICE-derived code, glslang,
-SPIRV-Cross, cpp-httplib, fonts, sounds, shaders …) and their licenses are
+cpp-httplib, fonts, sounds, shaders …) and their licenses are
 listed in [NOTICE.md](NOTICE.md). The C64 Pro fonts by Style are included
 unmodified under their own license.
 

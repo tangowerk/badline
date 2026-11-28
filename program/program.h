@@ -10,9 +10,6 @@
 #ifndef FONT_FOLDER
 #define FONT_FOLDER "fonts/"
 #endif
-#ifndef PRESET_FOLDER
-#define PRESET_FOLDER "presets/"
-#endif
 #ifndef IMAGES_FOLDER
 #define IMAGES_FOLDER "images/"
 #endif
@@ -96,7 +93,6 @@ struct Program : Emulator::Interface::Bind {
     auto dataFolder() -> std::string;
     auto fontFolder() -> std::string;
     auto soundFolder() -> std::string;
-    auto presetFolder() -> std::string;
 	auto appFolder() -> std::string;
     auto settingsFile( std::string ident = "" ) -> std::string;
     auto settingsFileFromEmuFolder( std::string ident ) -> std::string;
@@ -152,17 +148,10 @@ struct Program : Emulator::Interface::Bind {
     //video
     auto setVideoDimension(Emulator::Interface* emulator = nullptr) -> void;
     // false: the driver failed to initialize (reason in videoDriverError), a dummy driver is active
-    auto initVideo(bool driverChange = false) -> bool;
-	auto getVideoDriver() -> std::string;
-    // UI thread: switch the video driver ("OpenGL"/"Vulkan") at runtime, the window is recreated;
-    // on failure the previous driver is restored and the reason returned in `error`
-    auto switchRenderer(const std::string& driver, std::string& error) -> bool;
-    auto applyRenderer(const std::string& driver, std::string& error) -> bool;
+    auto initVideo() -> bool;
     std::string videoDriverError;
 	auto videoRefresh8(const uint8_t* frame, unsigned width, unsigned height, unsigned linePitch) -> void override;
 	auto repeatLastFrame() -> void;
-	auto hintExclusiveFullscreen() -> void;
-    auto canExclusiveFullscreen() -> bool;
     auto setVideoFilter() -> void;
 	auto updateCrop( Emulator::Interface* emulator ) -> void;
     auto getCrop(Emulator::Interface* emulator, Emulator::Interface::Crop& crop) -> bool;
@@ -177,15 +166,11 @@ struct Program : Emulator::Interface::Bind {
 
     auto toggleWarp( Warp::Mode mode) -> void;
     auto setWarp( Warp::Mode mode, bool manuell = false ) -> void;
-    auto updateFullscreenSetting() -> void;
     auto fpsChanged() -> void override;
     auto setRotation() -> void;
-    auto checkShaderSupport(Emulator::Interface* emulator) -> void;
 	auto updateOnScreenText() -> void;
     auto takeScreenshot(uint8_t* _data, unsigned _width, unsigned _height) -> void;
     auto bufferScreenshot(uint8_t* _data, unsigned _size) -> void;
-    auto updateHDR() -> void;
-    auto updateBFI() -> void;
 	
     //input
     auto inputPoll(uint16_t deviceId, uint16_t inputId) -> int16_t override;

@@ -45,7 +45,6 @@ struct Cmd {
     bool startInFullscreen = false;
     bool fetchRoms = false;      // -fetch-roms: download missing ROMs at startup
     std::string romDir = "";     // -rom-dir <path>
-    std::string renderer = "";   // -renderer gl|vulkan: video driver for this session
     bool shaderSet = false;      // -shader <path|none>: slang preset for this session (Vulkan)
     std::string shader = "";     // absolute path, "" = none
     bool fetchShaders = false;   // -fetch-shaders: download the slang shader collection at startup

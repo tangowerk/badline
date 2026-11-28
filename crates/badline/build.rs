@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 const WATCHED_DIRS: &[&str] = &["program", "driver", "guikit", "emulation", "deps"];
-const DEV_SHARE_FOLDERS: &[&str] = &["data", "fonts", "presets", "sounds"];
+const DEV_SHARE_FOLDERS: &[&str] = &["data", "fonts", "sounds"];
 
 struct Unit {
     src: PathBuf,
@@ -180,7 +180,7 @@ fn main() {
             println!("cargo:rustc-link-lib=dylib={lib}");
         }
     }
-    for lib in ["GL", "pulse", "pthread", "rt", "dl", "stdc++", "m"] {
+    for lib in ["pulse", "pthread", "rt", "dl", "stdc++", "m"] {
         println!("cargo:rustc-link-lib=dylib={lib}");
     }
     // non-PIE executable as with the former CMake build (-no-pie); a global

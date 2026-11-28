@@ -131,7 +131,10 @@ auto SettingsHelper::unsetObsoleteConfigs(GUIKIT::Settings* settings, Emulator::
             "video_phase_error", "video_phase_error_use", "video_hanover_bars", "video_hanover_bars_use",
             "video_blur", "video_blur_use", "video_scanlines", "video_scanlines_use", "video_interlace",
             "video_interlace_use", "video_luma_rise_use", "video_luma_fall_use", "prepend_yuv_shader",
-            "unset_video_mode_ident"
+            "unset_video_mode_ident",
+            // GL renderer, Denise presets, threaded renderer, HDR, BFI (removed in M-VK3d)
+            "slang_loaded", "threaded_renderer", "hdr_enable", "hdr_gamut", "hdr_nits", "hdr_pw_nits",
+            "hdr_contrast", "bfi_frames", "dark_frames", "strobe_shader"
         };
         static const std::vector<std::string> regionSuffixes = { "_pal", "_ntsc", "_spectrum", "_crtcpu", "_crtgpu" };
         std::vector<std::string> remove;
@@ -163,6 +166,11 @@ auto SettingsHelper::unsetObsoleteConfigs(GUIKIT::Settings* settings, Emulator::
 
             settings->set("unset_mid", true);
         }
+    } else {
+        // GL renderer and Denise's sync options (removed in M-VK3d)
+        for (auto id : {"video_driver", "video_sync", "vrr_sync", "hardsync", "exclusive_fullscreen",
+                        "dynamic_rate_control", "rate_control_delta"})
+            settings->remove(id);
     }
 }
 

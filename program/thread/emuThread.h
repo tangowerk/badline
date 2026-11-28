@@ -19,14 +19,13 @@ struct EmuThread {
     std::atomic<bool> debuggerLock{false};
 
     enum {  EVT_AUTO_LOAD_NO_TRAPS = 4, EVT_DISMISS_PLACEHOLDER = 8,
-            EVT_UPDATE_FPS = 0x10, EVT_SHADER_ERROR = 0x20,
+            EVT_UPDATE_FPS = 0x10,
             EVT_POLL_HOTKEYS = 0x80 };
 
     std::atomic<unsigned> events;
 
     std::atomic<bool> ready;
     std::atomic<bool> kill;
-    std::atomic<bool> freeContext;
 
     std::mutex statusMutex;
     std::mutex hotkeyMutex;

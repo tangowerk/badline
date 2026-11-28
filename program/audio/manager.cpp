@@ -268,16 +268,9 @@ auto AudioManager::setDriveSounds( bool init ) -> void {
 
 auto AudioManager::setRateControl() -> void {
 
-    // video master: DRC always on (internal, no setting); GL: settings as in Denise
-    dynamicRateControl = videoMaster || (allowDrc && globalSettings->get<bool>("dynamic_rate_control", false));
-
-    if (videoMaster)
-        rateDelta = 0.005;
-    else if (dynamicRateControl) {
-        auto _rateDelta = globalSettings->get<float>("rate_control_delta", 0.005, {0.0, 0.010});
-
-        rateDelta = (float)(static_cast<int>(_rateDelta * 10000.0 + 0.5)) / 10000.0;
-    } else
+    // DRC only when the display clocks the emulation (video master / grid; internal, no setting)
+    dynamicRateControl = videoMaster;
+    if (!dynamicRateControl)
         rData.ratio = ratio;
 
     setBufferSize();

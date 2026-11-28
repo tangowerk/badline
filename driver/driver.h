@@ -12,10 +12,6 @@
 #include <memory>
 
 #include "tools/hid.h"
-#include "tools/shaderpass.h"
-#define MAX_SHADERS 64
-#define MAX_TEXTURES 64
-#define MAX_FRAME_HISTORY 128
 
 namespace DRIVER {
 
@@ -26,27 +22,6 @@ struct Viewport {
     int y = 0;
     float ratio = 0.0f;
     float ratioRot = 0.0f;
-};
-
-struct DiskFile {
-    std::string ident = "";
-    std::string path = "";
-    bool isLUT = false;
-    uint8_t* data = nullptr;
-    unsigned size = 0;
-    unsigned width = 0;
-    unsigned height = 0;
-};
-
-struct AppData {
-    float ledDriveState = 0.0;
-    float cropTop = 0.0;
-    float cropLeft = 0.0;
-    float lace = 0.0;
-    float hires = 0.0;
-    float pal = 0.0;
-    float subRegion = 0.0;
-    float flags = 0.0; // free to use
 };
 
 // Overlay UI drawn on top of the picture: glyph atlas (R8) + textured quads.
@@ -105,8 +80,7 @@ struct Picture {
     float cutoffV = 0.0f;
 };
 
-enum Options { OPT_HoldFrame = 1, OPT_Interlace = 2, OPT_DisallowShader = 4, OPT_TakeScreenshot = 8,
-                OPT_DisallowFilter = 0x10, OPT_Pause = 0x20, OPT_Rewind = 0x40, OPT_RGB10 = 0x80 };
+enum Options { OPT_DisallowShader = 4, OPT_TakeScreenshot = 8, OPT_DisallowFilter = 0x10 };
 enum Rotation { ROT_0, ROT_90, ROT_180, ROT_270 };
 
 struct Video {
@@ -119,7 +93,6 @@ struct Video {
     // GPU used by the renderer (empty if unknown)
     virtual auto deviceName() -> std::string { return ""; }
 
-    virtual auto lock(unsigned*& data, unsigned& pitch, unsigned _width, unsigned _height, uint8_t options = 0) -> bool { return false; }
     // picture as C64 colour indices, decoded on the GPU with setPicture (false: not supported)
     virtual auto lockIndexed(uint8_t*& data, unsigned& pitch, unsigned _width, unsigned _height, uint8_t options = 0) -> bool { return false; }
     virtual auto setPicture(const Picture& picture) -> void {}
@@ -127,35 +100,15 @@ struct Video {
     virtual auto unlockAndRedraw() -> void {}
     virtual auto clear() -> void {}
     virtual auto setLinearFilter(bool state) -> void {}
-    virtual auto setShader(ShaderPreset* preset) -> void {}
-    virtual auto setShaderProgressCallback( std::function<void (int pass, bool hasErrors)> onCallback ) -> void {}
-    virtual auto setShaderCacheCallback( std::function<void (DiskFile& diskFile)> onCallback ) -> void {}
-    virtual auto useShaderCache(bool state) -> void {}
-    virtual auto getShaderNativeVertexCode(std::string& slang, std::string& out) -> bool { return false; }
-    virtual auto getShaderNativeFragmentCode(std::string& slang, std::string& out) -> bool { return false; }
     virtual auto synchronize(bool state) -> void {}
 	virtual auto hasSynchronized() -> bool { return false; }
-    virtual auto hardSync(bool state) -> void {}
-    virtual auto setThreaded(bool state) -> void {}
-    virtual auto hasThreaded() -> bool { return false; }
-    virtual auto waitRenderThread() -> void {}
-    // shader compilation in progress (any thread): drives the overlay busy spinner
-    virtual auto setBusyCallback(std::function<void (bool busy)> onCallback) -> void {}
     virtual auto forceResize() -> void {}
-    virtual auto freeContext() -> void {}
     virtual auto lockResize() -> void {}
     virtual auto unlockResize() -> void {}
-
-    virtual auto hintResizing(bool state) -> void {}
-    virtual auto needResizingPreparations(bool useEmuThread) -> bool { return false; }
-    virtual auto prepareResizing() -> void {}
-    virtual auto endResizing() -> void {}
-
 
     // nullptr hides the overlay; thread-safe
     virtual auto setOverlay(std::shared_ptr<const OverlayFrame> frame) -> void {}
     virtual auto hasOverlay() -> bool { return false; }
-
 
     // frame pacing (Vulkan, M-Pacing1): every new picture is presented `repeat` times; with
     // queueDepth d > 0 present N waits until present N-d is on screen (video master)
@@ -178,11 +131,7 @@ struct Video {
     // (the pacing decision is re-evaluated)
     virtual auto pacingChanged() -> bool { return false; }
 
-    virtual auto setVRR(bool state, float speed = 0.0) -> void {}
-    virtual auto hasVRR() -> bool { return false; }
-    virtual auto changeThreadPriorityToRealtime(bool state) -> void {}
 
-    virtual auto getAppData() -> AppData* { return nullptr; }
 
     virtual auto setAspectRatio(int mode, bool _integerScaling) -> void {} // mode: 0: off, 1: TV, 2: Native, 3: Native Alt
     virtual auto getAspectRatio() -> int { return 0; }
@@ -190,28 +139,16 @@ struct Video {
     virtual auto setIntegerScalingDimension( unsigned _w, unsigned _h, bool _ds) -> void {}
     virtual auto getIntegerScalingDimension(unsigned& _w, unsigned& _h) -> void { }
 
-    virtual auto shaderSupport() -> bool { return false; }
     virtual auto setScreenshotCallback(ScreenshotCallback callback) -> void {}
-	/** direct 3D only */
-	virtual auto hasExclusiveFullscreen() -> bool { return false; }
-	virtual auto hintExclusiveFullscreen(bool state, float rate = 0.0) -> void {}
-    virtual auto disableExclusiveFullscreen() -> void {}
 
-    virtual auto activateApp(bool state) -> void {}
 
-    virtual auto canHardSync() -> bool { return false; }
-    virtual auto canExclusiveFullscreen() -> bool { return false; }
     virtual auto setRotation(Rotation rotation) -> void {}
     virtual auto getRotation() -> Rotation { return ROT_0; }
 
-    virtual auto HDRsupport() -> bool { return false; }
-    virtual auto setHDR(bool state, float maxNits, float paperWhiteNits, float contrast, bool expandGamut) -> void {}
-    virtual auto setBFI(unsigned frames, unsigned darkFrames) -> void {}
 
     virtual ~Video() = default;
-    static auto create(const std::string& driver) -> Video*;
-	static auto available() -> std::vector<std::string>;
-	static auto preferred() -> std::string;
+    // the Vulkan renderer (the only one since M-VK3d)
+    static auto create() -> Video*;
 };
 
 struct Audio {
@@ -246,8 +183,6 @@ struct Input {
 
     virtual auto init(uintptr_t handle) -> bool { return true; }
     virtual auto term() -> void {}
-    // the window was recreated (renderer switch); devices and mappings stay
-    virtual auto setWindow(uintptr_t handle) -> void {}
     virtual auto mAcquire() -> void {}
     virtual auto mUnacquire() -> void {}
     virtual auto mIsAcquired() -> bool { return false; }

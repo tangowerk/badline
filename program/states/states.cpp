@@ -483,7 +483,7 @@ auto States::updateModels() -> void {
 
     if (regionChange) {
         if (videoDriver && activeVideoManager)
-            activeVideoManager->reloadSettings(false);
+            activeVideoManager->reloadSettings();
     }
     
     if (audioManager && (regionChange || resamplerChange)) {

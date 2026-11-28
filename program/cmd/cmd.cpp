@@ -16,7 +16,6 @@ Cmd::Cmd(int argc, char** argv) {
     std::string configIdent;
     bool mcpPortNext = false;
     bool romDirNext = false;
-    bool rendererNext = false;
     bool shaderNext = false;
     std::vector<std::string> out;
     hasContent = false;
@@ -67,19 +66,6 @@ Cmd::Cmd(int argc, char** argv) {
             continue;
         }
 
-        if (rendererNext) {
-            rendererNext = false;
-            if (arg == "gl" || arg == "opengl")
-                renderer = "OpenGL";
-            else if (arg == "vulkan" || arg == "vk")
-                renderer = "Vulkan";
-            else {
-                invalidParam = "-renderer " + arg;
-                break;
-            }
-            continue;
-        }
-
         if (mcpPortNext) {
             mcpPortNext = false;
             if (!arg.empty() && arg.size() <= 5 && std::all_of(arg.begin(), arg.end(), ::isdigit)) {
@@ -119,8 +105,6 @@ Cmd::Cmd(int argc, char** argv) {
             fetchRoms = true;
         else if ( arg == "-rom-dir" )
             romDirNext = true;
-        else if ( arg == "-renderer" )
-            rendererNext = true;
         else if ( arg == "-shader" )
             shaderNext = true;
         else if ( arg == "-fetch-shaders" )
@@ -237,7 +221,6 @@ auto Cmd::prepareOptions() -> void {
 	options.push_back({"-debugcart", "Generate exit codes for VICE Testbench", ""});
 	options.push_back({"-limitcycles", "Specify number of cycles to run before quitting with an error (checks at complete frames)", "<cycles>"});
 	options.push_back({"-exitscreenshot", "Save screen to PNG file, when exiting App", "<filePath>"});
-	options.push_back({"-renderer", "Video renderer for this session (default: setting video_driver, OpenGL)", "<gl|vulkan>"});
 	options.push_back({"-shader", "RetroArch slang preset for this session (Vulkan; default: setting video_slang_preset)", "<file.slangp|none>"});
 	options.push_back({"-fetch-shaders", "Download the libretro slang shader collection (pinned commit, SHA-1 checked) into ~/.local/share/badline/shaders", ""});
 	options.push_back({"-rom-dir", "Additional folder with C64/drive ROMs (default ~/.local/share/badline/roms)", "<path>"});
@@ -524,12 +507,9 @@ auto Cmd::parse() -> void {
 
 	if (debug) {
 		dynamic_cast<LIBC64::Interface*> (emuC64)->activateDebugCart( cycles );
-		globalSettings->set<bool>("video_sync", false);
 		globalSettings->set<bool>("fps", true);
 		settingsC64->set<bool>("video_cycle_accuracy", true);
         settingsC64->set<bool>("Emulate_Mechanics", emulateDriveMechanics);
-        settingsC64->set<unsigned>("video_crt", 0);
-	    settingsC64->set<unsigned>("threaded_renderer", 0);
 		
 		updateModel(emuC64, LIBC64::Interface::ModelIdDisableGreyDotBug, 0);
 	}	

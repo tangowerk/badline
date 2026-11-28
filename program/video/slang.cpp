@@ -200,7 +200,7 @@ auto download(const std::function<void(const std::string&)>& progress, std::stri
 // ------------------------------------------------------------ loading
 
 auto supported() -> bool {
-    return videoDriver && !cmd->noGui && !cmd->noDriver && program->getVideoDriver() == "Vulkan";
+    return videoDriver && !cmd->noGui && !cmd->noDriver;
 }
 
 static std::mutex mutex;              // state, request, worker
@@ -234,7 +234,7 @@ auto wanted() -> std::string {
 }
 
 // runs a load (callers checked supported() on the UI thread); the caller does not hold `mutex`.
-// The video driver is not replaced meanwhile: initVideo/applyRenderer wait() first.
+// The video driver is not replaced meanwhile: initVideo/quit wait() first.
 static auto run(const std::string& path, std::string& result) -> bool {
     auto start = std::chrono::steady_clock::now();
     if (!videoDriver) {

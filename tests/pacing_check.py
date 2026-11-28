@@ -81,7 +81,7 @@ def main():
     if not args.attach:
         cfgdir = tempfile.mkdtemp(prefix="badline-pacing-")
         env = dict(os.environ, XDG_CONFIG_HOME=cfgdir)
-        cmd = [args.binary, "-config-c64", os.path.join(cfgdir, "c64.ini"), "-renderer", "vulkan",
+        cmd = [args.binary, "-config-c64", os.path.join(cfgdir, "c64.ini"),
                "-mcp", str(args.port)]
         if args.fullscreen:
             cmd.append("-fullscreen")

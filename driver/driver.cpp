@@ -3,7 +3,6 @@
 #include <cmath>
 #include "driver.h"
 
-#include "video/opengl3/sdl.cpp"
 #include "video/vulkan/vulkan.cpp"
 
 #ifdef DRV_OPENAL
@@ -15,19 +14,8 @@
 
 namespace DRIVER {
 
-auto Video::available() -> std::vector<std::string> {
-    return { "OpenGL", "Vulkan" };
-}
-
-auto Video::preferred() -> std::string {
-    return "Vulkan";
-}
-
-auto Video::create(const std::string& driver) -> Video* {
-    if(driver == "OpenGL") return new SDLGL();
-    if(driver == "Vulkan") return new SDLVK();
-
-    return new Video;
+auto Video::create() -> Video* {
+    return new SDLVK();
 }
 
 auto Audio::available() -> std::vector<std::string> {

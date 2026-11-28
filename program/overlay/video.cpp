@@ -74,7 +74,7 @@ auto PresetRow::draw(Painter& p, bool focused) -> void {
     p.textClip(rect.x + 4, rect.y + 2, label, LabelWidth - 8, focused ? Theme::TextBright : Theme::Text);
     std::string name = s.path.empty() ? "None" : fileName(s.path);
     if (!SlangPresets::supported())
-        name = "Vulkan renderer only";
+        name = "Not available (headless)";
     p.textClip(rect.x + LabelWidth, rect.y + 2, name, rect.w - LabelWidth - 4,
         focused ? Theme::TextBright : (s.path.empty() ? Theme::TextDim : Theme::TextBright), OverlayFont::Mono);
 

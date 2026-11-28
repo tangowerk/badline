@@ -93,6 +93,10 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ### Changed
 
+- **Vulkan only (M-VK3d).** Vulkan is the only renderer now. Without a usable
+  Vulkan driver Badline exits with a message pointing to a software driver
+  (Arch `vulkan-swrast`, lavapipe) or `-headless`.
+
 - Overlay Video page: the shader choice, brightness/saturation preview widgets
   are replaced by the real preset row and picture settings; integer scaling
   and border stay preview. Sliders accept DEL for their default value.
@@ -133,6 +137,19 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ### Removed
 
+- **OpenGL renderer (M-VK3d)** with everything only it used: the SDL3 GL
+  driver and its render thread, Denise's slang shader parser and GL shader
+  cache, the bundled Denise presets (`data/presets`), SPIRV-Cross, the GL
+  HDR/BFI/exclusive fullscreen hooks, `-renderer`, the `video_driver`
+  setting, the MCP tool `renderer`, the hotkeys "Toggle Renderer" and
+  "Threaded Renderer" (their ids stay reserved), Denise's sync settings
+  (`video_sync`, `vrr_sync`, `hardsync`, `threaded_renderer`,
+  `dynamic_rate_control`, `rate_control_delta`; frame pacing replaced them),
+  the frame skip counter and the RGB picture path of the driver interface.
+  Obsolete settings are deleted at start. `libglvnd` is no longer a runtime
+  dependency. The "Sync status" hotkey shows the pacing state.
+- `tests/renderer_ab.py` (GL/Vulkan comparison); its MCP helpers moved to
+  `tests/mcplib.py`, `tests/mcp_smoke.py --renderer` is gone.
 - Denise's legacy CPU CRT emulation (`video_crt_legacy`: blur, Hanover bars,
   luma rise/fall, phase error, scanlines), the generated colour spectra
   (`video_spectrum`; the default picture is now the Colodore PAL palette), the
@@ -140,13 +157,15 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
   meta data in the frame buffer (`videoAddMeta`), interlace/hires leftovers
   of the Amiga and the 16 bit frame path. Obsolete settings (also their
   per-region variants) are deleted from the C64 settings at start.
-- GL (until it goes in M-VK3d) shows the plain palette without picture
+- GL (until it went in M-VK3d) showed the plain palette without picture
   settings; Denise presets that need the 10 bit YUV input (all bundled C64
-  presets) are no longer applied there. (They failed to compile on this
+  presets) were no longer applied there. (They failed to compile on this
   system anyway, also before M-VK3a.)
 
 ### Fixed
 
+- The release tarball's README listed `libglvnd` instead of `glslang` as a
+  runtime dependency.
 - Slang presets with Windows path separators (`..\..\shaders\x.slang`, 606
   presets of the current collection, e.g. all of scanline-classic) failed to
   load; backslashes are converted like RetroArch does (Badline bug since

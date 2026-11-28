@@ -511,34 +511,6 @@ auto McpServer::registerTools() -> void {
             };
         });
 
-    // ------------------------------------------------------------ renderer
-    addTool("renderer",
-        "Get or switch the video renderer (window mode only). Without 'set' it reports the active one; "
-        "'set' switches at runtime (the window is recreated, the emulation state stays). "
-        "A failed switch restores the previous renderer and returns an error.",
-        R"({"type":"object","properties":{"set":{"type":"string","enum":["gl","vulkan"]}}})",
-        [](Job& job) {
-            std::string set = job.args.getString("set");
-            if (!set.empty() && set != "gl" && set != "vulkan")
-                return job.fail("set must be 'gl' or 'vulkan'");
-            job.phase = Job::Ui;
-            job.onUi = [set](Job& job) {
-                if (!set.empty()) {
-                    std::string error;
-                    if (!program->switchRenderer(set == "vulkan" ? "Vulkan" : "OpenGL", error))
-                        return job.fail("Renderer switch failed: " + error);
-                }
-                Json s = Json::object();
-                bool headless = cmd->noGui || cmd->noDriver;
-                s.set("renderer", headless ? "none" : (program->getVideoDriver() == "Vulkan" ? "vulkan" : "gl"));
-                std::string device = videoDriver->deviceName();
-                if (!device.empty())
-                    s.set("device", device);
-                job.addText(s.dump());
-                job.finish();
-            };
-        });
-
     // ------------------------------------------------------------ shader
     addTool("shader",
         "RetroArch slang shader preset of the Vulkan renderer (window mode). Without arguments it reports "
@@ -563,7 +535,7 @@ auto McpServer::registerTools() -> void {
             job.phase = Job::Ui;
             job.onUi = [load, clear, param, value](Job& job) {
                 if (!SlangPresets::supported())
-                    return job.fail("Shader presets need the Vulkan renderer in window mode");
+                    return job.fail("Shader presets need the window mode (Vulkan renderer)");
                 if (!load.empty() || clear) {
                     std::string result;
                     if (!SlangPresets::loadNow(clear ? "" : load, true, result))
@@ -597,7 +569,7 @@ auto McpServer::registerTools() -> void {
         "colour indices on the GPU: palette, saturation/contrast/brightness (0..200, 100 = neutral), gamma "
         "(30..280, 100 = 1.0) and the C64 PAL/NTSC pass (pal_pass: per-line phase error in degrees, PAL delay "
         "line with Hanover bars -50..50, luma rise/fall delay in pixels 1..4, chroma low pass taps 0 = off or "
-        "3..21). GL and raw screenshots show the plain palette. Without arguments it reports the settings, the "
+        "3..21). Raw screenshots show the plain palette. Without arguments it reports the settings, the "
         "palettes, the region and the raster parity of the first picture line.",
         R"({"type":"object","properties":{)"
         R"("palette":{"type":"integer","description":"Palette id"},)"
@@ -671,7 +643,7 @@ auto McpServer::registerTools() -> void {
                 bool ntsc = vm->emulator->getRegionEncoding() == Emulator::Interface::Region::Ntsc;
                 s.set("region", ntsc ? "NTSC" : "PAL");
                 s.set("first_line_odd", (activeEmulator->cropTop() & 1) != 0);
-                s.set("gpu_decode", program->getVideoDriver() == "Vulkan" && !cmd->noGui && !cmd->noDriver);
+                s.set("gpu_decode", !cmd->noGui && !cmd->noDriver);
                 job.addText(s.dump());
                 job.finish();
             };

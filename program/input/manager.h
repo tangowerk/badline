@@ -77,12 +77,12 @@ struct Hotkey {
         ToggleWarp, ToggleWarpAggressive, Presentation, Palette, Geometry, System, Firmware, Control,
 		SwapPortDevices, Power, SoftReset, AnyLoad,
         RunAheadUp, RunAheadDown, RunAheadToggleMode, AudioRecord /* unused, keeps persisted hotkey ids stable */, ToggleCycleRenderer, EF3Menu, Freeze, ToggleBorder,
-        SyncStatus, ThreadedRenderer, ToggleSCVideo, ToggleShader, DiskSwapUp, DiskSwapDown, AutoStart,
+        SyncStatus, RemovedThreadedRenderer /* keep slot */, ToggleSCVideo, ToggleShader, DiskSwapUp, DiskSwapDown, AutoStart,
         Warp, WarpOff, Quit, Audio, SwapJoypadsPort2, ApplyWindowSize, ToggleBorderPrev,
         Rotation, CropWindow, PowerWithUnplugCart, ToggleScaling, ToggleFPS, ToggleAudioStats, RemovedTurboToggle, // keep slot: ids are saved as hotkey_<id>
         TakeScreenShot, Toggle2MHzCpuTurbo, PowerWithEjectDisks, Rewind,
         DebuggerToggle, DebuggerStepInto, DebuggerStepOver, DebuggerStepOut, DebuggerLine, DebuggerFrame, Misc,
-        PrioDoubleAssignment, ToggleFastForward, ToggleRenderer,
+        PrioDoubleAssignment, ToggleFastForward, RemovedToggleRenderer /* keep slot (GL removed in M-VK3d) */,
         Autofire = 1000,
     } id;
     std::string name;

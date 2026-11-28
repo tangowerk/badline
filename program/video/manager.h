@@ -1,29 +1,17 @@
 #pragma once
 
 #include "../../emulation/interface.h"
-#include "../../driver/tools/shaderpass.h"
-
-struct ShaderParser;
 
 namespace GUIKIT {
     struct Settings;
 }
 
-// Emulator pictures to the video driver. Vulkan gets the C64 colour indices; the palette,
-// picture settings and the C64 PAL/NTSC pass run in its decode shader (M-VK3b). GL (until VK3d)
-// gets the plain palette as RGB.
+// Emulator pictures to the video driver as C64 colour indices; the palette, picture settings
+// and the C64 PAL/NTSC pass run in the Vulkan decode shader (M-VK3b).
 struct VideoManager {
     VideoManager(Emulator::Interface* emulator);
-    ~VideoManager();
 
-    bool rebuildShader = true;
-    ShaderParser* parser = nullptr;
-
-    static uint8_t frameRenderPos;
-    static uint8_t frameRenderTrigger;
     static unsigned takeScreenShots;
-
-    static constexpr unsigned RENDER_OPT_PAUSE = 0x1000000;
 
     // frame pacing decision of the Vulkan renderer (setPacing), read by the MCP `pacing` tool
     struct Pacing {
@@ -39,12 +27,9 @@ struct VideoManager {
     };
     static Pacing pacing;
 
-    static auto setFrameRender(uint8_t limit) -> void;
     static auto setSynchronize() -> void;
     static auto setPacing() -> void;
     static auto pacingStateName() -> std::string;
-    static auto setHardSync() -> void;
-    static auto unloadDataStorage() -> void;
 
     bool suppressShaderByHotkey = false;
 
@@ -67,31 +52,25 @@ struct VideoManager {
         unsigned chromaTaps = 0;    // video_chroma_taps 0 (off), 3..21 odd
     } picture;
 
-    // plain palette as 0xAARRGGBB (GL, raw images)
+    // plain palette as 0xAARRGGBB (raw images)
     uint32_t colorTable[16] = {};
     // luma of the plain palette (audio luma interference)
     float lumaTable[16] = {};
 
     auto setPalette(Emulator::Interface::Palette* palette) -> void;
-    auto reloadSettings(bool reloadPreset) -> void;
+    auto reloadSettings() -> void;
     // C64 settings <- `picture`, then applied
     auto savePicture() -> void;
     // Vulkan decode settings from palette, picture settings, region and crop
     auto updatePicture() -> void;
 
-    auto renderFrame(const uint8_t* src, unsigned width, unsigned height, unsigned srcPitch, unsigned options = 0) -> void;
+    auto renderFrame(const uint8_t* src, unsigned width, unsigned height, unsigned srcPitch) -> void;
     auto takeScreenshot(unsigned unscaled, const uint8_t* src, unsigned width, unsigned height, unsigned pitch) -> void;
     auto sampleLuma(unsigned width, unsigned height, const uint8_t* src, unsigned srcPitch) -> void;
     auto powerOff() -> void {}
 
     static auto getInstance( Emulator::Interface* emulator ) -> VideoManager*;
 
-    // Denise slang presets on GL (removed in M-VK3d)
-    auto loadPreset(const std::string& path, std::vector<std::string>& errors) -> ShaderPreset*;
-    auto loadPreset(const std::string& path) -> void;
-    auto loadPreset() -> bool;
-    auto clearPreset() -> void;
-    auto finishPreset() -> void;
     auto toggleShaderTemporary() -> bool;
 
 private:

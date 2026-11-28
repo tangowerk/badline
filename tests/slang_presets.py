@@ -22,8 +22,8 @@ import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from renderer_ab import Client, check, compare, decode_png, image_of, text_of  # noqa: E402
-import renderer_ab  # noqa: E402
+from mcplib import Client, check, compare, decode_png, image_of, text_of  # noqa: E402
+import mcplib  # noqa: E402
 
 # (preset relative to the shader directory, feature it covers)
 PRESETS = [
@@ -80,7 +80,7 @@ def main():
     if args.cold:
         env["XDG_CACHE_HOME"] = os.path.join(base, "cache")
     errlog = open(os.path.join(base, "stderr.txt"), "w+")
-    proc = subprocess.Popen([args.binary, "-config-c64", cfg, "-renderer", "vulkan", "-mcp", str(args.port)],
+    proc = subprocess.Popen([args.binary, "-config-c64", cfg, "-mcp", str(args.port)],
                             env=env, stdout=subprocess.DEVNULL, stderr=errlog, text=True)
     client = Client(args.port)
     try:
@@ -159,8 +159,8 @@ def main():
     errors = [l.rstrip() for l in errlog if "validation" in l]
     check("no Vulkan validation messages", not errors, "\n    " + "\n    ".join(errors[:8]))
     print(f"screenshots: {out}")
-    print(f"{renderer_ab.PASS} ok, {renderer_ab.FAIL} failed")
-    return 1 if renderer_ab.FAIL else 0
+    print(f"{mcplib.PASS} ok, {mcplib.FAIL} failed")
+    return 1 if mcplib.FAIL else 0
 
 
 if __name__ == "__main__":

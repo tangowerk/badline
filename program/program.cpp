@@ -127,9 +127,11 @@ Program::Program() {
 auto Program::finishStartup() -> void {
     InputManager::initDriver();
     AudioManager::initDriver();
-    if (!initVideo() && !cmd->noDriver && getVideoDriver() == "Vulkan") {
-        // no silent fallback (SPEC "Decisions M-VK1")
-        fprintf(stderr, "Vulkan renderer failed: %s\n", videoDriverError.c_str());
+    if (!initVideo() && !cmd->noDriver) {
+        // no silent fallback (SPEC "Decisions M-VK1", "Decisions M-VK3d")
+        fprintf(stderr, "Vulkan renderer failed: %s\n"
+            "Badline needs a Vulkan driver. Without a GPU driver install a software one "
+            "(Arch: vulkan-swrast), or run without a window (-headless).\n", videoDriverError.c_str());
         GUIKIT::Application::exitCode = 1;
         GUIKIT::Application::isQuit = true;
         return;
@@ -234,7 +236,6 @@ auto Program::initUserInterface() -> void {
         emuThread->enable( false );
         GUIKIT::Application::loop = [this]() { loop(); };
     } else {
-        videoDriver->freeContext();
 		GUIKIT::Application::loop = [this]() { loopUserInterface(); };
 		emuThread->enable( true );
     }
@@ -431,9 +432,6 @@ auto Program::power( Emulator::Interface* emulator, bool regular ) -> void {
 
 		if (emuSwap) {
             setVideoFilter();
-		    updateHDR();
-		    updateBFI();
-            activeVideoManager->rebuildShader = true;
             setVideoDimension(activeEmulator);
 		    updateOnScreenText();
 		    initFastForward();
@@ -453,8 +451,6 @@ auto Program::power( Emulator::Interface* emulator, bool regular ) -> void {
 	activeEmulator->power();
     if (emuSwap)
         setRotation();
-
-    updateFullscreenSetting();
 }
 
 auto Program::getSpeedBySelectedProfile(float& speed, bool& percent) -> unsigned {
@@ -563,7 +559,6 @@ auto Program::powerOff() -> void {
 		statusHandler->clear();
 		if (activeVideoManager)
 			activeVideoManager->powerOff();
-        videoDriver->hintExclusiveFullscreen( false );
 		audioDriver->clear();
 		audioManager->powerOff();
 		filePool->unloadOrphaned();
@@ -720,7 +715,6 @@ auto Program::hasFocus() -> bool {
 }
 
 auto Program::quit() -> void {
-    videoDriver->disableExclusiveFullscreen();
     quitInProgress = true;
     SlangPresets::wait();
     if (mcpServer) {
@@ -777,7 +771,6 @@ auto Program::quit() -> void {
     for(auto emulator : emulators)
         delete emulator;
     emulators.clear();
-    VideoManager::unloadDataStorage();
 
     // in case of exit request from emulation core
     GUIKIT::Application::loop = nullptr;
@@ -807,10 +800,6 @@ auto Program::settingsFile( std::string ident ) -> std::string {
 
 auto Program::settingsFileFromEmuFolder( std::string ident ) -> std::string {
     return installFolder() + ident + SETTINGS_FILE;
-}
-
-auto Program::presetFolder() -> std::string {
-    return installFolder() + PRESET_FOLDER;
 }
 
 auto Program::soundFolder() -> std::string {

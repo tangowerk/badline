@@ -104,7 +104,7 @@ impl Stage {
 static INIT: Once = Once::new();
 
 fn init() {
-    // never finalized: glslang counts process clients, the GL path initializes/finalizes on its own
+    // never finalized: initialized once for the process lifetime
     INIT.call_once(|| unsafe {
         glslang_initialize_process();
     });

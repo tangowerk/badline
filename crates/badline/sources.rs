@@ -13,7 +13,7 @@ pub struct Group {
 
 pub const GROUPS: &[Group] = &[
     Group {
-        name: "lha / SPIRV-Cross / guikit / driver (plain)",
+        name: "lha / guikit (plain)",
         flags: &[],
         program: false,
         files: &[
@@ -38,15 +38,7 @@ pub const GROUPS: &[Group] = &[
             "deps/lha/lk7_decoder.cpp",
             "deps/lha/crc16.cpp",
             "deps/lha/lha_arch_unix.cpp",
-            "deps/SPIRV-Cross/spirv_cross.cpp",
-            "deps/SPIRV-Cross/spirv_cfg.cpp",
-            "deps/SPIRV-Cross/spirv_glsl.cpp",
-            "deps/SPIRV-Cross/spirv_parser.cpp",
-            "deps/SPIRV-Cross/spirv_cross_parsed_ir.cpp",
             "guikit/api.cpp",
-            "driver/tools/spirvReflection.cpp",
-            "driver/tools/ShaderCache.cpp",
-            "driver/video/thread/renderThread.cpp",
         ],
     },
     Group {
@@ -200,7 +192,6 @@ pub const GROUPS: &[Group] = &[
             "program/cmd/cmd.cpp",
             "program/video/palette.cpp",
             "program/video/manager.cpp",
-            "program/video/shaderParser.cpp",
             "program/video/slang.cpp",
             "program/tools/httpClient.cpp",
             "program/tools/diskGuesser.cpp",
@@ -231,7 +222,6 @@ pub const GROUPS: &[Group] = &[
             "%version",
             "-DAPP_NAME=\"Badline\"",
             "-DDATA_FOLDER=\"data/\"",
-            "-DPRESET_FOLDER=\"presets/\"",
             "-DSOUND_FOLDER=\"sounds/\"",
         ],
         program: true,

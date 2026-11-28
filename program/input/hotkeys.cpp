@@ -31,12 +31,10 @@ auto InputManager::setHotkeys() -> void {
     hotkeys.push_back( {Hotkey::Id::Rotation, "image rotation"} );
 
     hotkeys.push_back( {Hotkey::Id::SyncStatus, "Sync status"} );
-    hotkeys.push_back( {Hotkey::Id::ThreadedRenderer, "Threaded Renderer"} );
     hotkeys.push_back( {Hotkey::Id::Quit, "exit"} );
 
     //hotkeys.push_back( {Hotkey::Id::ToggleSCVideo, "toggle S/C-Video"} );
     hotkeys.push_back( {Hotkey::Id::ToggleShader, "toggle Shader"} );
-    hotkeys.push_back( {Hotkey::Id::ToggleRenderer, "Toggle Renderer (OpenGL/Vulkan)"} );
     hotkeys.push_back( {Hotkey::Id::ToggleBorder, "toggle border"} );
     hotkeys.push_back( {Hotkey::Id::ToggleBorderPrev, "toggle border prev"} );
     hotkeys.push_back( {Hotkey::Id::ToggleScaling, "toggle scaling"} );
@@ -253,14 +251,6 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             }
             break;
 
-        case Hotkey::Id::ToggleRenderer: {
-            std::string target = program->getVideoDriver() == "Vulkan" ? "OpenGL" : "Vulkan";
-            std::string error;
-            bool ok = program->switchRenderer(target, error);
-            if (statusHandler)
-                statusHandler->setMessage(ok ? "Renderer: " + target : target + " failed: " + error, !ok);
-        } break;
-
         case Hotkey::Id::Fullscreen:
             if (sdlWindow)
                 sdlWindow->setFullScreen( !sdlWindow->fullScreen() );
@@ -349,15 +339,10 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             // opened GTK settings windows; overlay pages replace them
             break;
         case Hotkey::Id::SyncStatus: {
-            std::string _str = videoDriver->hasThreaded() ? "Threaded  " : "";
-
-            if (videoDriver->hasSynchronized()) {
-                _str += "Vsync";
-                _str += VideoManager::frameRenderTrigger > 1 ? "(" + std::to_string(VideoManager::frameRenderTrigger) + "x)  " : "  ";
-            }
-
-            _str += videoDriver->hasVRR() ? "VRR  " : "";
-            _str += audioDriver->hasSynchronized() ? "Audiosync  " : "";
+            std::string _str = VideoManager::pacingStateName();
+            if (VideoManager::pacing.repeat > 1)
+                _str += " (" + std::to_string(VideoManager::pacing.repeat) + "x)";
+            _str += "  ";
             _str += audioManager->dynamicRateControl ? "DRC  " : "";
             float monitorFrequency = (sdlWindow ? sdlWindow->refreshRate() : 0.0f);
             _str += GUIKIT::String::convertDoubleToString(monitorFrequency, 3 );
@@ -369,27 +354,6 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             emuThread->lock();
             program->requestScreenshot();
             break;
-        case Hotkey::Id::ThreadedRenderer: {
-            auto _settings = Program::getSettings( activeEmulator );
-            unsigned tr = _settings->get<unsigned>("threaded_renderer", 0);
-            if (++tr == 3)
-                tr = 0;
-
-            _settings->set<unsigned>("threaded_renderer", tr);
-
-
-            emuThread->lock();
-            if (statusHandler) {
-                switch (tr) {
-                    default:
-                    case 0: statusHandler->setMessage( "Threaded Renderer disabled", false, true ); break;
-                    case 1: statusHandler->setMessage("Threaded Renderer enabled", false, true); break;
-                    case 2: statusHandler->setMessage("Threaded Renderer automatic", false, true ); break;
-                }
-            }
-
-            VideoManager::setSynchronize();
-        } break;
         case Hotkey::Id::ToggleShader:
         case Hotkey::Id::ToggleSCVideo: {
             if (!activeEmulator)

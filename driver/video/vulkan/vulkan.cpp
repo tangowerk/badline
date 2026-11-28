@@ -52,9 +52,7 @@ struct SDLVK : public Video {
     std::atomic<bool> capsChanged{false};
     float mvp[16];
 
-    std::vector<uint32_t> buffer;
     std::vector<uint8_t> indexBuffer; // C64 colour indices (lockIndexed)
-    bool indexed = false;             // the latest picture is in indexBuffer
     BvkPicture picture = {};
     bool hasPicture = false;
     unsigned frameWidth = 0;
@@ -254,20 +252,6 @@ struct SDLVK : public Video {
 
     // ------------------------------------------------------------ frame
 
-    auto lock(unsigned*& data, unsigned& pitch, unsigned _width, unsigned _height, uint8_t _options = 0) -> bool {
-        if (!vk)
-            return false;
-        std::lock_guard<std::recursive_mutex> lock(mutex);
-        resizeFrame(_width, _height);
-        if (buffer.size() != (size_t)_width * _height)
-            buffer.assign((size_t)_width * _height, 0);
-        indexed = false;
-        options = _options;
-        pitch = _width;
-        data = buffer.data();
-        return data != nullptr;
-    }
-
     auto lockIndexed(uint8_t*& data, unsigned& pitch, unsigned _width, unsigned _height, uint8_t _options = 0) -> bool {
         if (!vk)
             return false;
@@ -275,7 +259,6 @@ struct SDLVK : public Video {
         resizeFrame(_width, _height);
         if (indexBuffer.size() != (size_t)_width * _height)
             indexBuffer.assign((size_t)_width * _height, 0);
-        indexed = true;
         options = _options;
         pitch = _width;
         data = indexBuffer.data();
@@ -324,7 +307,7 @@ struct SDLVK : public Video {
         render(false, true, false, true);
     }
 
-    // like GL: only a black window (no overlay, no text)
+    // only a black window (no overlay, no text)
     auto clear() -> void {
         std::lock_guard<std::recursive_mutex> lock(mutex);
         render(false, false, false, false);
@@ -351,16 +334,13 @@ struct SDLVK : public Video {
         f.window_width = viewScreen.windowWidth;
         f.window_height = viewScreen.windowHeight;
         if (upload && hasFrame) {
-            if (indexed)
-                f.indices = indexBuffer.data();
-            else
-                f.frame = buffer.data();
+            f.indices = indexBuffer.data();
             f.frame_width = frameWidth;
             f.frame_height = frameHeight;
             f.frame_pitch = frameWidth;
         }
         f.show_frame = showFrame && hasFrame;
-        // GL viewports count from the bottom: mirror so both renderers place the picture identically
+        // viewport.y counts from the bottom (GL convention of the shared viewport code): mirror it
         f.vp_x = viewport.x;
         f.vp_y = (int)viewScreen.windowHeight - viewport.y - (int)viewport.height;
         f.vp_width = viewport.width;

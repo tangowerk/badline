@@ -4,12 +4,8 @@
 #include "../../guikit/api.h"
 #include "../../emulation/libc64/interface.h"
 #include "../thread/emuThread.h"
-#include "shaderParser.h"
 #include "sync.cpp"
-#include "../tools/dataStorage.h"
 
-uint8_t VideoManager::frameRenderPos = 0;
-uint8_t VideoManager::frameRenderTrigger = 1;
 unsigned VideoManager::takeScreenShots = 0;
 
 std::vector<VideoManager*> videoManagers;
@@ -22,24 +18,10 @@ auto VideoManager::getInstance( Emulator::Interface* emulator ) -> VideoManager*
     return nullptr;
 }
 
-auto VideoManager::unloadDataStorage() -> void {
-    ShaderParser::dataStorage->unload();
-}
-
-auto VideoManager::setFrameRender(uint8_t limit) -> void {
-    frameRenderTrigger = limit;
-    frameRenderPos = 0;
-}
-
 VideoManager::VideoManager(Emulator::Interface* emulator) {
     this->emulator = emulator;
     this->settings = Program::getSettings(emulator);
-    parser = new ShaderParser;
     setPalette(&emulator->palettes[0]);
-}
-
-VideoManager::~VideoManager() {
-    delete parser;
 }
 
 auto VideoManager::setPalette(Emulator::Interface::Palette* palette) -> void {
@@ -53,7 +35,7 @@ auto VideoManager::setPalette(Emulator::Interface::Palette* palette) -> void {
     updatePicture();
 }
 
-auto VideoManager::reloadSettings(bool reloadPreset) -> void {
+auto VideoManager::reloadSettings() -> void {
     auto& p = picture;
     p.saturation = settings->get<unsigned>("video_saturation", 100u, {0u, 200u});
     p.contrast = settings->get<unsigned>("video_contrast", 100u, {0u, 200u});
@@ -67,9 +49,6 @@ auto VideoManager::reloadSettings(bool reloadPreset) -> void {
     p.lumaFall = settings->get<float>("video_luma_fall", 1.2f, {1.0f, 4.0f});
     p.chromaTaps = settings->get<unsigned>("video_chroma_taps", 0u, {0u, 21u});
     updatePicture();
-
-    if (reloadPreset)
-        loadPreset();
 }
 
 auto VideoManager::savePicture() -> void {
@@ -85,7 +64,7 @@ auto VideoManager::savePicture() -> void {
     settings->set<float>("video_luma_rise", p.lumaRise);
     settings->set<float>("video_luma_fall", p.lumaFall);
     settings->set<unsigned>("video_chroma_taps", p.chromaTaps);
-    reloadSettings(false);
+    reloadSettings();
 }
 
 auto VideoManager::updatePicture() -> void {
@@ -125,17 +104,12 @@ auto VideoManager::toggleShaderTemporary() -> bool {
     return suppressShaderByHotkey;
 }
 
-auto VideoManager::renderFrame(const uint8_t* src, unsigned width, unsigned height, unsigned srcPitch, unsigned options) -> void {
-    bool isPause = options & RENDER_OPT_PAUSE;
+auto VideoManager::renderFrame(const uint8_t* src, unsigned width, unsigned height, unsigned srcPitch) -> void {
     bool suppressShader = suppressShaderByHotkey
-        || (program->warp.disableShader && ((program->warp.mode == Program::Warp::Normal) || (program->warp.mode == Program::Warp::Aggressive)))
-        // Denise presets need the 10 bit YUV input of the removed CPU colour path
-        || parser->shaderPreset.rgb10BitInput;
+        || (program->warp.disableShader && ((program->warp.mode == Program::Warp::Normal) || (program->warp.mode == Program::Warp::Aggressive)));
 
     uint8_t gpuOptions = 0;
     if (suppressShader) gpuOptions |= DRIVER::OPT_DisallowShader;
-    if (isPause)        gpuOptions |= DRIVER::OPT_Pause;
-    if (audioManager->rewind) gpuOptions |= DRIVER::OPT_Rewind;
 
     // raster parity of the first picture line: PAL line alternation in the decode shader
     int parity = (int)(emulator->cropTop() & 1);
@@ -143,29 +117,6 @@ auto VideoManager::renderFrame(const uint8_t* src, unsigned width, unsigned heig
         cropTopParity = parity;
         updatePicture();
     }
-
-    unsigned cropTop, cropLeft;
-    bool cropCoordUpdated = emulator->cropCoordUpdated(cropTop, cropLeft);
-    if (rebuildShader) {
-        auto appData = videoDriver->getAppData();
-        if (appData) {
-            appData->cropTop = (float)cropTop;
-            appData->cropLeft = (float)cropLeft;
-            appData->pal = (float)(emulator->getRegionEncoding() == Emulator::Interface::Region::Pal);
-            appData->subRegion = (float)emulator->getSubRegion();
-        }
-        videoDriver->setShader(&parser->shaderPreset);
-        rebuildShader = false;
-    } else if (cropCoordUpdated) {
-        auto appData = videoDriver->getAppData();
-        if (appData) {
-            appData->cropTop = (float)cropTop;
-            appData->cropLeft = (float)cropLeft;
-        }
-    }
-
-    if (++frameRenderPos != frameRenderTrigger)
-        return;
 
     if (unlikely(takeScreenShots)) {
         auto& screenshot = program->screenshot;
@@ -186,30 +137,18 @@ auto VideoManager::renderFrame(const uint8_t* src, unsigned width, unsigned heig
         }
     }
 
-    frameRenderPos = 0;
-
     videoDriver->setIntegerScalingDimension(width << 1, height << 1, false);
 
     uint8_t* indices;
-    unsigned* rgb;
     unsigned pitch;
-    if (videoDriver->lockIndexed(indices, pitch, width, height, gpuOptions)) {
-        for (unsigned h = 0; h < height; h++) {
-            std::memcpy(indices, src, width);
-            indices += pitch;
-            src += width + srcPitch;
-        }
-        src -= (width + srcPitch) * height;
-    } else if (videoDriver->lock(rgb, pitch, width, height, gpuOptions)) {
-        const uint8_t* s = src;
-        for (unsigned h = 0; h < height; h++) {
-            for (unsigned w = 0; w < width; w++)
-                rgb[w] = colorTable[s[w] & 15];
-            rgb += pitch;
-            s += width + srcPitch;
-        }
-    } else
+    if (!videoDriver->lockIndexed(indices, pitch, width, height, gpuOptions))
         return;
+    const uint8_t* s = src;
+    for (unsigned h = 0; h < height; h++) {
+        std::memcpy(indices, s, width);
+        indices += pitch;
+        s += width + srcPitch;
+    }
 
     if (audioManager->lumaInterference.enabled)
         sampleLuma(width, height, src, srcPitch);
@@ -271,64 +210,4 @@ auto VideoManager::sampleLuma(unsigned width, unsigned height, const uint8_t* sr
 
     ali.avgLines[height] = 0.0;
     ali.lines = height + 1;
-}
-
-// ------------------------------------------------------------ Denise slang presets (GL)
-
-auto VideoManager::finishPreset() -> void {
-    parser->addBrokenLUT();
-}
-
-auto VideoManager::clearPreset() -> void {
-    bool locked = emuThread->lock();
-    // don't wait for the renderer if the emu thread is running and constantly submitting new images.
-    // This could lead to an endless loop
-    videoDriver->waitRenderThread();
-    parser->clear();
-    rebuildShader = true;
-    if (locked) // avoid releasing a lock prematurely, when locked before
-        emuThread->unlock();
-    settings->set<std::string>("slang_loaded", "");
-}
-
-auto VideoManager::loadPreset() -> bool {
-    std::string path = GUIKIT::File::resolveRelativePath(settings->get<std::string>("slang_loaded", ""));
-    if (path.empty()) {
-        clearPreset();
-        return false;
-    }
-
-    std::vector<std::string> errors;
-    return loadPreset(path, errors) != nullptr;
-}
-
-auto VideoManager::loadPreset(const std::string& path) -> void {
-    std::vector<std::string> errors;
-    loadPreset(path, errors);
-}
-
-auto VideoManager::loadPreset(const std::string& path, std::vector<std::string>& errors) -> ShaderPreset* {
-    suppressShaderByHotkey = false;
-    ShaderParser* tempParser = new ShaderParser;
-
-    bool res = tempParser->loadPreset(path);
-    GUIKIT::Vector::combine(errors, tempParser->errors);
-
-    if (!res) {
-        delete tempParser;
-        return nullptr;
-    }
-
-    // important, parameter changes when temp parser replaces current parser.
-    // old shader is still active ... need to run to a safe spot before
-    videoDriver->waitRenderThread();
-    settings->set<std::string>("slang_loaded", GUIKIT::File::buildRelativePath(path));
-    parser->clear();
-    delete parser;
-
-    parser = tempParser; // emu and render thread must be paused until the current shader is unloaded.
-    // The new shader can then be built asynchronously.
-
-    rebuildShader = true;
-    return &parser->shaderPreset;
 }

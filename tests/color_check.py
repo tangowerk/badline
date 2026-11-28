@@ -32,11 +32,10 @@ import math
 import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from renderer_ab import Client, check, decode_png, image_of, text_of  # noqa: E402
-import renderer_ab  # noqa: E402
+from mcplib import Client, check, decode_png, image_of, text_of  # noqa: E402
+import mcplib  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-YUV_PRESET = os.path.normpath(os.path.join(HERE, "..", "data", "presets", "internal", "c64_yuv.slangp"))
 
 PICTURE = {"video_saturation": 100, "video_contrast": 100, "video_brightness": 100, "video_gamma": 100}
 SETTINGS = [
@@ -68,7 +67,7 @@ def config_lines(kind, settings, old):
     c.update(settings)
     if old:
         c.update({"video_spectrum": 0, "video_crt_legacy": 0, "prepend_yuv_shader": 0})
-        c["slang_loaded"] = YUV_PRESET if kind == "pal" else ""
+        c["slang_loaded"] = ""
     else:
         c["video_pal_pass"] = 1 if kind == "pal" else 0
     return "".join(f"{k}:{v}\n" for k, v in c.items())
@@ -185,8 +184,10 @@ def capture(args, name, ntsc, kind, settings, old, base):
     cfg = os.path.join(cfgdir, "c64.ini")
     with open(cfg, "w") as f:
         f.write(config_lines(kind, settings, old))
-    renderer = "gl" if (old and kind == "pal") else "vulkan"
-    cmdline = [args.binary, "-config-c64", cfg, "-renderer", renderer, "-mcp", str(args.port)]
+    cmdline = [args.binary, "-config-c64", cfg, "-mcp", str(args.port)]
+    if old:
+        # reference builds (pre-VK3b, rgb cases only) still defaulted to OpenGL
+        cmdline[3:3] = ["-renderer", "vulkan"]
     if ntsc:
         cmdline.insert(1, "-vic-6567R8")
     env = dict(os.environ, XDG_CONFIG_HOME=cfgdir)
@@ -315,8 +316,8 @@ def main():
         check(f"{name}: within {limit}/255", maxd <= limit, f"max {maxd}")
 
     print(f"output in {base}")
-    print(f"\n{renderer_ab.PASS} passed, {renderer_ab.FAIL} failed")
-    sys.exit(1 if renderer_ab.FAIL else 0)
+    print(f"\n{mcplib.PASS} passed, {mcplib.FAIL} failed")
+    sys.exit(1 if mcplib.FAIL else 0)
 
 
 if __name__ == "__main__":

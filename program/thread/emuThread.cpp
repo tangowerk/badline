@@ -49,12 +49,6 @@ auto EmuThread::enable(bool state) -> void {
 auto EmuThread::lockDebugger() -> void {
     debugging = true;
     while (debugging) {
-
-        if (freeContext) {
-            freeContext = false;
-            videoDriver->freeContext();
-        }
-
         if (attention && debugging) {
             attention = false;
             acknowledged = true;
@@ -93,7 +87,6 @@ auto EmuThread::lock(bool unlockDebugging) -> bool {
     if (acknowledged /* check for nesting */ )
         return false;
 
-    freeContext = true;
     attention = true;
     while(attention) {
         std::this_thread::yield();
@@ -113,23 +106,10 @@ auto EmuThread::initWorker() -> void {
         kill = false;
         attention = false;
         acknowledged = false;
-        freeContext = false;
 
         while (true) {
-
-            if (freeContext) {
-                freeContext = false;
-                videoDriver->freeContext();
-            }
-
             if (attention) {
                 attention = false;
-                // lock() sets freeContext before attention: release the context even if both were
-                // set after the check above (a renderer switch destroys the context while locked)
-                if (freeContext) {
-                    freeContext = false;
-                    videoDriver->freeContext();
-                }
                 acknowledged = true;
 
                 while(acknowledged) {
@@ -138,7 +118,6 @@ auto EmuThread::initWorker() -> void {
             }
 
             if (kill) {
-                videoDriver->freeContext();
                 // linux hack to prevent slowdown when killing thread
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
                 kill = false;
@@ -168,12 +147,6 @@ auto EmuThread::handleUIEvents() -> void {
 
         if (_events & EVT_POLL_HOTKEYS)
             InputManager::pollHotkeys();
-
-        if (_events & EVT_SHADER_ERROR) {
-            auto manager = VideoManager::getInstance(activeEmulator);
-            if (manager)
-                manager->finishPreset();
-        }
 
         if(_events & EVT_UPDATE_FPS)
             program->fpsChangeTimer.setEnabled();

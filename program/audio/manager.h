@@ -37,7 +37,6 @@ struct AudioManager {
     double ratio;    
     bool dynamicRateControl;
     double rateDelta = 0.005;
-    bool allowDrc = false;
 
     // Vulkan video master (M-Pacing1): audio does not block, DRC keeps the buffer centred;
     // videoClock = emulation speed factor set by the display (refresh / (repeat * fps))

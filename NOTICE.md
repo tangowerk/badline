@@ -27,7 +27,6 @@ released under the same license.
 | Cosine and sinc resamplers from RetroArch (https://github.com/libretro/RetroArch) | `program/audio` | GPL-3.0 |
 | Chamberlin filter from Hoxs64 (https://www.hoxs64.net) | `emulation/libc64/sid` | see source |
 | P64 by BeRo, fpaq0 by Matt Mahoney | `emulation/libc64/disk` | see source |
-| SPIRV-Cross (Khronos) | `deps/SPIRV-Cross` | Apache-2.0, see `deps/SPIRV-Cross/LICENSE` |
 | cpp-httplib by Yuji Hirose | `deps/httplib.h` | MIT |
 | lhasa (LHA decoder) by Simon Howard | `deps/lha` | ISC |
 | stb_image_write / stb_image_resize2 by Sean Barrett | `deps/stb` | MIT or public domain |
@@ -39,7 +38,7 @@ released under the same license.
 
 SDL3 (zlib), libcurl (curl license), PulseAudio (LGPL-2.1-or-later),
 OpenAL Soft (LGPL-2.0-or-later, optional), libwayland-client (MIT),
-libGL/libglvnd and the Vulkan loader (MIT/Apache-2.0), glslang (BSD-3-Clause and others).
+the Vulkan loader (Apache-2.0), glslang (BSD-3-Clause and others).
 
 ## Commodore ROMs
 

@@ -3,8 +3,6 @@
 #include "manager.h"
 #include "../audio/manager.h"
 
-#define VIDEO_SKEW 0.0015
-
 VideoManager::Pacing VideoManager::pacing;
 
 // Vulkan (M-Pacing1, SPEC "Decisions M-Pacing"): setting `pacing` 0 = Auto, 1 = Lowest latency.
@@ -63,10 +61,8 @@ auto VideoManager::setPacing() -> void {
     uint64_t refreshNs = p.refresh > 0.0 ? (uint64_t)std::llround(1e9 / p.refresh) : 0;
     videoDriver->setContentFps(p.fps * p.clock);
     videoDriver->setPacing(p.repeat, p.queueDepth, presentMode, p.gridNs, refreshNs);
-    setFrameRender(1);
 
     if (audioManager) {
-        audioManager->allowDrc = false;
         // unthrottled (warp) keeps the audio buffer setup: no PulseAudio rebuild per warp toggle
         bool displayClock = p.state == Pacing::VideoMaster || p.state == Pacing::Grid;
         audioManager->setVideoMaster(displayClock, p.clock, p.state != Pacing::Unthrottled);
@@ -93,79 +89,9 @@ auto VideoManager::setSynchronize() -> void {
 
     if (videoDriver->supportsPacing())
         return setPacing();
+    // no renderer (headless, -no-driver, failed init): nothing to pace against
     pacing = {};
-    // e.g. after a runtime switch Vulkan -> GL: back to Denise's audio handling
-    if (audioManager)
-        audioManager->setVideoMaster(false, 1.0, true);
-
-    bool vsync = false;
-    bool vrr = false;
-    unsigned tr = 0;
-
-    if (program->warp.mode == Program::Warp::Off) {
-        vsync = globalSettings->get<bool>("video_sync", true);
-        vrr = globalSettings->get<bool>("vrr_sync", false);
-
-        auto _settings = Program::getSettings( activeEmulator );
-        tr = _settings->get<unsigned>("threaded_renderer", 0);
-    }
-
-    bool threadedRenderer = tr == 1;
-    bool adaptive = tr == 2;
-
-    unsigned frameRenderEach = 1;
-    float skew = 0.0;
-
-    if (audioDriver->hasSynchronized()) {
-        if (vsync && adaptive) {
-            float monitorFrequency = (sdlWindow ? sdlWindow->refreshRate() : 0.0f);
-            if (monitorFrequency <= 0.0f)
-                monitorFrequency = audioManager->inputFPS; // unknown (headless): no skew
-            vrr = false;
-            float ratio = (float)audioManager->inputFPS / monitorFrequency;
-            float intpart;
-            float fractpart = std::modf (ratio, &intpart);
-
-            if ((uint8_t)intpart <= 1) {
-                skew = std::abs(1.0 - ratio );
-                if ((skew > VIDEO_SKEW) /*&& ((float) audioManager->inputFPS > monitorFrequency)*/)
-                    threadedRenderer = true;
-            } else {
-                if (fractpart > VIDEO_SKEW)
-                    threadedRenderer = true;
-                else
-                    frameRenderEach = (uint8_t)intpart;
-            }
-        }
-    } else if (!threadedRenderer) {
-        vrr = false;
-
-        if (adaptive)
-            threadedRenderer = true;
-        else
-            vsync = false;
-    }
-
-    if (program->warp.mode == Program::Warp::Off) {
-        // don't change when toggling warp mode
-        if (videoDriver->hasThreaded() != threadedRenderer)
-            videoDriver->setThreaded( threadedRenderer );
-    }
-
-    if (videoDriver->hasSynchronized() != vsync)
-        videoDriver->synchronize( vsync );
-
-    setFrameRender( frameRenderEach );
-
     if (audioManager) {
-        videoDriver->setVRR( vrr, (float)audioManager->inputFPS );
-        audioManager->allowDrc = (vsync || vrr) && !threadedRenderer && (frameRenderEach == 1) && (skew <= VIDEO_SKEW);
-        audioManager->setRateControl();
+        audioManager->setVideoMaster(false, 1.0, true);
     }
 }
-
-auto VideoManager::setHardSync() -> void {
-    videoDriver->hardSync( globalSettings->get<bool>("hardsync", false) );
-}
-
-#undef VIDEO_SKEW

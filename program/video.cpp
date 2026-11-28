@@ -3,13 +3,10 @@
 #include "video/slang.h"
 #include <cstring>
 
-auto Program::initVideo(bool driverChange) -> bool {
-
-    DRIVER::Rotation rotation = DRIVER::ROT_0;
+auto Program::initVideo() -> bool {
 
 	if (videoDriver) {
         SlangPresets::wait(); // a preset load uses the driver
-        rotation = videoDriver->getRotation();
         delete videoDriver;
     }
     
@@ -18,113 +15,29 @@ auto Program::initVideo(bool driverChange) -> bool {
         return true;
     }
 
-    videoDriver = DRIVER::Video::create( getVideoDriver() );
-    
+    videoDriver = DRIVER::Video::create();
+
     VideoManager::setSynchronize();
-    VideoManager::setHardSync();
     setVideoFilter();
     setVideoDimension();
-    updateFullscreenSetting();
-    updateHDR();
-    updateBFI();
-	    
+
     bool ok = videoDriver->init( sdlWindow ? sdlWindow->handle() : 0 );
     videoDriverError = ok ? "" : videoDriver->lastError();
     if (!ok) {
         if (videoDriverError.empty())
-            videoDriverError = getVideoDriver() + " initialization failed";
+            videoDriverError = "Vulkan initialization failed";
         delete videoDriver;
         videoDriver = new DRIVER::Video;
     }
 
-    if (driverChange)
-        videoDriver->setRotation(rotation);
-
-    if (activeVideoManager) {
-        activeVideoManager->rebuildShader = true;
-    }
-        
-    for( auto emulator : emulators ) {
-        checkShaderSupport(emulator);
-        auto videoManager =  VideoManager::getInstance(emulator);
-
-        videoManager->reloadSettings(true);
-    }
-
-    videoDriver->setShaderProgressCallback( [](int pass, bool hasErrors) {
-        if (program->quitInProgress)
-            return;
-        if (pass < 0) {
-            auto manager = VideoManager::getInstance(activeEmulator);
-            if (manager) {
-                if (emuThread->enabled)
-                    emuThread->events |= EmuThread::EVT_SHADER_ERROR;
-                else
-                    manager->finishPreset();
-            }
-        }
-
-        if (statusHandler) {
-            emuThread->lockStatus();
-            if (pass < 0) {
-                statusHandler->setMessage((hasErrors ? "Shader has errors" : "Shader enabled"), hasErrors);
-            } else {
-                statusHandler->setMessage(GUIKIT::String::substitute(hasErrors ? "Shader Pass %pass% faulty" : "Shader Pass %pass% successful",
-                    {{"%pass%", std::to_string(pass)}}), hasErrors);
-            }
-            emuThread->unlockStatus();
-        }
-    } );
-
-    videoDriver->setShaderCacheCallback( [this](DRIVER::DiskFile& diskFile) {
-        if (diskFile.isLUT) {
-            GUIKIT::File file(diskFile.path);
-            if (!file.open())
-                return;
-
-            GUIKIT::Image img;
-            if (!img.load(file.read(), file.getSize(), true ))
-                return;
-
-            diskFile.data = img.data;
-            diskFile.width = img.width;
-            diskFile.height = img.height;
-
-            return;
-        }
-
-        std::string subPath = GUIKIT::File::getPath(diskFile.path);
-        std::string cacheFile = GUIKIT::String::getFileName(diskFile.path);
-
-        if (diskFile.data && diskFile.size) {
-            std::string absPath = FileHelper::generatedFolder(subPath, FileHelper::FLAG_CREATE) + cacheFile;
-            GUIKIT::File f(absPath, true);
-
-            if (f.open(GUIKIT::File::Mode::Write))
-                f.write(diskFile.data, diskFile.size);
-        } else {
-            std::string absPath = FileHelper::generatedFolder(subPath, 0) + cacheFile;
-            GUIKIT::File f(absPath, true);
-
-            if (f.open()) {
-                diskFile.data = f.read();
-                diskFile.size = f.getSize();
-            }
-        }
-    } );
+    for (auto emulator : emulators)
+        VideoManager::getInstance(emulator)->reloadSettings();
 
     videoDriver->setScreenshotCallback([this](uint8_t* _data, unsigned _width, unsigned _height) {
         takeScreenshot(_data, _width, _height);
     } );
 
-    videoDriver->useShaderCache(true );
-
-    videoDriver->setBusyCallback([](bool on) {
-        if (overlay)
-            overlay->busy("shader", on);
-    });
-
-    // Vulkan: the saved slang preset (or -shader), compiled on a worker thread
+    // the saved slang preset (or -shader), compiled on a worker thread
     if (ok)
         SlangPresets::applyWanted();
 
@@ -223,16 +136,6 @@ auto Program::setVideoDimension(Emulator::Interface* emulator) -> void {
     videoDriver->setAspectRatio( aspectMode, integerScaling );
 }
 
-auto Program::getVideoDriver() -> std::string {
-	auto curDriver = cmd->renderer.empty() ? globalSettings->get<std::string>("video_driver", "") : cmd->renderer;
-	auto drivers = DRIVER::Video::available();
-	
-	for(auto& driver : drivers) {
-		if(curDriver == driver) return driver;
-	}
-	return DRIVER::Video::preferred();
-}
-
 auto Program::videoRefresh8(const uint8_t* frame, unsigned width, unsigned height, unsigned linePitch) -> void {
 	if (cmd->noGui)
 		return;
@@ -251,7 +154,7 @@ auto Program::repeatLastFrame() -> void {
 
     if (cropData) {
         activeVideoManager->renderFrame(cropData, activeEmulator->cropWidth(), activeEmulator->cropHeight(),
-            activeEmulator->cropPitch(), VideoManager::RENDER_OPT_PAUSE);
+            activeEmulator->cropPitch());
     } else {
         // power() drops the last frame; while paused (e.g. reset/eject from the overlay) no new one
         // is emulated, so present a black picture, otherwise the overlay is never redrawn
@@ -263,31 +166,13 @@ auto Program::repeatLastFrame() -> void {
         static std::vector<uint8_t> black;
         if (black.size() < width * height)
             black.assign(width * height, 0);
-        activeVideoManager->renderFrame(black.data(), width, height, 0, VideoManager::RENDER_OPT_PAUSE);
+        activeVideoManager->renderFrame(black.data(), width, height, 0);
     }
 
     if (VideoManager::takeScreenShots && isPause) {
         screenshot.pause = isPause;
         isPause = 0;
     }
-}
-
-auto Program::canExclusiveFullscreen() -> bool {
-    // FSE fullscreen switch hangs sometimes, FSO replaces FSE and is more stable
-    return false;
-
-    bool result = videoDriver->canExclusiveFullscreen()
-        && globalSettings->get<bool>("exclusive_fullscreen", false);
-
-    return result;
-}
-
-auto Program::hintExclusiveFullscreen() -> void {
-
-    if (canExclusiveFullscreen())
-        videoDriver->hintExclusiveFullscreen( true, 0.0f );
-    else
-        videoDriver->hintExclusiveFullscreen( false );
 }
 
 auto Program::setVideoFilter() -> void {
@@ -500,14 +385,6 @@ auto Program::setWarp( Warp::Mode mode, bool manuell ) -> void {
 
 }
 
-auto Program::updateFullscreenSetting() -> void {
-    if (!activeEmulator)
-        return;
-    auto _settings = Program::getSettings(activeEmulator);
-
-    hintExclusiveFullscreen();
-}
-
 auto Program::fpsChanged() -> void {
     if (quitInProgress)
         return;
@@ -527,19 +404,6 @@ auto Program::setRotation() -> void {
     videoDriver->setRotation(rotation);
 }
 
-auto Program::checkShaderSupport(Emulator::Interface* emulator) -> void {
-    bool support = videoDriver->shaderSupport();
-
-
-    if (support)
-        return;
-
-    auto vManager = VideoManager::getInstance(emulator);
-
-    if (vManager)
-        vManager->clearPreset();
-}
-
 // screen text is drawn by the overlay (C64 Pro, M-VK2); only the corner is configurable
 auto Program::updateOnScreenText() -> void {
     if (!activeEmulator || !overlay)
@@ -547,34 +411,9 @@ auto Program::updateOnScreenText() -> void {
     overlay->setScreenTextPosition(Program::getSettings(activeEmulator)->get<unsigned>("screen_text_position", 0, {0u, 5u}));
 }
 
-auto Program::updateHDR() -> void {
-    auto _emu = activeEmulator ? activeEmulator : getLastUsedEmu();
-    auto _settings = Program::getSettings(_emu);
-
-    bool enable = _settings->get<bool>("hdr_enable", false);
-    bool gamut = _settings->get<bool>("hdr_gamut", true);
-    unsigned maxNits = _settings->get<unsigned>("hdr_nits", 1000, {0, 10000});
-    unsigned pwNits = _settings->get<unsigned>("hdr_pw_nits", 200, { 0, 2000 });
-    float contrast = _settings->get<float>("hdr_contrast", 5.0, {0.0f, 10.0f});
-
-    videoDriver->setHDR( enable, maxNits, pwNits, contrast, gamut );
-}
-
-auto Program::updateBFI() -> void {
-    auto _emu = activeEmulator ? activeEmulator : getLastUsedEmu();
-    auto _settings = Program::getSettings(_emu);
-
-    unsigned bfiFrames = _settings->get<unsigned>("bfi_frames", 0, { 0, 6 });
-    unsigned darkFrames = _settings->get<unsigned>("dark_frames", 0, { 0, 6 });
-    bool strobeShader = _settings->get<bool>("strobe_shader", false);
-
-    videoDriver->setBFI(bfiFrames, strobeShader ? 0 : darkFrames);
-}
-
 auto Program::requestScreenshot() -> void {
     if (!activeEmulator)
         return;
-    videoDriver->waitRenderThread();
     auto settings = Program::getSettings(activeEmulator);
     auto _path = FileHelper::generatedFolder(activeEmulator, "screen_record_path", "recordings/screenshots", FileHelper::FLAG_CREATE);
     auto _file = settings->get<std::string>("save_ident", "screenshot");
@@ -624,67 +463,4 @@ auto Program::requestScreenshot() -> void {
         screenshot.interval = 1;
     screenshot.clearBuffer();
     screenshot.sharedMutex.unlock();
-}
-
-
-auto Program::applyRenderer(const std::string& driver, std::string& error) -> bool {
-    SlangPresets::wait();
-    delete videoDriver;
-    videoDriver = new DRIVER::Video;
-    cmd->renderer = driver; // getVideoDriver() follows it
-
-    // the SDL window is bound to GL or Vulkan at creation
-    if (!sdlWindow->recreate(driver == "Vulkan")) {
-        error = sdlWindow->lastError();
-        return false;
-    }
-    inputDriver->setWindow(sdlWindow->handle());
-
-    if (!initVideo(true)) {
-        error = videoDriverError;
-        return false;
-    }
-    return true;
-}
-
-auto Program::switchRenderer(const std::string& driver, std::string& error) -> bool {
-    if (cmd->noGui || cmd->noDriver || !sdlWindow) {
-        error = "no window (headless)";
-        return false;
-    }
-    auto drivers = DRIVER::Video::available();
-    if (std::find(drivers.begin(), drivers.end(), driver) == drivers.end()) {
-        error = "unknown renderer " + driver;
-        return false;
-    }
-    std::string previous = getVideoDriver();
-    if (driver == previous)
-        return true;
-
-    bool locked = emuThread->lock();
-    auto rotation = videoDriver->getRotation();
-
-    bool ok = applyRenderer(driver, error);
-    if (ok) {
-        globalSettings->set<std::string>("video_driver", driver);
-    } else {
-        std::string restoreError;
-        if (!applyRenderer(previous, restoreError)) {
-            // no usable window left: quit instead of running blind
-            fprintf(stderr, "%s could not be restored: %s\n", previous.c_str(), restoreError.c_str());
-            if (locked)
-                emuThread->unlock();
-            GUIKIT::Application::exitCode = 1;
-            program->quit();
-            GUIKIT::Application::quit();
-            return false;
-        }
-    }
-    videoDriver->setRotation(rotation);
-    if (overlay)
-        overlay->invalidate();
-
-    if (locked)
-        emuThread->unlock();
-    return ok;
 }
