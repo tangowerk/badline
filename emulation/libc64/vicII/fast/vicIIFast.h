@@ -26,7 +26,6 @@ struct VicIIFast : VicIIBase {
 	auto isScanlineRenderer() -> bool { return true; }
 	auto reuBaLow() -> bool { return baLow; }
     auto reuSprite0() -> bool { return false; }
-	auto setMeta( bool state ) -> void;
     auto updateVideoSnapshot(DebuggerSnapshot& snap) -> void;
    
 protected:
@@ -40,13 +39,8 @@ protected:
     uint8_t ecmBmmMcm;
 	
 	uint8_t* linePtr;
-	bool addMeta; // add aec and ba state to output 
 
     Sprite* drawSprites[VIC_MAX_LINE_LENGTH << 1];
-    uint8_t* patternBadline;
-    uint8_t* patternLine;
-    uint8_t* patternBadlineNtsc;
-    uint8_t* patternLineNtsc;
     unsigned dmaDelay = 0;
 
     auto setLineInterrupt() -> void;
@@ -68,8 +62,6 @@ protected:
     auto applySprites() -> void;
     template<bool phi1> inline auto readPhi(uint16_t addr) -> uint8_t;
     
-    auto initMetaPattern() -> void;
-    auto applyMeta() -> void;
 	auto calcSpriteX(Sprite* spr) -> void;
 	auto calcSpriteMask(Sprite* spr) -> void;
 	inline auto setRdy(bool _baLow) -> void;

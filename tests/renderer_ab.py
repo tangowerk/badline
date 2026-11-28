@@ -149,8 +149,8 @@ def switch(client, renderer):
 
 # (name, C64 config lines, picture must be bit-identical)
 VARIANTS = [
-    ("nearest-integer", "video_filter:0\ninteger_scaling:1\n", True),
-    ("linear-rotated-free", "video_filter:1\nrotation:1\naspect_mode:3\n", False),
+    ("nearest-integer", "video_filter:0\ninteger_scaling:1\nvideo_pal_pass:0\n", True),
+    ("linear-rotated-free", "video_filter:1\nrotation:1\naspect_mode:3\nvideo_pal_pass:0\n", False),
 ]
 
 

@@ -99,6 +99,10 @@ struct Widget {
     // hints() is the complete key hint bar (no generic move/back entries)
     virtual auto ownsHints() const -> bool { return false; }
     virtual auto describe(Json& out) const -> void {}
+    // UI thread, every overlay tick while the page is shown: true = draw again (async results)
+    virtual auto poll() -> bool { return false; }
+    // MCP state: wait (bounded) for pending async results before describing
+    virtual auto settle() -> void {}
     virtual auto value() const -> std::string { return ""; }
     virtual auto hints() const -> std::vector<Hint> { return {}; }
 

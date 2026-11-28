@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <system_error>
+#include <thread>
 
 #include "../program.h"
 #include "../thread/emuThread.h"
@@ -438,7 +439,7 @@ auto MediaBrowser::loadFavorites() -> void {
         f.title = pretty(path);
         f.path = path;
         f.bookmark = true;
-        f.missing = !fs::is_directory(path, ec);
+        f.missing = isMissing(path, true);
         favorites.push_back(f);
     }
     favorites.push_back({"RECENT", "", -1, true});
@@ -453,7 +454,7 @@ auto MediaBrowser::loadFavorites() -> void {
                 f.path = GUIKIT::File::resolveRelativePath(r.path);
                 f.title = r.file.empty() ? fs::path(f.path).filename().string() : r.file;
                 f.item = (int)r.id;
-                f.missing = !fs::exists(f.path, ec);
+                f.missing = isMissing(f.path, false);
                 favorites.push_back(f);
                 if (++n >= MaxRecent)
                     break;
@@ -461,6 +462,68 @@ auto MediaBrowser::loadFavorites() -> void {
         }
     }
     favs.clamp((int)selectableFavorites().size(), 1 << 20);
+}
+
+// last known state (unknown: present), refreshed in the background
+auto MediaBrowser::isMissing(const std::string& path, bool folder) -> bool {
+    std::string key = folder ? path + "/" : path;
+    auto check = pathCheck;
+    std::lock_guard<std::mutex> lock(check->mutex);
+    check->queue.push_back(key);
+    if (!check->running) {
+        check->running = true;
+        std::thread([check] {
+            for (;;) {
+                std::string key;
+                {
+                    std::lock_guard<std::mutex> lock(check->mutex);
+                    if (check->queue.empty()) {
+                        check->running = false;
+                        return;
+                    }
+                    key = check->queue.front();
+                    check->queue.erase(check->queue.begin());
+                }
+                std::error_code ec;
+                bool folder = key.size() > 1 && key.back() == '/';
+                bool missing = folder ? !fs::is_directory(key.substr(0, key.size() - 1), ec) : !fs::exists(key, ec);
+                std::lock_guard<std::mutex> lock(check->mutex);
+                auto it = check->missing.find(key);
+                if (it == check->missing.end() || it->second != missing) {
+                    check->missing[key] = missing;
+                    check->updated = true;
+                }
+            }
+        }).detach();
+    }
+    auto it = check->missing.find(key);
+    return it != check->missing.end() && it->second;
+}
+
+auto MediaBrowser::settle() -> void {
+    for (int i = 0; i < 100; i++) {
+        {
+            std::lock_guard<std::mutex> lock(pathCheck->mutex);
+            if (!pathCheck->running)
+                return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+}
+
+auto MediaBrowser::poll() -> bool {
+    std::lock_guard<std::mutex> lock(pathCheck->mutex);
+    if (!pathCheck->updated)
+        return false;
+    pathCheck->updated = false;
+    for (auto& f : favorites) {
+        if (f.header)
+            continue;
+        auto it = pathCheck->missing.find(f.bookmark ? f.path + "/" : f.path);
+        if (it != pathCheck->missing.end())
+            f.missing = it->second;
+    }
+    return true;
 }
 
 auto MediaBrowser::saveBookmarks() -> void {

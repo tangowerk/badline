@@ -94,6 +94,58 @@ pub struct BvkFrame {
     pub rotation: c_int,
     /// emulated frame rate (slang `OriginalFPS`; the pacing grid wins when active)
     pub fps: f32,
+
+    /// emulator picture as C64 colour indices (one byte per pixel, `frame_pitch` bytes per
+    /// line), decoded on the GPU with the `bvk_set_picture` settings; used instead of `frame`
+    pub indices: *const u8,
+}
+
+impl BvkFrame {
+    /// a new emulator picture to upload
+    pub fn has_picture(&self) -> bool {
+        (!self.frame.is_null() || !self.indices.is_null()) && self.frame_width > 0 && self.frame_height > 0
+    }
+
+    /// same frame without a new picture (repeats, blend copies)
+    pub fn without_picture(&self) -> Self {
+        let mut f = *self;
+        f.frame = std::ptr::null();
+        f.indices = std::ptr::null();
+        f
+    }
+}
+
+/// Colour decoding of index pictures (M-VK3b), see `crates/vk/shaders/decode.frag`.
+#[repr(C)]
+#[derive(Clone, Copy, Default, PartialEq)]
+pub struct BvkPicture {
+    /// 0xRRGGBB per C64 colour
+    pub palette: [u32; 16],
+    /// offset on the 0..255 scale (0 = neutral)
+    pub brightness: f32,
+    /// factors (1 = neutral)
+    pub contrast: f32,
+    pub saturation: f32,
+    /// exponent (1 = neutral)
+    pub gamma: f32,
+    /// 1: C64 PAL/NTSC encoding pass (phase error, delay line, luma delay, chroma bandwidth)
+    pub pal_pass: c_int,
+    /// 1: NTSC (YIQ, no delay line)
+    pub ntsc: c_int,
+    /// parity of the first picture line in the raster (crop top & 1)
+    pub first_line_odd: c_int,
+    /// degrees
+    pub phase_error: f32,
+    /// -50..50: PAL delay line weighting of the lines (Hanover bars)
+    pub hanover: f32,
+    /// luma rise/fall time in pixels (<= 1: instant)
+    pub luma_rise: f32,
+    pub luma_fall: f32,
+    /// chroma low pass taps per side (0 = off)
+    pub chroma_taps: c_int,
+    /// chroma cutoff in cycles per pixel (U/I and V/Q)
+    pub cutoff_u: f32,
+    pub cutoff_v: f32,
 }
 
 pub use timing::Record as BvkPresent;
@@ -409,6 +461,16 @@ pub unsafe extern "C" fn bvk_set_preset(r: *mut Renderer, p: *mut BvkPreset, err
             BVK_ERROR
         }
     }
+}
+
+/// Colour decoding settings for index pictures (`BvkFrame::indices`), applied from the next
+/// uploaded picture on.
+///
+/// # Safety
+/// `r` must come from `bvk_create`, `picture` must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bvk_set_picture(r: *mut Renderer, picture: *const BvkPicture) {
+    unsafe { (*r).set_picture(*picture) };
 }
 
 /// Sets a parameter of the active preset; BVK_ERROR when there is no such parameter.

@@ -8,6 +8,23 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ### Added
 
+- **Colour decoding on the GPU and C64 PAL pass (M-VK3b).** With Vulkan the
+  emulator hands the C64 colour indices to the GPU; palette, saturation,
+  contrast, brightness and gamma are applied in a decode shader (within 1/255
+  of Denise's CPU path, checked for all ten palettes and sampled settings).
+  The new C64 PAL/NTSC pass follows Denise's `c64_yuv` model in one shader
+  pass: YUV/YIQ encoding with a per-line phase error, the PAL delay line
+  (Hanover bars), luma rise/fall delay and an optional chroma low pass
+  (windowed sinc at 1.3 MHz U/V, 1.5/0.5 MHz I/Q relative to the pixel clock).
+  It is on by default and runs before frame blending and slang presets; the
+  shader toggle hotkey, warp and screenshots without effects switch it off.
+  New C64 settings `video_pal_pass`, `video_pal_phase_error` (22.5),
+  `video_ntsc_phase_error` (0), `video_pal_hanover` (0), `video_luma_rise`
+  (2.0), `video_luma_fall` (1.2), `video_chroma_taps` (0 = off). New MCP tool
+  `picture` (palette and all picture settings); `tests/color_check.py`
+  compares the GPU path with references from the old CPU path and the PAL
+  pass with a Python port of `c64_yuv`.
+
 - **RetroArch slang shader presets on Vulkan (M-VK3a, pipeline core).** The
   Vulkan renderer runs `.slangp` presets of the libretro slang-shaders
   collection: full preset format (`#reference` chains with overrides, aliases,
@@ -87,7 +104,26 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 - NOTICE: removed stale entries (GTK, FreeType, LAME, fontconfig,
   translations, Source Code Pro), added the Rust crates and libwayland-client.
 
+### Removed
+
+- Denise's legacy CPU CRT emulation (`video_crt_legacy`: blur, Hanover bars,
+  luma rise/fall, phase error, scanlines), the generated colour spectra
+  (`video_spectrum`; the default picture is now the Colodore PAL palette), the
+  CPU YUV/10 bit RGB colour path, the VIC-II glitch effects with the AEC/BA
+  meta data in the frame buffer (`videoAddMeta`), interlace/hires leftovers
+  of the Amiga and the 16 bit frame path. Obsolete settings (also their
+  per-region variants) are deleted from the C64 settings at start.
+- GL (until it goes in M-VK3d) shows the plain palette without picture
+  settings; Denise presets that need the 10 bit YUV input (all bundled C64
+  presets) are no longer applied there. (They failed to compile on this
+  system anyway, also before M-VK3a.)
+
 ### Fixed
+
+- Overlay Media page: showing it stalled the UI for up to a second when a
+  bookmark or recent file lies on a network share (each existence check is a
+  stat over CIFS, ~0.3–1 s here); the checks now run on a worker thread and
+  the "missing" marks appear when they are done (Badline bug since M7).
 
 - The saved FPS display setting (`fps_screen`) was only applied after a
   window/fullscreen switch, not at start (Badline bug since M9: the call went

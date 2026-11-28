@@ -53,6 +53,10 @@ struct SDLVK : public Video {
     float mvp[16];
 
     std::vector<uint32_t> buffer;
+    std::vector<uint8_t> indexBuffer; // C64 colour indices (lockIndexed)
+    bool indexed = false;             // the latest picture is in indexBuffer
+    BvkPicture picture = {};
+    bool hasPicture = false;
     unsigned frameWidth = 0;
     unsigned frameHeight = 0;
     bool hasFrame = false;
@@ -110,6 +114,8 @@ struct SDLVK : public Video {
         }
         bvk_set_present_mode(vk, presentMode);
         bvk_set_pacing(vk, repeat, queueDepth, gridNs, refreshNs);
+        if (hasPicture)
+            bvk_set_picture(vk, &picture);
         samples.clear();
         reportedError = false;
         return true;
@@ -249,19 +255,61 @@ struct SDLVK : public Video {
     // ------------------------------------------------------------ frame
 
     auto lock(unsigned*& data, unsigned& pitch, unsigned _width, unsigned _height, uint8_t _options = 0) -> bool {
-        if (!vk || (_options & OPT_RGB10)) // 10 bit YUV input needs a shader (M-VK3)
+        if (!vk)
             return false;
         std::lock_guard<std::recursive_mutex> lock(mutex);
-        if (_width != frameWidth || _height != frameHeight) {
-            frameWidth = _width;
-            frameHeight = _height;
+        resizeFrame(_width, _height);
+        if (buffer.size() != (size_t)_width * _height)
             buffer.assign((size_t)_width * _height, 0);
-            viewScreen.update(viewport);
-        }
+        indexed = false;
         options = _options;
         pitch = _width;
         data = buffer.data();
         return data != nullptr;
+    }
+
+    auto lockIndexed(uint8_t*& data, unsigned& pitch, unsigned _width, unsigned _height, uint8_t _options = 0) -> bool {
+        if (!vk)
+            return false;
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        resizeFrame(_width, _height);
+        if (indexBuffer.size() != (size_t)_width * _height)
+            indexBuffer.assign((size_t)_width * _height, 0);
+        indexed = true;
+        options = _options;
+        pitch = _width;
+        data = indexBuffer.data();
+        return data != nullptr;
+    }
+
+    auto resizeFrame(unsigned _width, unsigned _height) -> void {
+        if (_width != frameWidth || _height != frameHeight) {
+            frameWidth = _width;
+            frameHeight = _height;
+            viewScreen.update(viewport);
+        }
+    }
+
+    auto setPicture(const Picture& p) -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        std::memcpy(picture.palette, p.palette, sizeof picture.palette);
+        picture.brightness = p.brightness;
+        picture.contrast = p.contrast;
+        picture.saturation = p.saturation;
+        picture.gamma = p.gamma;
+        picture.pal_pass = p.palPass;
+        picture.ntsc = p.ntsc;
+        picture.first_line_odd = p.firstLineOdd;
+        picture.phase_error = p.phaseError;
+        picture.hanover = p.hanover;
+        picture.luma_rise = p.lumaRise;
+        picture.luma_fall = p.lumaFall;
+        picture.chroma_taps = p.chromaTaps;
+        picture.cutoff_u = p.cutoffU;
+        picture.cutoff_v = p.cutoffV;
+        hasPicture = true;
+        if (vk)
+            bvk_set_picture(vk, &picture);
     }
 
     auto unlockAndRedraw() -> void {
@@ -303,7 +351,10 @@ struct SDLVK : public Video {
         f.window_width = viewScreen.windowWidth;
         f.window_height = viewScreen.windowHeight;
         if (upload && hasFrame) {
-            f.frame = buffer.data();
+            if (indexed)
+                f.indices = indexBuffer.data();
+            else
+                f.frame = buffer.data();
             f.frame_width = frameWidth;
             f.frame_height = frameHeight;
             f.frame_pitch = frameWidth;

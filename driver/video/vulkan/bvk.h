@@ -52,6 +52,27 @@ struct BvkFrame {
     int shader_off;         // 1: plain picture even with a preset (hotkey, warp, screenshot without effects)
     int rotation;           // 0..3 (90 degree steps, already in mvp; slang Rotation)
     float fps;              // emulated frame rate (slang OriginalFPS)
+
+    const uint8_t* indices; // C64 colour indices (frame_pitch bytes per line), used instead of frame
+};
+
+// colour decoding of index pictures (M-VK3b)
+struct BvkPicture {
+    uint32_t palette[16];   // 0xRRGGBB
+    float brightness;       // offset on the 0..255 scale
+    float contrast;
+    float saturation;
+    float gamma;
+    int pal_pass;
+    int ntsc;
+    int first_line_odd;
+    float phase_error;      // degrees
+    float hanover;          // -50..50
+    float luma_rise;        // pixels
+    float luma_fall;
+    int chroma_taps;        // per side, 0 = off
+    float cutoff_u;         // cycles per pixel
+    float cutoff_v;
 };
 
 struct BvkPresent {
@@ -79,6 +100,7 @@ void bvk_destroy(BvkRenderer* r);
 int bvk_set_texture(BvkRenderer* r, int slot, int format, unsigned width, unsigned height, const void* data,
                     char* error, size_t errorLen);
 int bvk_render(BvkRenderer* r, const BvkFrame* frame, char* error, size_t errorLen);
+void bvk_set_picture(BvkRenderer* r, const BvkPicture* picture);
 void bvk_set_present_mode(BvkRenderer* r, int mode);
 void bvk_set_pacing(BvkRenderer* r, unsigned repeat, unsigned queue_depth, uint64_t period_ns, uint64_t refresh_ns);
 void bvk_pacing_caps(const BvkRenderer* r, BvkPacingCaps* caps);

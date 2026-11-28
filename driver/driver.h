@@ -86,6 +86,25 @@ struct PacingCaps {
     bool blend = false;   // grid without VRR: phase-weighted frame blending per vblank
 };
 
+// colour decoding of index pictures on the GPU (Vulkan, M-VK3b), see bvk.h BvkPicture
+struct Picture {
+    uint32_t palette[16] = {}; // 0xRRGGBB
+    float brightness = 0.0f;   // offset on the 0..255 scale
+    float contrast = 1.0f;
+    float saturation = 1.0f;
+    float gamma = 1.0f;
+    bool palPass = false;      // C64 PAL/NTSC encoding pass
+    bool ntsc = false;
+    bool firstLineOdd = false; // raster parity of the first picture line
+    float phaseError = 0.0f;   // degrees
+    float hanover = 0.0f;      // -50..50
+    float lumaRise = 1.0f;     // pixels
+    float lumaFall = 1.0f;
+    int chromaTaps = 0;        // low pass taps per side, 0 = off
+    float cutoffU = 0.0f;      // cycles per pixel
+    float cutoffV = 0.0f;
+};
+
 enum Options { OPT_HoldFrame = 1, OPT_Interlace = 2, OPT_DisallowShader = 4, OPT_TakeScreenshot = 8,
                 OPT_DisallowFilter = 0x10, OPT_Pause = 0x20, OPT_Rewind = 0x40, OPT_RGB10 = 0x80 };
 enum Rotation { ROT_0, ROT_90, ROT_180, ROT_270 };
@@ -101,6 +120,9 @@ struct Video {
     virtual auto deviceName() -> std::string { return ""; }
 
     virtual auto lock(unsigned*& data, unsigned& pitch, unsigned _width, unsigned _height, uint8_t options = 0) -> bool { return false; }
+    // picture as C64 colour indices, decoded on the GPU with setPicture (false: not supported)
+    virtual auto lockIndexed(uint8_t*& data, unsigned& pitch, unsigned _width, unsigned _height, uint8_t options = 0) -> bool { return false; }
+    virtual auto setPicture(const Picture& picture) -> void {}
     virtual auto redraw() -> void {}
     virtual auto unlockAndRedraw() -> void {}
     virtual auto clear() -> void {}

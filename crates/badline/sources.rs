@@ -201,7 +201,6 @@ pub const GROUPS: &[Group] = &[
             "program/video/palette.cpp",
             "program/video/manager.cpp",
             "program/video/shaderParser.cpp",
-            "program/video/scVideo.cpp",
             "program/tools/httpClient.cpp",
             "program/tools/diskGuesser.cpp",
             "program/tools/socket.cpp",

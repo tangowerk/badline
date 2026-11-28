@@ -159,7 +159,6 @@ struct Program : Emulator::Interface::Bind {
     auto switchRenderer(const std::string& driver, std::string& error) -> bool;
     auto applyRenderer(const std::string& driver, std::string& error) -> bool;
     std::string videoDriverError;
-    auto videoRefresh(const uint16_t* frame, unsigned width, unsigned height, unsigned linePitch, unsigned options) -> void override;
 	auto videoRefresh8(const uint8_t* frame, unsigned width, unsigned height, unsigned linePitch) -> void override;
 	auto repeatLastFrame() -> void;
 	auto hintExclusiveFullscreen() -> void;

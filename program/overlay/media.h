@@ -5,7 +5,9 @@
 // directory preview of the selected image. One widget that fills the page.
 
 #include <functional>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -42,6 +44,8 @@ struct MediaBrowser : OverlayUi::Widget {
     auto value() const -> std::string override;
     auto hints() const -> std::vector<OverlayUi::Hint> override;
     auto describe(Json& out) const -> void override;
+    auto poll() -> bool override;
+    auto settle() -> void override;
 
 private:
     struct Entry {
@@ -131,6 +135,17 @@ private:
     std::vector<Entry> all, entries; // entries = filtered view
     List files, favs, prev;
     std::vector<Favorite> favorites;
+    // existence of bookmark/recent paths, checked on a worker thread: a stat on a network share
+    // (CIFS automount) can take a second and must not block the UI thread
+    struct PathCheck {
+        std::mutex mutex;
+        std::map<std::string, bool> missing; // key: path + "/" for folders
+        std::vector<std::string> queue;
+        bool running = false;
+        bool updated = false;
+    };
+    std::shared_ptr<PathCheck> pathCheck = std::make_shared<PathCheck>();
+    auto isMissing(const std::string& path, bool folder) -> bool;
     std::vector<PreviewLine> preview;
     std::string previewInfo; // one line for files without a directory
     std::string previewKey;

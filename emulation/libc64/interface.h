@@ -187,7 +187,6 @@ struct Interface : Emulator::Interface {
     // sockets
     auto prepareSocket( Media* media, std::string address, std::string port ) -> void;
 
-    auto videoAddMeta(bool state) -> void;
 
     auto requestImmediateReturn() -> void;
         

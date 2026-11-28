@@ -575,6 +575,92 @@ auto McpServer::registerTools() -> void {
             };
         });
 
+    // ------------------------------------------------------------ picture
+    addTool("picture",
+        "Picture settings of the C64 colour path (saved in the C64 settings). The Vulkan renderer decodes the "
+        "colour indices on the GPU: palette, saturation/contrast/brightness (0..200, 100 = neutral), gamma "
+        "(30..280, 100 = 1.0) and the C64 PAL/NTSC pass (pal_pass: per-line phase error in degrees, PAL delay "
+        "line with Hanover bars -50..50, luma rise/fall delay in pixels 1..4, chroma low pass taps 0 = off or "
+        "3..21). GL and raw screenshots show the plain palette. Without arguments it reports the settings, the "
+        "palettes, the region and the raster parity of the first picture line.",
+        R"({"type":"object","properties":{)"
+        R"("palette":{"type":"integer","description":"Palette id"},)"
+        R"("saturation":{"type":"integer"},"contrast":{"type":"integer"},"brightness":{"type":"integer"},)"
+        R"("gamma":{"type":"integer"},"pal_pass":{"type":"boolean"},)"
+        R"("pal_phase_error":{"type":"number"},"ntsc_phase_error":{"type":"number"},)"
+        R"("hanover":{"type":"integer"},"luma_rise":{"type":"number"},"luma_fall":{"type":"number"},)"
+        R"("chroma_taps":{"type":"integer"}}})",
+        [](Job& job) {
+            Json args = job.args;
+            job.phase = Job::Ui;
+            job.onUi = [args](Job& job) {
+                if (!activeVideoManager)
+                    return job.fail("Picture settings need a window (no video output headless)");
+                auto vm = activeVideoManager;
+                EmuLock lock;
+                auto& p = vm->picture;
+                auto num = [&](const char* key) { return args.has(key) && args[key].isNumber(); };
+                if (num("palette")) {
+                    unsigned id = (unsigned)args.getInt("palette");
+                    bool found = false;
+                    for (auto& pal : vm->emulator->palettes)
+                        found |= pal.id == id;
+                    if (!found)
+                        return job.fail("No such palette id");
+                    vm->settings->set<unsigned>("palette", id);
+                    program->setPalette(vm->emulator);
+                }
+                if (num("saturation")) p.saturation = (unsigned)std::clamp<int64_t>(args.getInt("saturation"), 0, 200);
+                if (num("contrast")) p.contrast = (unsigned)std::clamp<int64_t>(args.getInt("contrast"), 0, 200);
+                if (num("brightness")) p.brightness = (unsigned)std::clamp<int64_t>(args.getInt("brightness"), 0, 200);
+                if (num("gamma")) p.gamma = (unsigned)std::clamp<int64_t>(args.getInt("gamma"), 30, 280);
+                if (args.has("pal_pass") && args["pal_pass"].isBool()) p.palPass = args.getBool("pal_pass");
+                if (num("pal_phase_error")) p.phaseErrorPal = (float)std::clamp(args.getNumber("pal_phase_error"), -45.0, 45.0);
+                if (num("ntsc_phase_error")) p.phaseErrorNtsc = (float)std::clamp(args.getNumber("ntsc_phase_error"), -45.0, 45.0);
+                if (num("hanover")) p.hanover = (int)std::clamp<int64_t>(args.getInt("hanover"), -50, 50);
+                if (num("luma_rise")) p.lumaRise = (float)std::clamp(args.getNumber("luma_rise"), 1.0, 4.0);
+                if (num("luma_fall")) p.lumaFall = (float)std::clamp(args.getNumber("luma_fall"), 1.0, 4.0);
+                if (num("chroma_taps")) p.chromaTaps = (unsigned)std::clamp<int64_t>(args.getInt("chroma_taps"), 0, 21);
+                vm->savePicture();
+
+                Json s = Json::object();
+                s.set("palette", (int64_t)vm->palette->id);
+                s.set("palette_name", vm->palette->name);
+                Json colors = Json::array();
+                char hex[8];
+                for (unsigned c = 0; c < 16; c++) {
+                    std::snprintf(hex, sizeof hex, "%06x", vm->colorTable[c] & 0xffffff);
+                    colors.push(std::string(hex));
+                }
+                s.set("colors", colors);
+                Json pals = Json::array();
+                for (auto& pal : vm->emulator->palettes) {
+                    Json e = Json::object();
+                    e.set("id", (int64_t)pal.id);
+                    e.set("name", pal.name);
+                    pals.push(e);
+                }
+                s.set("palettes", pals);
+                s.set("saturation", (int64_t)p.saturation);
+                s.set("contrast", (int64_t)p.contrast);
+                s.set("brightness", (int64_t)p.brightness);
+                s.set("gamma", (int64_t)p.gamma);
+                s.set("pal_pass", p.palPass);
+                s.set("pal_phase_error", (double)p.phaseErrorPal);
+                s.set("ntsc_phase_error", (double)p.phaseErrorNtsc);
+                s.set("hanover", (int64_t)p.hanover);
+                s.set("luma_rise", (double)p.lumaRise);
+                s.set("luma_fall", (double)p.lumaFall);
+                s.set("chroma_taps", (int64_t)p.chromaTaps);
+                bool ntsc = vm->emulator->getRegionEncoding() == Emulator::Interface::Region::Ntsc;
+                s.set("region", ntsc ? "NTSC" : "PAL");
+                s.set("first_line_odd", (activeEmulator->cropTop() & 1) != 0);
+                s.set("gpu_decode", program->getVideoDriver() == "Vulkan" && !cmd->noGui && !cmd->noDriver);
+                job.addText(s.dump());
+                job.finish();
+            };
+        });
+
     // ------------------------------------------------------------ pacing
     addTool("pacing",
         "Frame pacing of the Vulkan renderer. 'status' (default): pacing decision (video_master = display "

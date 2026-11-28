@@ -23,7 +23,7 @@ use crate::slang::{self, Stage};
 use crate::timing::{self, Feedback, Record};
 use crate::{
     BVK_FMT_R8, BVK_PRESENT_FIFO, BVK_PRESENT_IMMEDIATE, BVK_SURFACE_WAYLAND, BVK_SURFACE_XLIB, BVK_TEX_ATLAS,
-    BvkCreateInfo, BvkFrame,
+    BvkCreateInfo, BvkFrame, BvkPicture,
 };
 
 const FRAMES: usize = crate::chain::FRAMES;
@@ -31,6 +31,8 @@ const FRAMES: usize = crate::chain::FRAMES;
 /// unit quad -> clip space with the y flip of image.vert undone (texture row 0 at the top)
 const MVP_FLAT: [f32; 16] = [2.0, 0.0, 0.0, 0.0, 0.0, -2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0];
 const PUSH_SIZE: u32 = 128;
+/// emulator pictures (uploaded BGRA or decoded from indices)
+const PICTURE_FORMAT: vk::Format = vk::Format::B8G8R8A8_UNORM;
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
 
 use crate::gpu::{Result, vkerr};
@@ -105,8 +107,52 @@ struct DeviceChoice {
     absolute_time: bool,
 }
 
+/// push constants of decode.frag (M-VK3b), 112 bytes
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct DecodePush {
+    palette: [u32; 16],
+    brightness: f32,
+    contrast: f32,
+    saturation: f32,
+    gamma: f32,
+    /// 1 PAL pass, 2 NTSC, 4 first picture line odd
+    flags: u32,
+    /// radians
+    phase_error: f32,
+    hanover: f32,
+    luma_rise: f32,
+    luma_fall: f32,
+    chroma_taps: i32,
+    cutoff_u: f32,
+    cutoff_v: f32,
+}
+
+impl DecodePush {
+    fn new(p: &BvkPicture, effects: bool) -> Self {
+        let pal = effects && p.pal_pass != 0;
+        DecodePush {
+            palette: p.palette,
+            brightness: p.brightness,
+            contrast: p.contrast,
+            saturation: p.saturation,
+            gamma: p.gamma,
+            flags: pal as u32 | ((p.ntsc != 0) as u32) << 1 | ((p.first_line_odd != 0) as u32) << 2,
+            phase_error: p.phase_error.to_radians(),
+            hanover: p.hanover,
+            luma_rise: p.luma_rise,
+            luma_fall: p.luma_fall,
+            chroma_taps: p.chroma_taps.clamp(0, 10),
+            cutoff_u: p.cutoff_u,
+            cutoff_v: p.cutoff_v,
+        }
+    }
+}
+
 struct Pipelines {
     image: vk::Pipeline,
+    /// C64 colour indices -> picture (palette, picture settings, PAL pass)
+    decode: vk::Pipeline,
     /// two pictures mixed in linear light (frame blending)
     blend: vk::Pipeline,
     overlay: vk::Pipeline,
@@ -182,6 +228,10 @@ pub struct Renderer {
     /// predecessor (frame blending)
     pictures: [Option<Texture>; 2],
     cur: usize,
+    /// latest index picture (R8_UINT), decoded into `pictures[cur]`
+    indices: Option<Texture>,
+    /// colour decoding settings of index pictures
+    picture: BvkPicture,
     /// frame blending state (M-Pacing3)
     blend: Blend,
     /// weight of the latest picture for the next present (1.0 = latest only, no blending)
@@ -538,6 +588,7 @@ impl Renderer {
             layout: vk::PipelineLayout::null(),
             pipelines: Pipelines {
                 image: vk::Pipeline::null(),
+                decode: vk::Pipeline::null(),
                 blend: vk::Pipeline::null(),
                 overlay: vk::Pipeline::null(),
             },
@@ -545,6 +596,13 @@ impl Renderer {
             current: 0,
             pictures: [None, None],
             cur: 0,
+            indices: None,
+            picture: BvkPicture {
+                contrast: 1.0,
+                saturation: 1.0,
+                gamma: 1.0,
+                ..Default::default()
+            },
             blend: Blend::new(),
             weight: 1.0,
             blend_target: 0,
@@ -785,6 +843,8 @@ impl Renderer {
         };
         let image_vs = module(include_str!("../shaders/image.vert"), Stage::Vertex)?;
         let image_fs = module(include_str!("../shaders/image.frag"), Stage::Fragment)?;
+        let decode_vs = module(include_str!("../shaders/decode.vert"), Stage::Vertex)?;
+        let decode_fs = module(include_str!("../shaders/decode.frag"), Stage::Fragment)?;
         let blend_fs = module(include_str!("../shaders/blend.frag"), Stage::Fragment)?;
         let overlay_vs = module(include_str!("../shaders/overlay.vert"), Stage::Vertex)?;
         let overlay_fs = module(include_str!("../shaders/overlay.frag"), Stage::Fragment)?;
@@ -802,7 +862,7 @@ impl Renderer {
                 .offset(16),
         ];
 
-        let build = |vs, fs, topology, blend: bool, vertex_input: bool| -> Result<vk::Pipeline> {
+        let build = |vs, fs, topology, blend: bool, vertex_input: bool, format: vk::Format| -> Result<vk::Pipeline> {
             let stages = [
                 vk::PipelineShaderStageCreateInfo::default()
                     .stage(vk::ShaderStageFlags::VERTEX)
@@ -840,7 +900,7 @@ impl Renderer {
             let cb = vk::PipelineColorBlendStateCreateInfo::default().attachments(&attachments);
             let dynamic = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
             let ds = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic);
-            let formats = [self.format];
+            let formats = [format];
             let mut rendering = vk::PipelineRenderingCreateInfo::default().color_attachment_formats(&formats);
             let ci = vk::GraphicsPipelineCreateInfo::default()
                 .stages(&stages)
@@ -860,13 +920,14 @@ impl Renderer {
 
         let result = (|| -> Result<Pipelines> {
             Ok(Pipelines {
-                image: build(image_vs, image_fs, vk::PrimitiveTopology::TRIANGLE_STRIP, false, false)?,
-                blend: build(image_vs, blend_fs, vk::PrimitiveTopology::TRIANGLE_STRIP, false, false)?,
-                overlay: build(overlay_vs, overlay_fs, vk::PrimitiveTopology::TRIANGLE_LIST, true, true)?,
+                image: build(image_vs, image_fs, vk::PrimitiveTopology::TRIANGLE_STRIP, false, false, self.format)?,
+                decode: build(decode_vs, decode_fs, vk::PrimitiveTopology::TRIANGLE_LIST, false, false, PICTURE_FORMAT)?,
+                blend: build(image_vs, blend_fs, vk::PrimitiveTopology::TRIANGLE_STRIP, false, false, self.format)?,
+                overlay: build(overlay_vs, overlay_fs, vk::PrimitiveTopology::TRIANGLE_LIST, true, true, self.format)?,
             })
         })();
         unsafe {
-            for m in [image_vs, image_fs, blend_fs, overlay_vs, overlay_fs] {
+            for m in [image_vs, image_fs, decode_vs, decode_fs, blend_fs, overlay_vs, overlay_fs] {
                 d.destroy_shader_module(m, None);
             }
         }
@@ -948,6 +1009,10 @@ impl Renderer {
         self.chain.as_ref()
     }
 
+    pub fn set_picture(&mut self, picture: BvkPicture) {
+        self.picture = picture;
+    }
+
     pub fn set_param(&mut self, id: &str, value: f32) -> bool {
         self.chain.as_mut().is_some_and(|c| c.set_param(id, value))
     }
@@ -979,7 +1044,15 @@ impl Renderer {
                         .array_layers(1)
                         .samples(vk::SampleCountFlags::TYPE_1)
                         .tiling(vk::ImageTiling::OPTIMAL)
-                        .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST)
+                        .usage(
+                            vk::ImageUsageFlags::SAMPLED
+                                | vk::ImageUsageFlags::TRANSFER_DST
+                                | if format == PICTURE_FORMAT {
+                                    vk::ImageUsageFlags::COLOR_ATTACHMENT
+                                } else {
+                                    vk::ImageUsageFlags::empty()
+                                },
+                        )
                         .initial_layout(vk::ImageLayout::UNDEFINED),
                     None,
                 )
@@ -1370,8 +1443,7 @@ impl Renderer {
             return Ok(first);
         }
         // the copies show the same picture (already uploaded) without screenshot
-        let mut copy = *f;
-        copy.frame = std::ptr::null();
+        let mut copy = f.without_picture();
         copy.screenshot = std::ptr::null_mut();
         for n in 1..self.repeat {
             unsafe { self.render_once(&copy, n, timing::REC_REPEAT) }?;
@@ -1459,7 +1531,7 @@ impl Renderer {
         for (i, &vblank) in vblanks[..n].iter().enumerate() {
             let mut frame = *f;
             if i > 0 {
-                frame.frame = std::ptr::null();
+                frame = f.without_picture();
                 frame.screenshot = std::ptr::null_mut();
             }
             // screenshots show the raw picture
@@ -1502,7 +1574,7 @@ impl Renderer {
         // everything that can fail or wait happens before the acquire: an acquired image must
         // be presented, its semaphore must be waited on
         // a new picture goes into the other texture, the current one stays as predecessor
-        let upload = !f.frame.is_null() && f.frame_width > 0 && f.frame_height > 0;
+        let upload = f.has_picture();
         let next = if upload { self.cur ^ 1 } else { self.cur };
         if upload
             && self.pictures[next]
@@ -1513,7 +1585,17 @@ impl Renderer {
             if let Some(t) = self.pictures[next].take() {
                 self.destroy_texture(t);
             }
-            self.pictures[next] = Some(self.create_texture(f.frame_width, f.frame_height, vk::Format::B8G8R8A8_UNORM)?);
+            self.pictures[next] = Some(self.create_texture(f.frame_width, f.frame_height, PICTURE_FORMAT)?);
+        }
+        if upload
+            && !f.indices.is_null()
+            && self.indices.as_ref().is_none_or(|t| t.width != f.frame_width || t.height != f.frame_height)
+        {
+            unsafe { self.device.device_wait_idle() }.map_err(vkerr("wait idle"))?;
+            if let Some(t) = self.indices.take() {
+                self.destroy_texture(t);
+            }
+            self.indices = Some(self.create_texture(f.frame_width, f.frame_height, vk::Format::R8_UINT)?);
         }
         self.prepare_textures()?;
 
@@ -1629,7 +1711,16 @@ impl Renderer {
     /// pending texture data, screenshot buffer
     unsafe fn prepare(&mut self, f: &BvkFrame, frame: &mut PerFrame, upload: bool) -> Result<Prepared> {
         let extent = self.extent;
-        if upload {
+        if upload && !f.indices.is_null() {
+            let (w, h, pitch) = (f.frame_width as usize, f.frame_height as usize, f.frame_pitch as usize);
+            self.ensure_buffer(&mut frame.staging, (w * h) as u64, vk::BufferUsageFlags::TRANSFER_SRC)?;
+            let dst = frame.staging.as_ref().unwrap().ptr;
+            unsafe {
+                for y in 0..h {
+                    std::ptr::copy_nonoverlapping(f.indices.add(y * pitch), dst.add(y * w), w);
+                }
+            }
+        } else if upload {
             let (w, h, pitch) = (f.frame_width as usize, f.frame_height as usize, f.frame_pitch as usize);
             self.ensure_buffer(&mut frame.staging, (w * h * 4) as u64, vk::BufferUsageFlags::TRANSFER_SRC)?;
             let dst = frame.staging.as_ref().unwrap().ptr as *mut u32;
@@ -1712,7 +1803,14 @@ impl Renderer {
             )
             .map_err(vkerr("begin command buffer"))?;
 
-            if upload {
+            if upload && !f.indices.is_null() {
+                let tex = self.indices.as_mut().unwrap();
+                record_upload(&d, cmd, tex, frame.staging.as_ref().unwrap().buffer, 0, f.frame_width);
+                let push = DecodePush::new(&self.picture, f.shader_off == 0);
+                let set = self.indices.as_ref().unwrap().sets[0];
+                let pic = self.pictures[self.cur].as_mut().unwrap();
+                record_decode(&d, cmd, pic, self.pipelines.decode, self.layout, set, &push);
+            } else if upload {
                 let tex = self.pictures[self.cur].as_mut().unwrap();
                 record_upload(&d, cmd, tex, frame.staging.as_ref().unwrap().buffer, 0, f.frame_width);
             }
@@ -2121,7 +2219,7 @@ impl Renderer {
             self.save_pipeline_cache();
             d.destroy_pipeline_cache(self.pipeline_cache, None);
             let [p0, p1] = std::mem::take(&mut self.pictures);
-            for t in [p0, p1, self.atlas.take()].into_iter().flatten() {
+            for t in [p0, p1, self.indices.take(), self.atlas.take()].into_iter().flatten() {
                 self.destroy_texture(t);
             }
             let frames = std::mem::take(&mut self.frames);
@@ -2133,7 +2231,7 @@ impl Renderer {
                 d.destroy_semaphore(f.acquired, None);
             }
             let d = &self.device;
-            for p in [self.pipelines.image, self.pipelines.blend, self.pipelines.overlay] {
+            for p in [self.pipelines.image, self.pipelines.decode, self.pipelines.blend, self.pipelines.overlay] {
                 d.destroy_pipeline(p, None);
             }
             d.destroy_pipeline_layout(self.layout, None);
@@ -2247,6 +2345,93 @@ fn record_upload(d: &Device, cmd: vk::CommandBuffer, tex: &mut Texture, buffer: 
         (vk::PipelineStageFlags2::FRAGMENT_SHADER, vk::AccessFlags2::SHADER_SAMPLED_READ),
     );
     tex.ready = true;
+}
+
+/// index texture -> picture texture through the decode pipeline, ends in SHADER_READ_ONLY
+fn record_decode(
+    d: &Device,
+    cmd: vk::CommandBuffer,
+    pic: &mut Texture,
+    pipeline: vk::Pipeline,
+    layout: vk::PipelineLayout,
+    set: vk::DescriptorSet,
+    push: &DecodePush,
+) {
+    let old = if pic.ready {
+        vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+    } else {
+        vk::ImageLayout::UNDEFINED
+    };
+    image_barrier(
+        d,
+        cmd,
+        pic.image,
+        old,
+        vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        (vk::PipelineStageFlags2::FRAGMENT_SHADER, vk::AccessFlags2::SHADER_SAMPLED_READ),
+        (
+            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+        ),
+    );
+    let area = vk::Rect2D {
+        offset: vk::Offset2D { x: 0, y: 0 },
+        extent: vk::Extent2D {
+            width: pic.width,
+            height: pic.height,
+        },
+    };
+    let attachments = [vk::RenderingAttachmentInfo::default()
+        .image_view(pic.view)
+        .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+        .load_op(vk::AttachmentLoadOp::DONT_CARE)
+        .store_op(vk::AttachmentStoreOp::STORE)];
+    unsafe {
+        d.cmd_begin_rendering(
+            cmd,
+            &vk::RenderingInfo::default()
+                .render_area(area)
+                .layer_count(1)
+                .color_attachments(&attachments),
+        );
+        d.cmd_set_viewport(
+            cmd,
+            0,
+            &[vk::Viewport {
+                x: 0.0,
+                y: 0.0,
+                width: pic.width as f32,
+                height: pic.height as f32,
+                min_depth: 0.0,
+                max_depth: 1.0,
+            }],
+        );
+        d.cmd_set_scissor(cmd, 0, &[area]);
+        d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, pipeline);
+        d.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, layout, 0, &[set], &[]);
+        d.cmd_push_constants(
+            cmd,
+            layout,
+            vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+            0,
+            as_bytes(std::slice::from_ref(push)),
+        );
+        d.cmd_draw(cmd, 3, 1, 0, 0);
+        d.cmd_end_rendering(cmd);
+    }
+    image_barrier(
+        d,
+        cmd,
+        pic.image,
+        vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        (
+            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+        ),
+        (vk::PipelineStageFlags2::FRAGMENT_SHADER, vk::AccessFlags2::SHADER_SAMPLED_READ),
+    );
+    pic.ready = true;
 }
 
 /// Target time grid (M-Pacing2): slot k is displayed at `base + k * period`; the emulation thread

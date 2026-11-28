@@ -1,70 +1,17 @@
-
 #pragma once
 
 #include "../../emulation/interface.h"
 #include "../../driver/tools/shaderpass.h"
 
-#define VPARAMS _useSpectrum, _legacyCrtMode, _region, _useInterlace, _interlace, \
-    _saturation, _contrast, _gamma, _brightness, _phase, _usePhaseError, _phaseError,  \
-    _newLuma, _hanoverBars, _useHanoverBars, \
-    _useBlur, _blur, _useScanlines, _scanlines, _useLumaRise, _lumaRise, _useLumaFall, _lumaFall
-
-#define VPARAMST unsigned, bool, unsigned, bool, unsigned, \
-    unsigned, unsigned, unsigned, unsigned, int, bool, float, \
-    bool, int, bool, \
-    bool, unsigned, bool, unsigned, bool, float, bool, float
-
 struct ShaderParser;
-struct SCVideo;
 
 namespace GUIKIT {
     struct Settings;
 }
 
-struct ColorLumaChroma {
-    // yuv / yiq (Sony CXA2025AS)
-    double y;    
-    double u_i;
-    double v_q;
-    double uOdd;
-    double vOdd;
-
-    // yuv / yiq scaled to integer
-    int32_t y_s;
-    int32_t y_s_blur;
-    int32_t u_i_s;
-    int32_t v_q_s;
-};
-
-struct ColorRgb {
-    double r;
-    double g;
-    double b;
-    
-    int16_t rInt;
-    int16_t gInt;
-    int16_t bInt;
-};
-
-struct RGBDescriptor {
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-};
-
-struct C64ColorSpectrum {
-    double luminance;
-    double angle;
-    double amplitude;
-
-    double angleOdd;
-    double amplitudeOdd;
-    double angleEven;
-    double amplitudeEven;
-};
-
-typedef Emulator::Interface::RenderOpt EmuRenderOpt;
-
+// Emulator pictures to the video driver. Vulkan gets the C64 colour indices; the palette,
+// picture settings and the C64 PAL/NTSC pass run in its decode shader (M-VK3b). GL (until VK3d)
+// gets the plain palette as RGB.
 struct VideoManager {
     VideoManager(Emulator::Interface* emulator);
     ~VideoManager();
@@ -74,7 +21,6 @@ struct VideoManager {
 
     static uint8_t frameRenderPos;
     static uint8_t frameRenderTrigger;
-    static bool needUpdateForAllInstances;
     static unsigned takeScreenShots;
 
     static constexpr unsigned RENDER_OPT_PAUSE = 0x1000000;
@@ -100,154 +46,56 @@ struct VideoManager {
     static auto setHardSync() -> void;
     static auto unloadDataStorage() -> void;
 
-    bool legacyCRTonCPU;
-    bool suppressShaderByHotkey;
+    bool suppressShaderByHotkey = false;
 
-    struct DataUpdates {
-        std::string ident;
-        int offset;
-        unsigned dataU;
-        int dataI;
-        float dataF;
-        bool dataB;
-    };
-
-    std::vector<DataUpdates> dataUpdates;
-    bool dataUpdatesPending;
-
-    SCVideo* scVideo;
-    
     Emulator::Interface* emulator;
     GUIKIT::Settings* settings;
     Emulator::Interface::Palette* palette;
-    
-    uint32_t* colorTable = nullptr;
-    uint32_t* colorTableRGB10Even = nullptr;
-    uint32_t* colorTableRGB10Odd = nullptr;
 
-    unsigned countColorBits;
-	
-    unsigned colorSpectrum;
-    bool pal;
-    unsigned interlaceDecay;
-    bool interlaceFields;
-    
-    double saturation;
-    double contrast;
-    double brightness;
-    double gamma;           
-    double phase; // at degree on color wheel
-    bool newLuma;
+    // picture settings (C64 settings), see reloadSettings
+    struct Picture {
+        unsigned saturation = 100;  // video_saturation 0..200 %
+        unsigned contrast = 100;    // video_contrast 0..200 %
+        unsigned brightness = 100;  // video_brightness 0..200 (100 = neutral)
+        unsigned gamma = 100;       // video_gamma 30..280 (100 = 1.0)
+        bool palPass = true;        // video_pal_pass: C64 PAL/NTSC encoding pass
+        float phaseErrorPal = 22.5f;  // video_pal_phase_error degrees
+        float phaseErrorNtsc = 0.0f;  // video_ntsc_phase_error degrees
+        int hanover = 0;            // video_pal_hanover -50..50
+        float lumaRise = 2.0f;      // video_luma_rise pixels 1..4
+        float lumaFall = 1.2f;      // video_luma_fall pixels 1..4
+        unsigned chromaTaps = 0;    // video_chroma_taps 0 (off), 3..21 odd
+    } picture;
 
-    double phaseError;
-    int32_t hanoverBars;
-    int32_t hanoverBarsAlt;
-        
-    double blur;    
-    unsigned currentHeight;
-    uint8_t scanlines;
-    
-    double lumaRise;
-    double lumaFall;
+    // plain palette as 0xAARRGGBB (GL, raw images)
+    uint32_t colorTable[16] = {};
+    // luma of the plain palette (audio luma interference)
+    float lumaTable[16] = {};
 
-    unsigned colorCount;
-    ColorLumaChroma* lumaChromaTable = nullptr;
-
-
-    bool colorTableUpdated = false;
-    auto needUpdate() -> bool { return !colorTableUpdated; }
-    auto requestUpdate() -> void;
- 
-    auto generateC64ColorSpectrum() -> void;
-       
-    static auto uclamp8(double x) -> uint8_t;
-    static auto uclamp10(double x) -> uint16_t;
-    static auto convertRGBToYIQ(ColorLumaChroma* dest, ColorRgb* src) -> void;
-    static auto convertRGBToYUV(ColorLumaChroma* dest, ColorRgb* src) -> void;
     auto setPalette(Emulator::Interface::Palette* palette) -> void;
+    auto reloadSettings(bool reloadPreset) -> void;
+    // C64 settings <- `picture`, then applied
+    auto savePicture() -> void;
+    // Vulkan decode settings from palette, picture settings, region and crop
+    auto updatePicture() -> void;
 
-    template<typename T> auto renderToLumaChroma(unsigned width, unsigned height, const T* src, unsigned srcPitch, uint32_t* dest, unsigned destPitch, bool odd, unsigned options) -> void;
-    template<typename T> auto renderToRgb(unsigned width, unsigned height, const T* src, unsigned srcPitch, unsigned* dest, unsigned destPitch, unsigned options) -> void;
-    template<typename T> auto renderToScreenshot(unsigned width, unsigned height, const T* src, unsigned srcPitch, uint8_t* dest, unsigned _options) -> void;
-    template<typename T> auto renderFrame(const T* src, unsigned width, unsigned height, unsigned srcPitch, unsigned options = 0) -> void;
-    auto getRenderOptions(unsigned options) -> unsigned;
-    auto convertYUVToRGB(ColorRgb* dest, ColorLumaChroma* src, bool odd) -> void;
-    auto convertYIQToRGB(ColorRgb* dest, ColorLumaChroma* src, bool odd) -> void;
-    auto update() -> void;
-    auto adjustPalette() -> void;
-    auto free() -> void;
-    auto adjustSaturation(double& r, double& g, double& b) -> void;
-    auto adjustContrast(double& c) -> void;
-    auto adjustGamma(double& c) -> void;
-    auto adjustBrightness(double& c) -> void;
-    auto convertLumaChromaToRGB() -> void;
-    static auto normalizeColorSpectrumPalGamma( double& color ) -> void;
-    auto convertPaletteToLumaChroma() -> void;
-    auto powerOff() -> void;
+    auto renderFrame(const uint8_t* src, unsigned width, unsigned height, unsigned srcPitch, unsigned options = 0) -> void;
+    auto takeScreenshot(unsigned unscaled, const uint8_t* src, unsigned width, unsigned height, unsigned pitch) -> void;
+    auto sampleLuma(unsigned width, unsigned height, const uint8_t* src, unsigned srcPitch) -> void;
+    auto powerOff() -> void {}
 
     static auto getInstance( Emulator::Interface* emulator ) -> VideoManager*;
-	static auto updateAll() -> void;
-    auto useLumaDelay() -> bool;
-    // seter props
-    auto usePal(bool state) -> void; // pal or ntsc
-    auto useColorSpectrum(unsigned state) -> void; // color spectrum or palette
-    auto setLegacyCrtMode(bool state) -> void;
-    
-    auto setSaturation(unsigned saturation) -> void;
-    auto setBrightness(unsigned brightness) -> void;
-    auto setGamma(unsigned gamma) -> void;
-    auto setContrast(unsigned contrast) -> void;
-    auto setNewLuma(bool state) -> void;
-    auto setPhase( int degree ) -> void;
-    auto setPhaseError(float phaseError) -> void;
-    auto setHanoverBars( int saturationDelta ) -> void;
-    auto setBlur( unsigned blur ) -> void;
-    auto setScanlines(unsigned intensity) -> void;
-    auto setInterlace(unsigned intensity) -> void;
-    auto setInterlaceFields(bool state) -> void;
 
-    auto setLumaRise( float pixel ) -> void;
-    auto setLumaFall( float pixel ) -> void;
-
-    auto reloadSettings(bool reloadPreset) -> void;
-    auto getSettings() -> std::tuple<VPARAMST>;   
-    auto resetSettings() -> void;
-    auto resetLegacySettings() -> void;
-    auto applyMeta() -> void;
-
-    auto updateData(int offset, float data) -> void;
-    template<typename T> auto updateData(std::string ident, T data) -> void;
-    auto setData(const std::string& ident, float value) -> void;
-    auto setData( unsigned offset, float value) -> void;
-    auto getData(const std::string& ident) -> ShaderPreset::Param*;
-    auto applyDataUpdates() -> void;
-
+    // Denise slang presets on GL (removed in M-VK3d)
     auto loadPreset(const std::string& path, std::vector<std::string>& errors) -> ShaderPreset*;
     auto loadPreset(const std::string& path) -> void;
     auto loadPreset() -> bool;
-
-    auto addPreset(std::string path, bool prepend, std::vector<std::string>& errors) -> ShaderPreset*;
-    auto savePreset(std::string path) -> bool;
-    auto getPreset() -> ShaderPreset*;
-    auto getPreset(std::vector<std::string>& errors) -> ShaderPreset*;
-    auto getPresetPath() -> std::string;
-    auto getPresetPathDetailed() -> std::string;
     auto clearPreset() -> void;
     auto finishPreset() -> void;
-    auto movePass(unsigned& passId, bool up) -> void;
-    auto togglePassUsage(unsigned passId) -> ShaderPreset::Pass*;
-    auto setPassFilter(unsigned passId, ShaderPreset::Filter filter) -> void;
-    auto setPassMipmap(unsigned passId, bool state) -> void;
-    auto setPassScaleX(unsigned passId, float scale) -> void;
-    auto setPassScaleY(unsigned passId, float scale) -> void;
-    auto shaderRgb10BitInput() -> bool;
-    auto translateShaderBufferType(ShaderPreset::BufferType& bufferType) -> const std::string;
-    auto getColorSpectrum(unsigned id, unsigned col) -> C64ColorSpectrum&;
-    auto lumaChromaMode() -> bool;
-    auto sampleLuma(unsigned width, unsigned height, const uint8_t* src, unsigned srcPitch) -> void;
-    auto fetchShader(ShaderPreset::Pass& pass, unsigned passId) -> bool;
-    template<typename T> auto takeScreenshot(unsigned unscaled, const T* _src, unsigned _width, unsigned _height, unsigned _pitch, unsigned _options) -> void;
     auto toggleShaderTemporary() -> bool;
+
+private:
+    int cropTopParity = -1;
 };
 
 extern std::vector<VideoManager*> videoManagers;

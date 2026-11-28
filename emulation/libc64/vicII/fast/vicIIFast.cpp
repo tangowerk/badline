@@ -8,9 +8,6 @@
 namespace LIBC64 {  
 
 VicIIFast::VicIIFast(System* system) : VicIIBase(system) {
-    
-    initMetaPattern();
-	addMeta = false;
 
     std::fill_n(drawSprites, VIC_MAX_LINE_LENGTH << 1, nullptr);
 }
@@ -26,10 +23,6 @@ auto VicIIFast::power() -> void {
 	linePtr = frameBuffer;
     VicIIBase::power();
     setBorderDim();
-}
-
-auto VicIIFast::setMeta( bool state ) -> void {
-    addMeta = state;
 }
 
 inline auto VicIIFast::setLineInterrupt() -> void {
@@ -274,23 +267,6 @@ auto VicIIFast::getCurrentFramePtr() -> uint8_t* {
     return linePtr + (cycle << 3);
 }
 
-inline auto VicIIFast::applyMeta() -> void {
-
-    uint8_t* ptr = linePtr + firstVisiblePixel;    
-
-    uint8_t* src;
-
-    if (ntscBorder)
-        src = badLine ? patternBadlineNtsc : patternLineNtsc;
-    else
-        src = badLine ? patternBadline : patternLine;
-
-    for (unsigned i = 0; i < 420; i++) {
-        *ptr |= *src++;
-        ptr += 1;
-    }  
-}
-
 auto VicIIFast::updateVideoSnapshot(DebuggerSnapshot& snap) -> void {
     auto& s = snap.vicII;
     s.vmli = 0;
@@ -298,69 +274,4 @@ auto VicIIFast::updateVideoSnapshot(DebuggerSnapshot& snap) -> void {
     VicIIBase::updateVideoSnapshot(snap);
 }
 
-auto VicIIFast::initMetaPattern() -> void {
-    patternBadline = new uint8_t[420];
-    patternLine = new uint8_t[420];
-    patternBadlineNtsc = new uint8_t[420];
-    patternLineNtsc = new uint8_t[420];
-    
-    std::memset(patternBadline, 0, 420);
-    std::memset(patternLine, 0, 420);
-    std::memset(patternBadlineNtsc, 0, 420);
-    std::memset(patternLineNtsc, 0, 420);
-        
-    for (unsigned i = 0; i < 420; i++) {
-
-        if (i < 24) {
-            patternBadline[i] = 1 << 4;
-
-            if (((i + 2) & 4) == 0) {
-                patternBadline[i] |= 2 << 4;                
-                patternLine[i] = 2 << 4;
-            }
-        }
-        
-        else if (i >= 24 && i < 342) {
-            patternBadline[i] = 3 << 4;
-            
-            if (((i + 2) & 4) == 0) {
-                patternLine[i] = 2 << 4;
-            }
-        }
-        
-        else if (i >= 342) {
-            if (((i + 2) & 4) == 0) {
-                patternLine[i] = 2 << 4;                
-                patternBadline[i] = 2 << 4;
-            }
-        }
-    }
-
-    for (unsigned i = 0; i < 420; i++) {
-
-        if (i >= 8 && i < 352)
-            patternBadlineNtsc[i] = 1 << 4;
-            
-        if ((i & 4) == 0) {
-            patternLineNtsc[i] = 2 << 4;
-        }
-                
-        if (i < 32) {
-            if ((i & 4) == 0) {
-                patternBadlineNtsc[i] |= 2 << 4;
-              
-            }
-        }
-        else if (i >= 32 && i < 352) {
-            patternBadlineNtsc[i] |= 2 << 4;
-        }
-        else if (i >= 352) {
-            if ((i & 4) == 0) {
-                patternBadlineNtsc[i] = 2 << 4;
-            }
-        }
-    }
 }
-
-}
-

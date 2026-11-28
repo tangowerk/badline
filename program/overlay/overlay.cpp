@@ -975,6 +975,9 @@ auto Overlay::tick() -> void {
     }
 
     bool statusChanged = pollStatus();
+    if (visible)
+        for (auto& w : currentPage().widgets)
+            dirty |= w->poll();
     float textAlpha = visible ? 0.0f : screenTextAlpha();
     int step = busyIds.empty() ? -1
         : (int)((std::chrono::steady_clock::now() - busyStart) / BusyStepTime);
@@ -1003,6 +1006,11 @@ auto Overlay::tick() -> void {
 
 auto Overlay::describe(Json& out) -> void {
     pollStatus(); // screen text/busy changes from other threads, menu message line
+    for (auto& w : currentPage().widgets) {
+        w->settle();
+        if (w->poll())
+            dirty = true;
+    }
     layout();
     out = Json::object();
     out.set("open", opened);

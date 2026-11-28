@@ -444,9 +444,31 @@ def run(client, tmp, headless=False):
     r = client.call("wait_for_text", text=" 4711", timeout=2)
     check("state restored variable", not r["isError"], text_of(r))
 
+    print("picture")
+    r = client.call("picture")
+    if headless:
+        check("picture headless -> isError", r["isError"], text_of(r))
+        r = None
+    if r:
+        run_picture(client, r)
+
     print("timeouts")
     r = client.call("wait_for_text", text="NEVER THERE", timeout=1)
     check("wait_for_text timeout -> isError", r["isError"] and "Timeout" in text_of(r))
+
+
+def run_picture(client, r):
+    st = jtext(r)
+    check("picture state", not r["isError"] and len(st.get("colors", [])) == 16 and st.get("pal_pass") is True
+          and st.get("saturation") == 100, text_of(r)[:200])
+    r = client.call("picture", palette=2, saturation=150, pal_pass=False, chroma_taps=7)
+    st = jtext(r)
+    check("picture set", not r["isError"] and st.get("palette") == 2 and st.get("saturation") == 150
+          and st.get("pal_pass") is False and st.get("chroma_taps") == 7, text_of(r)[:200])
+    r = client.call("picture", palette=9999)
+    check("picture unknown palette -> isError", r["isError"])
+    r = client.call("picture", palette=0, saturation=100, pal_pass=True, chroma_taps=0)
+    check("picture restored", jtext(r).get("palette") == 0 and jtext(r).get("pal_pass") is True)
 
 
 def run_overlay(client, headless):

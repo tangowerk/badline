@@ -1930,10 +1930,6 @@ auto Interface::analyzeExpansion(uint8_t* data, unsigned size, std::string suffi
     return system->analyzeExpansion( data, size, suffix );
 }
 
-auto Interface::videoAddMeta(bool state) -> void {
-    system->vicIIFast.setMeta( state );
-}
-
 auto Interface::setMonitorFpsRatio(double ratio) -> void {
     system->sidManager.updateChamberlinFrequencyAll( system->vicII->frequency() * ratio );
 

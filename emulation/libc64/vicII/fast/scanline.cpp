@@ -45,9 +45,6 @@ auto VicIIFast::scanline() -> void {
 			applyBorder();
     } else
         std::memset(linePtr + firstVisiblePixel, colorReg[ 0x20 ], hWidth);       
-    
-    if (addMeta)
-        applyMeta();  
 	
 	hFlipFlop = true;
 }
