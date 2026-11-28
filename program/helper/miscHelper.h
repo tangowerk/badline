@@ -6,18 +6,6 @@
 
 struct MiscHelper {
 
-    struct DisplayFont {
-        std::string file;
-        std::string name;
-        unsigned index;
-        uint16_t ident;
-
-        auto getMode() const -> uint8_t {
-            return (ident >> 14) & 3;
-        }
-    };
-    static std::vector<DisplayFont> displayFonts;
-
     static auto libraryMissing(std::string plugin) -> void;
     static auto setExpansionSelection( Emulator::Interface* emulator ) -> void;
     static auto removeExpansion( Emulator::Interface* emulator, bool bootableOnly = false ) -> void;
@@ -25,11 +13,6 @@ struct MiscHelper {
     static auto toggle2Mhz() -> void;
 
     static auto addFileFonts() -> void;
-    static auto addFonts() -> void;
-    static auto addFonts(unsigned mode, const std::string& _fontFile) -> void;
-    static auto getFont(uint16_t ident) -> DisplayFont*;
-    static auto getFont(const std::string& file, int fontIndex) -> DisplayFont*;
-    static auto removeFont(const std::string& file, uint8_t mode) -> bool;
 
     static auto resetRunAhead() -> void;
     static auto setRunAhead(Emulator::Interface* emulator) -> void;

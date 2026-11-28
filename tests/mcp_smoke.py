@@ -466,6 +466,35 @@ def run_overlay(client, headless):
 
     st, err = ov()
     check("overlay state closed", st is not None and st["open"] is False, err)
+
+    # busy spinner + screen text (M-VK2), menu closed
+    st, err = ov(action="busy", id="smoke")
+    check("busy spinner on", st and st["busy"] == ["smoke"], err or str(st and st["busy"]))
+    st, _ = ov(action="busy", id="smoke", on=False)
+    check("busy spinner off", st["busy"] == [], str(st["busy"]))
+    def screen_text_becomes(text, timeout):
+        # a program message (e.g. "savestate ... generated") may still cover the permanent text
+        end = time.time() + timeout
+        while True:
+            st, _ = ov()
+            if st["screen_text"]["text"] == text or time.time() > end:
+                return st
+            time.sleep(0.2)
+
+    # screen text updates of earlier resets (clear) are delivered by running frames
+    client.call("resume")
+    client.call("run_frames", frames=10)
+    ov(action="screen_text", text="SMOKE PERMANENT", duration=0)
+    st = screen_text_becomes("SMOKE PERMANENT", 8)
+    check("permanent screen text", st["screen_text"]["text"] == "SMOKE PERMANENT" and not st["screen_text"]["timed"]
+          and st["screen_text"]["visible"] == (not headless), str(st["screen_text"]))
+    st, _ = ov(action="screen_text", text="SMOKE MESSAGE", duration=1, warn=True)
+    check("timed message covers it", st["screen_text"]["text"] == "SMOKE MESSAGE" and st["screen_text"]["timed"]
+          and st["screen_text"]["warn"], str(st["screen_text"]))
+    st = screen_text_becomes("SMOKE PERMANENT", 4)
+    check("permanent text back after the message", st["screen_text"]["text"] == "SMOKE PERMANENT", str(st["screen_text"]))
+    st, _ = ov(action="screen_text", text="", duration=0)
+    check("empty text clears", st["screen_text"]["text"] == "", str(st["screen_text"]))
     _, err = ov(action="nav", keys=["down"])
     check("nav while closed -> isError", "closed" in err, err)
     client.call("resume")
@@ -477,6 +506,10 @@ def run_overlay(client, headless):
     client.call("resume")
     s = jtext(client.call("status"))
     check("resume keeps the overlay pause", s.get("paused") is True, str(s))
+
+    st, _ = ov(action="screen_text", text="SMOKE MENU", duration=2)
+    check("message goes to the menu line", st.get("message") == "SMOKE MENU" and st["screen_text"]["visible"] is False,
+          str(st.get("message")) + " " + str(st["screen_text"]))
 
     st, _ = ov(action="nav", keys=["down"])
     check("sidebar down -> media", st["page"] == "media" and st["preview"] is False, st["page"])

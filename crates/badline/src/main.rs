@@ -2,6 +2,8 @@
 
 // Vulkan renderer: only referenced from C++ (bvk_* symbols), so link the crate explicitly
 extern crate badline_vk;
+// overlay glyph atlas (bgl_* symbols, program/overlay/glyphs.h)
+extern crate badline_glyphs;
 
 use std::ffi::{CString, c_char, c_int};
 use std::os::unix::ffi::OsStringExt;

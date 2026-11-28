@@ -1,27 +1,6 @@
 #include "font.h"
 
-#include <algorithm>
-
-#include <ft2build.h>
-#include FT_FREETYPE_H
-
-namespace {
-
-const char* FaceFiles[2] = { "C64_Pro-STYLE121.ttf", "C64_Pro_Mono-STYLE121.ttf" };
-
-// ASCII, Latin-1 and a few symbols used by the UI (arrows, blocks)
-auto charset() -> std::vector<uint32_t> {
-    std::vector<uint32_t> out;
-    for (uint32_t c = 32; c < 127; c++) out.push_back(c);
-    for (uint32_t c = 160; c < 256; c++) out.push_back(c);
-    for (uint32_t c : {0x2190u, 0x2191u, 0x2192u, 0x2193u, 0x2022u, 0x2026u, 0x2500u, 0x2502u, 0x2588u, 0x2591u, 0x2592u, 0x25cfu, 0x25cbu, 0x2713u})
-        out.push_back(c);
-    return out;
-}
-
-const int Cell = 10; // 8 px glyph + padding against bleeding
-
-}
+#include "glyphs.h"
 
 auto OverlayFont::decode(const std::string& s, size_t& pos) -> uint32_t {
     uint8_t c = (uint8_t)s[pos++];
@@ -34,76 +13,39 @@ auto OverlayFont::decode(const std::string& s, size_t& pos) -> uint32_t {
     return cp;
 }
 
+// rasterized by crates/glyphs (ttf-parser + pixel-exact rasterizer)
 auto OverlayFont::load(const std::string& folder, std::string& error) -> bool {
-    FT_Library ft;
-    if (FT_Init_FreeType(&ft)) {
-        error = "freetype init failed";
+    BglAtlas a = {};
+    char err[512] = {0};
+    if (bgl_atlas_build(folder.c_str(), &a, err, sizeof err) != 0) {
+        error = err;
         return false;
     }
+    atlasWidth = a.width;
+    atlasHeight = a.height;
+    auto data = std::make_shared<std::vector<uint8_t>>(a.pixels, a.pixels + (size_t)a.width * a.height);
+    whiteU = (a.white_x + 2.0f) / atlasWidth;
+    whiteV = (a.white_y + 2.0f) / atlasHeight;
 
-    auto codes = charset();
-    unsigned perRow = 512 / Cell;
-    // cell 0 is the white block
-    // C64 Pro Mono also gets the screen code glyphs (U+EE00 + code, upper case/graphics set)
-    const unsigned ScreenCodes = 256;
-    unsigned cells = 1 + 2 * (unsigned)codes.size() + ScreenCodes;
-    atlasWidth = 512;
-    atlasHeight = 16;
-    while (atlasHeight < ((cells + perRow - 1) / perRow) * Cell) atlasHeight <<= 1;
-    auto data = std::make_shared<std::vector<uint8_t>>(atlasWidth * atlasHeight, 0);
+    for (int f = 0; f < 2; f++)
+        glyphs[f].clear();
+    for (uint32_t i = 0; i < a.glyph_count; i++) {
+        auto& src = a.glyphs[i];
+        Glyph g;
+        g.advance = src.advance;
+        g.left = src.left;
+        g.top = src.top;
+        g.width = src.width;
+        g.height = src.height;
+        g.u0 = (float)src.x / atlasWidth;
+        g.v0 = (float)src.y / atlasHeight;
+        g.u1 = (float)(src.x + src.width) / atlasWidth;
+        g.v1 = (float)(src.y + src.height) / atlasHeight;
+        glyphs[src.face & 1][src.codepoint] = g;
+    }
+    bgl_atlas_free(&a);
 
-    for (int y = 0; y < 4; y++)
-        for (int x = 0; x < 4; x++)
-            (*data)[(1 + y) * atlasWidth + 1 + x] = 255;
-    whiteU = 3.0f / atlasWidth;
-    whiteV = 3.0f / atlasHeight;
-
-    unsigned cell = 1;
-    bool ok = true;
-    for (int f = 0; f < 2 && ok; f++) {
-        FT_Face face;
-        std::string path = folder + FaceFiles[f];
-        if (FT_New_Face(ft, path.c_str(), 0, &face)) {
-            error = "cannot load font " + path;
-            ok = false;
-            break;
-        }
-        FT_Set_Pixel_Sizes(face, 0, Size);
-
-        auto faceCodes = codes;
-        if (f == Mono)
-            for (uint32_t sc = 0; sc < ScreenCodes; sc++) faceCodes.push_back(0xee00 + sc);
-        for (auto cp : faceCodes) {
-            unsigned index = FT_Get_Char_Index(face, cp);
-            if (!index && cp != ' ')
-                continue;
-            if (FT_Load_Glyph(face, index, FT_LOAD_RENDER | FT_LOAD_TARGET_MONO))
-                continue;
-            auto slot = face->glyph;
-            Glyph g;
-            g.advance = (int)(slot->advance.x >> 6);
-            if (cp != ' ') {
-                g.left = slot->bitmap_left;
-                g.top = slot->bitmap_top;
-                g.width = std::min<int>(slot->bitmap.width, Cell - 1);
-                g.height = std::min<int>(slot->bitmap.rows, Cell - 1);
-            }
-            unsigned cx = (cell % perRow) * Cell, cy = (cell / perRow) * Cell;
-            cell++;
-            for (int y = 0; y < g.height; y++) {
-                const uint8_t* row = slot->bitmap.buffer + y * slot->bitmap.pitch;
-                for (int x = 0; x < g.width; x++)
-                    if (row[x >> 3] & (0x80 >> (x & 7)))
-                        (*data)[(cy + y) * atlasWidth + cx + x] = 255;
-            }
-            g.u0 = (float)cx / atlasWidth;
-            g.v0 = (float)cy / atlasHeight;
-            g.u1 = (float)(cx + g.width) / atlasWidth;
-            g.v1 = (float)(cy + g.height) / atlasHeight;
-            glyphs[f][cp] = g;
-        }
-        FT_Done_Face(face);
-
+    for (int f = 0; f < 2; f++) {
         // C64 Pro only has the PETSCII arrows (left, up): mirror them for right and down
         auto mirror = [&](uint32_t from, uint32_t to, bool horizontal) {
             auto src = glyphs[f].find(from);
@@ -121,10 +63,6 @@ auto OverlayFont::load(const std::string& folder, std::string& error) -> bool {
         if (q != glyphs[f].end())
             fallback[f] = q->second;
     }
-    FT_Done_FreeType(ft);
-
-    if (!ok)
-        return false;
     atlas = data;
     return true;
 }

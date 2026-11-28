@@ -95,7 +95,6 @@ struct Program : Emulator::Interface::Bind {
     auto userFolder() -> std::string;
     auto dataFolder() -> std::string;
     auto fontFolder() -> std::string;
-	auto imgFolder() -> std::string;
     auto soundFolder() -> std::string;
     auto presetFolder() -> std::string;
 	auto appFolder() -> std::string;
@@ -183,8 +182,7 @@ struct Program : Emulator::Interface::Bind {
     auto fpsChanged() -> void override;
     auto setRotation() -> void;
     auto checkShaderSupport(Emulator::Interface* emulator) -> void;
-    auto loadProgress() -> void;
-	auto updateOnScreenText(bool keepFontPath = false) -> void;
+	auto updateOnScreenText() -> void;
     auto takeScreenshot(uint8_t* _data, unsigned _width, unsigned _height) -> void;
     auto bufferScreenshot(uint8_t* _data, unsigned _size) -> void;
     auto updateHDR() -> void;

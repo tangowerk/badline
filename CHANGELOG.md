@@ -26,13 +26,46 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
   variant); `BADLINE_VK_BLEND_OFFSET_US` overrides the target time offset.
   Screenshots keep showing the unmixed picture.
 
+- **Busy spinner (M-VK2).** A small C64-style spinner (top left, overlay
+  scale) shows while a long task runs; GL shader compilation uses it (Vulkan
+  shader compilation will in M-VK3). It replaces the rotating progress image
+  of Denise. MCP `overlay` action `busy` turns it on/off for tests; the
+  overlay state lists the active ids (`busy`).
+- MCP `overlay`: the state reports the current screen text (`screen_text`:
+  text, warn, timed, visible); action `screen_text` shows a test message.
+
 ### Changed
 
 - The Vulkan FIFO swapchain uses one image more (minimum + 2) so a compositor
   hiccup does not block the emulation thread in the acquire.
 
+- **Glyph atlas in Rust (M-VK2).** The overlay fonts (C64 Pro, C64 Pro Mono)
+  are rasterized by a new crate (`crates/glyphs`: ttf-parser plus a small
+  pixel-exact rasterizer) instead of FreeType; the atlas is byte-identical to
+  the FreeType one (checked for every glyph incl. the screen code set).
+- **Screen text in C64 Pro (M-VK2).** Messages, FPS and DRC statistics are
+  drawn by the overlay painter (both renderers) in the overlay look: C64 Pro,
+  panel colours, warnings on red, sized with the overlay scale, in a window
+  corner (`screen_text_position`, default bottom right; outside the picture
+  area, so rendered screenshots no longer contain it). Messages fade in/out;
+  while one shows, FPS/DRC wait underneath and come back afterwards (Denise
+  dropped them until the next update). With the menu open, messages go to its
+  message line. Removed settings: `screen_text_font`, `screen_text_findex`,
+  `screen_text_fontsize`, `screen_text_color`, `screen_text_bgcolor`,
+  `screen_warn_color`, `screen_warn_bgcolor`, padding/margin settings.
+- FreeType is no longer a dependency (build, release container, package list);
+  Source Code Pro and `data/images/progress.png` are gone. Vulkan lost its
+  separate screen text texture and pipeline; GL its screen text and progress
+  code plus unused shaders. Dead font list code (`MiscHelper` display fonts,
+  unused since M9) removed.
+- NOTICE: removed stale entries (GTK, FreeType, LAME, fontconfig,
+  translations, Source Code Pro), added the Rust crates and libwayland-client.
+
 ### Fixed
 
+- The saved FPS display setting (`fps_screen`) was only applied after a
+  window/fullscreen switch, not at start (Badline bug since M9: the call went
+  with the GTK status bar).
 - Vulkan: a normal start stayed in the audio master fallback (old 5:6 judder,
   no DRC) until a display or fullscreen change: the pacing was decided before
   the swapchain reported target time support and never re-evaluated; it now is

@@ -21,7 +21,6 @@ const PACMAN_DEPS: &[&str] = &[
     "rustup",
     "libpulse",
     "curl",
-    "freetype2",
     "openal",
     "libx11",
     "libxrandr",
@@ -160,7 +159,7 @@ Install:        copy the folder anywhere (e.g. ~/.local/opt/badline) and start b
                 share/applications/badline.desktop can be adapted for a launcher entry.
 
 SDL3 is included (lib/, patched). The other libraries come from your system; on Arch:
-  sudo pacman -S --needed libpulse curl openal freetype2 libglvnd vulkan-icd-loader
+  sudo pacman -S --needed libpulse curl openal libglvnd vulkan-icd-loader
 (most desktops have them already).
 
 On first start Badline offers to download the C64 ROMs (see share/doc/badline/README.md).

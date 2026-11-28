@@ -1,5 +1,5 @@
-//! Vulkan renderer of Badline (M-VK1): presents the emulator picture, the overlay quads and
-//! the screen text into the SDL window. The C++ side (driver/video/vulkan/) passes the raw
+//! Vulkan renderer of Badline (M-VK1): presents the emulator picture, the overlay quads
+//! (incl. screen text) into the SDL window. The C++ side (driver/video/vulkan/) passes the raw
 //! window handles and per-frame data through the C API below (header driver/video/vulkan/bvk.h).
 
 mod renderer;
@@ -15,7 +15,6 @@ pub const BVK_SURFACE_WAYLAND: c_int = 1;
 pub const BVK_SURFACE_XLIB: c_int = 2;
 
 pub const BVK_TEX_ATLAS: c_int = 0;
-pub const BVK_TEX_TEXT: c_int = 1;
 
 pub const BVK_FMT_R8: c_int = 0;
 pub const BVK_FMT_RGBA8: c_int = 1;
@@ -74,12 +73,6 @@ pub struct BvkFrame {
     pub overlay_vertex_count: c_uint,
     pub overlay_width: f32,
     pub overlay_height: f32,
-
-    /// screen text (texture BVK_TEX_TEXT), quad corners in GL NDC of the picture area
-    pub text_visible: c_int,
-    pub text_quad: [f32; 16],
-    pub text_color: [f32; 4],
-    pub text_bg_color: [f32; 4],
 
     /// rendered screenshot: RGB, top-down, region in window pixels (origin top left)
     pub screenshot: *mut u8,

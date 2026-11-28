@@ -259,9 +259,6 @@ struct SDLGL : public Video, GL3, RenderThread {
         }
 
         viewScreen.update(viewport, _windowWidth, _windowHeight);
-#ifdef DRV_FREETYPE
-        screenText.ftUpdateCoords();
-#endif
         shaderResizeTimer = 10;
     }
 
@@ -324,9 +321,6 @@ struct SDLGL : public Video, GL3, RenderThread {
         GL3::updateMainTexture( threadEnabled ? getLastBufferToRender() : nullptr );
         GL3::_redraw(options);
         overlay.show(viewScreen.windowWidth, viewScreen.windowHeight);
-#ifdef DRV_FREETYPE
-        screenText.showText(viewport);
-#endif
         clearCurrent();
 
         resizeMutexThreaded.unlock();
@@ -361,12 +355,6 @@ struct SDLGL : public Video, GL3, RenderThread {
         GL3::_redraw(options);
 
         overlay.show(viewScreen.windowWidth, viewScreen.windowHeight);
-
-#ifdef DRV_FREETYPE
-        screenText.showText(viewport);
-#endif
-        if (progressVisible && progress.initialized)
-            progress.show(viewport, 20, 20);
 
         if ((options & OPT_TakeScreenshot) && subFrame == 1)
             takeScreenshot(GL_BACK);
@@ -466,9 +454,6 @@ struct SDLGL : public Video, GL3, RenderThread {
         viewScreen.hasIntegerScaling = _integerScaling;
 
         viewScreen.update(viewport);
-#ifdef DRV_FREETYPE
-        screenText.ftUpdateCoords();
-#endif
         GL3::updateFrameSize();
         updateHistory = true;
     }
@@ -538,11 +523,8 @@ struct SDLGL : public Video, GL3, RenderThread {
         return GLUtility::translate(version, slang, out, true);
     }
 
-    auto setProgressAnimation(uint8_t* _data, unsigned _width, unsigned _height) -> void {
-        wait();
-        makeCurrent();
-        progress.setIcon(_data, _width, _height);
-        clearCurrent();
+    auto setBusyCallback(std::function<void (bool busy)> onCallback) -> void {
+        onBusyCallback = onCallback;
     }
 
     auto clearCurrent() -> void {
@@ -550,20 +532,6 @@ struct SDLGL : public Video, GL3, RenderThread {
         hasRendererContext = false;
     }
 
-#ifdef DRV_FREETYPE
-    auto showScreenText(const std::string text, unsigned duration, bool warn = false) -> void {
-        screenText.ftUpdateMessage(text, duration, warn);
-    }
-
-    auto setScreenTextDescription(ScreenTextDescription& desc) -> void {
-        screenText.ftSetScreenTextDescription(desc);
-    }
-
-    auto freeFont() -> void {
-        wait();
-        screenText.ftUnload();
-    }
-#endif
 
     auto freeContext() -> void {
         clearCurrent();

@@ -10,8 +10,6 @@ const SHADERS: &[&str] = &[
     "blend.frag",
     "overlay.vert",
     "overlay.frag",
-    "text.vert",
-    "text.frag",
 ];
 
 fn main() {

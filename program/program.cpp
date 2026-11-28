@@ -190,6 +190,10 @@ auto Program::finishStartup() -> void {
             delete overlay;
             overlay = nullptr;
         }
+        updateOnScreenText();
+        // FPS screen text from the saved setting (was StatusHandler::init before M9)
+        if (statusHandler)
+            statusHandler->updateOnScreenFPS();
     }
 
     if (cmd->mcp && !mcpServer) {
@@ -795,10 +799,6 @@ auto Program::settingsFileFromEmuFolder( std::string ident ) -> std::string {
 
 auto Program::presetFolder() -> std::string {
     return installFolder() + PRESET_FOLDER;
-}
-
-auto Program::imgFolder() -> std::string {
-    return installFolder() + IMAGES_FOLDER;
 }
 
 auto Program::soundFolder() -> std::string {

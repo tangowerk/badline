@@ -13,6 +13,7 @@ name = "badline"
 path = "src/main.rs"
 
 [dependencies]
+badline-glyphs = { path = "../glyphs" }
 badline-vk = { path = "../vk" }
 
 [build-dependencies]

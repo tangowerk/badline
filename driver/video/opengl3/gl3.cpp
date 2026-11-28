@@ -23,12 +23,6 @@ namespace DRIVER {
     #include "shaders.h"
 }
 
-#ifdef DRV_FREETYPE
-    #include "screenText.h"
-#endif
-
-#include "progress.h"
-
 namespace DRIVER {
 #include "overlay.h"
 
@@ -40,6 +34,13 @@ struct GL3 {
     std::atomic<bool> shaderReady;
     std::atomic<int> shaderId;
     std::function<void (int pass, bool hasErrors)> onShaderProgressCallback = nullptr;
+    // shader compilation running: drives the overlay busy spinner (any thread)
+    std::function<void (bool busy)> onBusyCallback = nullptr;
+    std::atomic<bool> busyShown{false};
+    auto setBusy(bool on) -> void {
+        if (busyShown.exchange(on) != on && onBusyCallback)
+            onBusyCallback(on);
+    }
     std::function<void (DiskFile& diskFile)> onShaderCacheCallback = nullptr;
 
     GLProgram programs[MAX_SHADERS];
@@ -66,7 +67,6 @@ struct GL3 {
     } frame;
 
     bool threadAlive;
-    bool progressVisible;
     unsigned shaderPasses;
     unsigned historySize;
     unsigned frameCount;
@@ -75,10 +75,6 @@ struct GL3 {
     ViewScreen viewScreen;
     Viewport viewport;
     GLOverlay overlay;
-    OpenGLProgress progress;
-#ifdef DRV_FREETYPE
-        GlScreenText screenText;
-#endif
 
     bool updateRTS;
     bool updateHistory;
@@ -114,7 +110,6 @@ struct GL3 {
     GL3() {
         shaderPasses = 0;
         historySize = 0;
-        progressVisible = false;
         threadAlive = false;
         shaderReady = false;
         updateRTS = false;
@@ -358,18 +353,9 @@ struct GL3 {
         if(!OpenGLBind())
             return false;
 
-        if (!progress.init())
-            progress.term();
-
         overlay.term();
         if (!overlay.init())
             overlay.term();
-
-#ifdef DRV_FREETYPE
-        if (!screenText.init()) {
-            screenText.term();
-        }
-#endif
 
         glDisable(GL_ALPHA_TEST);
 
@@ -510,7 +496,7 @@ End:
     auto shader(ShaderPreset* preset) -> void {
         shaderId++;
         shaderReady = false;
-        progressVisible = false;
+        setBusy(false);
         shaderPasses = 0;
         historySize = 0;
         std::vector<GLProgram*> _programs;
@@ -555,7 +541,7 @@ End:
             _luts.push_back(diskFile);
         }
 
-        progressVisible = true;
+        setBusy(true);
         int _sid = shaderId;
         int cacheMode = !!settings.useShaderCache;
         if (cacheMode) {
@@ -769,7 +755,7 @@ End:
             programsTemp = _programs;
             lutsTemp = _luts;
             shaderReady = true;
-            progressVisible = false;
+            setBusy(false);
             threadAlive = false;
             deleteContext(context);
         });
@@ -1112,7 +1098,7 @@ End:
             return;
 
         Viewport viewport = this->viewport;
-        if (overlay.visible() && viewScreen.windowWidth && viewScreen.windowHeight) {
+        if (overlay.fullWindow() && viewScreen.windowWidth && viewScreen.windowHeight) {
             viewport.x = 0;
             viewport.y = 0;
             viewport.width = viewScreen.windowWidth;

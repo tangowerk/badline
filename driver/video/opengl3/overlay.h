@@ -20,6 +20,11 @@ struct GLOverlay {
         frame = _frame;
     }
 
+    auto fullWindow() -> bool {
+        std::lock_guard<std::mutex> lock(mutex);
+        return frame && frame->fullWindow;
+    }
+
     auto visible() -> bool {
         std::lock_guard<std::mutex> lock(mutex);
         return frame && !frame->vertices.empty();

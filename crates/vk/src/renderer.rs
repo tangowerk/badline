@@ -1,8 +1,8 @@
 //! Vulkan 1.3 renderer: dynamic rendering, synchronization2, FIFO present.
 //!
 //! Per frame: wait for the frame-in-flight fence, acquire, upload the emulator picture through
-//! a per-frame staging buffer, draw picture + overlay + screen text, present. Rare uploads
-//! (atlas, screen text) wait for the device to be idle.
+//! a per-frame staging buffer, draw picture + overlay (incl. screen text), present. Rare uploads
+//! (atlas) wait for the device to be idle.
 //!
 //! Pacing (M-Pacing1): with a queue depth d > 0 the present N waits until present N-d is on
 //! screen (the display clocks the emulation). Depth 1 is too late on compositors that compose
@@ -21,7 +21,7 @@ use ash::{Device, Entry, Instance, vk};
 use crate::timing::{self, Feedback, Record};
 use crate::{
     BVK_FMT_R8, BVK_PRESENT_FIFO, BVK_PRESENT_IMMEDIATE, BVK_SURFACE_WAYLAND, BVK_SURFACE_XLIB, BVK_TEX_ATLAS,
-    BVK_TEX_TEXT, BvkCreateInfo, BvkFrame,
+    BvkCreateInfo, BvkFrame,
 };
 
 const FRAMES: usize = 2;
@@ -64,8 +64,8 @@ struct PendingTexture {
 struct Prepared {
     upload: bool,
     overlay_count: u32,
-    /// texture slots (atlas, text) with data in the frame's upload buffer, in this order
-    textures: [bool; 2],
+    /// the atlas has data in the frame's upload buffer
+    atlas_upload: bool,
     shot: Option<(u32, u32, u32, u32)>,
 }
 
@@ -112,7 +112,6 @@ struct Pipelines {
     /// two pictures mixed in linear light (frame blending)
     blend: vk::Pipeline,
     overlay: vk::Pipeline,
-    text: vk::Pipeline,
 }
 
 pub struct Renderer {
@@ -185,8 +184,7 @@ pub struct Renderer {
     /// weight of the latest picture for the next present (1.0 = latest only, no blending)
     weight: f32,
     atlas: Option<Texture>,
-    text: Option<Texture>,
-    pending: [Option<PendingTexture>; 2],
+    pending: Option<PendingTexture>,
     device_name: CString,
     /// wp_content_type_v1 "game" on the Wayland surface (dropped after the Vulkan objects)
     content_type: Option<crate::wl::ContentType>,
@@ -534,7 +532,6 @@ impl Renderer {
                 image: vk::Pipeline::null(),
                 blend: vk::Pipeline::null(),
                 overlay: vk::Pipeline::null(),
-                text: vk::Pipeline::null(),
             },
             frames: Vec::new(),
             current: 0,
@@ -544,8 +541,7 @@ impl Renderer {
             weight: 1.0,
             blend_target: 0,
             atlas: None,
-            text: None,
-            pending: [None, None],
+            pending: None,
             device_name,
             content_type: None,
             debug_slow: std::env::var_os("BADLINE_VK_DEBUG").is_some(),
@@ -770,8 +766,6 @@ impl Renderer {
         let blend_fs = module(include_bytes!(concat!(env!("OUT_DIR"), "/blend.frag.spv")))?;
         let overlay_vs = module(include_bytes!(concat!(env!("OUT_DIR"), "/overlay.vert.spv")))?;
         let overlay_fs = module(include_bytes!(concat!(env!("OUT_DIR"), "/overlay.frag.spv")))?;
-        let text_vs = module(include_bytes!(concat!(env!("OUT_DIR"), "/text.vert.spv")))?;
-        let text_fs = module(include_bytes!(concat!(env!("OUT_DIR"), "/text.frag.spv")))?;
 
         let overlay_bindings = [vk::VertexInputBindingDescription::default()
             .binding(0)
@@ -847,11 +841,10 @@ impl Renderer {
                 image: build(image_vs, image_fs, vk::PrimitiveTopology::TRIANGLE_STRIP, false, false)?,
                 blend: build(image_vs, blend_fs, vk::PrimitiveTopology::TRIANGLE_STRIP, false, false)?,
                 overlay: build(overlay_vs, overlay_fs, vk::PrimitiveTopology::TRIANGLE_LIST, true, true)?,
-                text: build(text_vs, text_fs, vk::PrimitiveTopology::TRIANGLE_STRIP, true, false)?,
             })
         })();
         unsafe {
-            for m in [image_vs, image_fs, blend_fs, overlay_vs, overlay_fs, text_vs, text_fs] {
+            for m in [image_vs, image_fs, blend_fs, overlay_vs, overlay_fs] {
                 d.destroy_shader_module(m, None);
             }
         }
@@ -1050,20 +1043,18 @@ impl Renderer {
         }
     }
 
-    // ------------------------------------------------------------ textures (atlas, text)
+    // ------------------------------------------------------------ texture (overlay atlas)
 
-    /// Queues a texture upload; it is recorded into the next frame's command buffer (no wait
+    /// Queues the atlas upload; it is recorded into the next frame's command buffer (no wait
     /// for the device unless the size changes). Width/height 0 removes the texture.
     pub fn set_texture(&mut self, slot: i32, format: i32, width: u32, height: u32, data: &[u8]) -> Result<()> {
-        let index = match slot {
-            BVK_TEX_ATLAS => 0,
-            BVK_TEX_TEXT => 1,
-            _ => return Err(format!("unknown texture slot {slot}")),
-        };
+        if slot != BVK_TEX_ATLAS {
+            return Err(format!("unknown texture slot {slot}"));
+        }
         if width == 0 || height == 0 || data.is_empty() {
-            self.pending[index] = None;
+            self.pending = None;
             unsafe { self.device.device_wait_idle() }.map_err(vkerr("wait idle"))?;
-            if let Some(t) = self.slot_mut(index).take() {
+            if let Some(t) = self.atlas.take() {
                 self.destroy_texture(t);
             }
             return Ok(());
@@ -1073,7 +1064,7 @@ impl Renderer {
         } else {
             vk::Format::R8G8B8A8_UNORM
         };
-        self.pending[index] = Some(PendingTexture {
+        self.pending = Some(PendingTexture {
             format,
             width,
             height,
@@ -1082,25 +1073,18 @@ impl Renderer {
         Ok(())
     }
 
-    fn slot_mut(&mut self, index: usize) -> &mut Option<Texture> {
-        if index == 0 { &mut self.atlas } else { &mut self.text }
-    }
-
-    /// creates textures for pending uploads whose size or format changed (device idle then)
+    /// creates the atlas texture for a pending upload whose size or format changed (device idle then)
     fn prepare_textures(&mut self) -> Result<()> {
-        for index in 0..2 {
-            let Some((format, width, height)) = self.pending[index].as_ref().map(|p| (p.format, p.width, p.height)) else {
-                continue;
-            };
-            let fits = self.slot_mut(index).as_ref().is_some_and(|t| t.width == width && t.height == height && t.format == format);
-            if !fits {
-                unsafe { self.device.device_wait_idle() }.map_err(vkerr("wait idle"))?;
-                if let Some(t) = self.slot_mut(index).take() {
-                    self.destroy_texture(t);
-                }
-                let tex = self.create_texture(width, height, format)?;
-                *self.slot_mut(index) = Some(tex);
+        let Some((format, width, height)) = self.pending.as_ref().map(|p| (p.format, p.width, p.height)) else {
+            return Ok(());
+        };
+        let fits = self.atlas.as_ref().is_some_and(|t| t.width == width && t.height == height && t.format == format);
+        if !fits {
+            unsafe { self.device.device_wait_idle() }.map_err(vkerr("wait idle"))?;
+            if let Some(t) = self.atlas.take() {
+                self.destroy_texture(t);
             }
+            self.atlas = Some(self.create_texture(width, height, format)?);
         }
         Ok(())
     }
@@ -1625,20 +1609,11 @@ impl Renderer {
             };
         }
 
-        let mut textures = [false; 2];
-        let total: usize = self.pending.iter().flatten().map(|p| p.data.len()).sum();
-        if total > 0 {
-            self.ensure_buffer(&mut frame.uploads, total as u64, vk::BufferUsageFlags::TRANSFER_SRC)?;
-            let mut offset = 0;
-            for (index, done) in textures.iter_mut().enumerate() {
-                if let Some(p) = self.pending[index].take() {
-                    unsafe {
-                        std::ptr::copy_nonoverlapping(p.data.as_ptr(), frame.uploads.as_ref().unwrap().ptr.add(offset), p.data.len())
-                    };
-                    offset += p.data.len();
-                    *done = true;
-                }
-            }
+        let mut atlas_upload = false;
+        if let Some(p) = self.pending.take() {
+            self.ensure_buffer(&mut frame.uploads, p.data.len() as u64, vk::BufferUsageFlags::TRANSFER_SRC)?;
+            unsafe { std::ptr::copy_nonoverlapping(p.data.as_ptr(), frame.uploads.as_ref().unwrap().ptr, p.data.len()) };
+            atlas_upload = true;
         }
 
         let mut shot = None;
@@ -1653,7 +1628,7 @@ impl Renderer {
         Ok(Prepared {
             upload,
             overlay_count,
-            textures,
+            atlas_upload,
             shot,
         })
     }
@@ -1688,15 +1663,10 @@ impl Renderer {
                 let tex = self.pictures[self.cur].as_mut().unwrap();
                 record_upload(&d, cmd, tex, frame.staging.as_ref().unwrap().buffer, 0, f.frame_width);
             }
-            let mut offset = 0u64;
-            for (index, &queued) in prep.textures.iter().enumerate() {
-                if queued {
-                    let buffer = frame.uploads.as_ref().unwrap().buffer;
-                    let tex = self.slot_mut(index).as_mut().unwrap();
-                    let bytes = tex.width as u64 * tex.height as u64 * if tex.format == vk::Format::R8_UNORM { 1 } else { 4 };
-                    record_upload(&d, cmd, tex, buffer, offset, tex.width);
-                    offset += bytes;
-                }
+            if prep.atlas_upload {
+                let buffer = frame.uploads.as_ref().unwrap().buffer;
+                let tex = self.atlas.as_mut().unwrap();
+                record_upload(&d, cmd, tex, buffer, 0, tex.width);
             }
 
             image_barrier(
@@ -1798,25 +1768,6 @@ impl Renderer {
                 );
                 d.cmd_bind_vertex_buffers(cmd, 0, &[frame.vertices.as_ref().unwrap().buffer], &[0]);
                 d.cmd_draw(cmd, overlay_count, 1, 0, 0);
-            }
-
-            if let Some(text) = self.text.as_ref().filter(|_| f.text_visible != 0) {
-                // GL draws the text with the picture viewport still bound
-                d.cmd_set_viewport(cmd, 0, &[picture_vp]);
-                d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.text);
-                d.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.layout, 0, &[text.sets[0]], &[]);
-                let mut push = [0f32; 24];
-                push[..16].copy_from_slice(&f.text_quad);
-                push[16..20].copy_from_slice(&f.text_color);
-                push[20..24].copy_from_slice(&f.text_bg_color);
-                d.cmd_push_constants(
-                    cmd,
-                    self.layout,
-                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
-                    0,
-                    as_bytes(&push),
-                );
-                d.cmd_draw(cmd, 4, 1, 0, 0);
             }
 
             d.cmd_end_rendering(cmd);
@@ -2006,7 +1957,7 @@ impl Renderer {
         unsafe {
             let _ = d.device_wait_idle();
             let [p0, p1] = std::mem::take(&mut self.pictures);
-            for t in [p0, p1, self.atlas.take(), self.text.take()].into_iter().flatten() {
+            for t in [p0, p1, self.atlas.take()].into_iter().flatten() {
                 self.destroy_texture(t);
             }
             let frames = std::mem::take(&mut self.frames);
@@ -2018,7 +1969,7 @@ impl Renderer {
                 d.destroy_semaphore(f.acquired, None);
             }
             let d = &self.device;
-            for p in [self.pipelines.image, self.pipelines.blend, self.pipelines.overlay, self.pipelines.text] {
+            for p in [self.pipelines.image, self.pipelines.blend, self.pipelines.overlay] {
                 d.destroy_pipeline(p, None);
             }
             d.destroy_pipeline_layout(self.layout, None);

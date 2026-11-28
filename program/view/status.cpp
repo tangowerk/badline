@@ -1,6 +1,7 @@
 
 #include "status.h"
 #include "../window/sdlWindow.h"
+#include "../overlay/overlay.h"
 #include "../audio/manager.h"
 #include "../cmd/cmd.h"
 #include "../tools/chronos.h"
@@ -92,7 +93,7 @@ auto StatusHandler::updateOnScreenFPS() -> void {
         return;
 
     if (!showFPSScreen)
-        videoDriver->showScreenText( "", 0 );
+        showScreenText("", 0 );
     else
         statusHandler->setFpsCounterUpdate();
 }
@@ -162,7 +163,7 @@ auto StatusHandler::setFpsRefresh() -> void {
     fpsCounter.decimalPoints = settings->get<unsigned>("fps_decimal_point", 1u, {0u, 3u});
 
     if (pointsBefore != fpsCounter.decimalPoints) {
-        videoDriver->showScreenText( "", 0 );
+        showScreenText("", 0 );
         setFpsCounterUpdate();
     }
 }
@@ -188,7 +189,7 @@ auto StatusHandler::update() -> void {
         }
 
         if (messageUpdate()) {
-            videoDriver->showScreenText( message.txt, message.duration, message.warn );
+            showScreenText(message.txt, message.duration, message.warn );
 
         } else if (drcS.enable) {
             if (drcBufferUpdate()) {
@@ -196,11 +197,11 @@ auto StatusHandler::update() -> void {
                 OSDText += GUIKIT::String::formatFloatingPoint(drcS.current, 2) + "% ";
                 OSDText += "[ " + GUIKIT::String::formatFloatingPoint(drcS.min, 2) + " : " + GUIKIT::String::formatFloatingPoint(drcS.max, 2) + " ]";
                 OSDText += " Ø " + GUIKIT::String::formatFloatingPoint(drcS.average, 2) + "%";
-                videoDriver->showScreenText( OSDText, 0 );
+                showScreenText(OSDText, 0 );
             }
         } else if (showFPSScreen) {
             if (fpsCounterUpdate())
-                videoDriver->showScreenText( _FPS, 0 );
+                showScreenText(_FPS, 0 );
         }
     }
 

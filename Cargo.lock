@@ -27,8 +27,16 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 name = "badline"
 version = "0.2.0"
 dependencies = [
+ "badline-glyphs",
  "badline-vk",
  "cc",
+]
+
+[[package]]
+name = "badline-glyphs"
+version = "0.2.0"
+dependencies = [
+ "ttf-parser",
 ]
 
 [[package]]
@@ -397,6 +405,12 @@ dependencies = [
  "quote",
  "syn 3.0.10",
 ]
+
+[[package]]
+name = "ttf-parser"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
 
 [[package]]
 name = "unicode-ident"

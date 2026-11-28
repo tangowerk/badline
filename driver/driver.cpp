@@ -15,10 +15,6 @@
 
 namespace DRIVER {
 
-auto Video::getFontNames(const std::string& fontPath) -> std::vector<std::string> {
-	return Freetype::getFontNames(fontPath);
-}
-
 auto Video::available() -> std::vector<std::string> {
     return { "OpenGL", "Vulkan" };
 }

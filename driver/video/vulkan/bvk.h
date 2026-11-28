@@ -10,7 +10,7 @@ extern "C" {
 struct BvkRenderer;
 
 enum { BVK_SURFACE_WAYLAND = 1, BVK_SURFACE_XLIB = 2 };
-enum { BVK_TEX_ATLAS = 0, BVK_TEX_TEXT = 1 };
+enum { BVK_TEX_ATLAS = 0 };
 enum { BVK_FMT_R8 = 0, BVK_FMT_RGBA8 = 1 };
 enum { BVK_OK = 0, BVK_SKIPPED = 1, BVK_NO_SHOT = 2, BVK_ERROR = -1 };
 enum { BVK_PRESENT_MAILBOX = 0, BVK_PRESENT_FIFO = 1, BVK_PRESENT_IMMEDIATE = 2 };
@@ -42,11 +42,6 @@ struct BvkFrame {
     unsigned overlay_vertex_count;
     float overlay_width;
     float overlay_height;
-
-    int text_visible;
-    float text_quad[16];
-    float text_color[4];
-    float text_bg_color[4];
 
     uint8_t* screenshot;    // RGB, top-down
     int shot_x, shot_y, shot_width, shot_height;

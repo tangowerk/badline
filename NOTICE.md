@@ -33,16 +33,14 @@ released under the same license.
 | lhasa (LHA decoder) by Simon Howard | `deps/lha` | ISC |
 | stb_image_write / stb_image_resize2 by Sean Barrett | `deps/stb` | MIT or public domain |
 | C64 Pro / C64 Pro Mono fonts, C64 TrueType v1.2.1 by Style (https://style64.org/c64-truetype) | `data/fonts` | Style license, not GPL – see `data/fonts/C64_TrueType-LICENSE.txt` |
-| Source Code Pro (Adobe) | `data/fonts` | SIL Open Font License 1.1, see `data/fonts/SourceCodePro-LICENSE.md` |
 | Floppy sounds by Trackers-World.NET | `data/sounds` | CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/) |
-| UI translations by Ben (French), Ulgon (Japanese), Ferenc (Hungarian), thecodeblasters (Spanish), Luigi (Italian), Diego (Esperanto) | `data/translation` | contributed to Denise |
+| Rust crates from crates.io (ash, naga, wayland-rs, ttf-parser and their dependencies) | `crates/*` (Cargo) | MIT and/or Apache-2.0, see `Cargo.lock` |
 
 ## Libraries linked from the system
 
-SDL3 (zlib), libcurl (curl license), GTK 3 / GLib (LGPL-2.1-or-later,
-still used internally until the GTK layer is removed), PulseAudio
-(LGPL-2.1-or-later), FreeType (FTL or GPL-2.0), OpenAL Soft (LGPL-2.0-or-later,
-optional), LAME (LGPL-2.0-or-later, optional), fontconfig, Xlib/Xrandr (MIT).
+SDL3 (zlib), libcurl (curl license), PulseAudio (LGPL-2.1-or-later),
+OpenAL Soft (LGPL-2.0-or-later, optional), libwayland-client (MIT),
+libGL/libglvnd and the Vulkan loader (MIT/Apache-2.0).
 
 ## Commodore ROMs
 

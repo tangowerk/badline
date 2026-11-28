@@ -1,7 +1,7 @@
 #pragma once
 
 // Glyph atlas for the overlay: C64 Pro (proportional) and C64 Pro Mono, rasterized once
-// at their native 8 px grid (1-bit, pixel exact) and scaled by integer factors on screen.
+// at their native 8 px grid (1-bit, pixel exact; crates/glyphs) and scaled by integer factors on screen.
 
 #include <cstdint>
 #include <memory>

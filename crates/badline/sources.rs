@@ -1,6 +1,6 @@
 // C/C++ translation units and their extra flags (taken over from the former CMake files).
 // Flag tokens: "-I@dir" = include relative to the repo root, "%pkg" = pkg-config cflags
-// (sdl3, freetype2, openal = optional), "%version" = -DVERSION from Cargo.toml.
+// (sdl3, openal = optional), "%version" = -DVERSION from Cargo.toml.
 // `program` units are linked whole-archive (they were plain objects of the executable).
 
 #[allow(dead_code)] // name documents the group
@@ -141,11 +141,9 @@ pub const GROUPS: &[Group] = &[
         flags: &[
             "-I@deps/glslang",
             "%sdl3",
-            "%freetype2",
             "%openal",
             "-DDRV_SDL",
             "-DDRV_PULSEAUDIO",
-            "-DDRV_FREETYPE",
         ],
         program: false,
         files: &["driver/driver.cpp"],
@@ -227,7 +225,7 @@ pub const GROUPS: &[Group] = &[
     },
     Group {
         name: "program",
-        flags: &["%freetype2", "%sdl3", "%version"],
+        flags: &["%sdl3", "%version"],
         program: true,
         files: &[
             "program/thread/emuThread.cpp",
@@ -272,13 +270,11 @@ pub const GROUPS: &[Group] = &[
     Group {
         name: "program: main",
         flags: &[
-            "%freetype2",
             "%sdl3",
             "%version",
             "-DAPP_NAME=\"Badline\"",
             "-DDATA_FOLDER=\"data/\"",
             "-DPRESET_FOLDER=\"presets/\"",
-            "-DIMAGES_FOLDER=\"images/\"",
             "-DSOUND_FOLDER=\"sounds/\"",
         ],
         program: true,

@@ -300,7 +300,7 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             if (statusHandler) {
                 statusHandler->showFPSScreen ^= 1;
                 if (!statusHandler->showFPSScreen)
-                    videoDriver->showScreenText( "", 0 );
+                    showScreenText("", 0 );
                 else
                     statusHandler->setFpsCounterUpdate();
 
@@ -319,7 +319,7 @@ auto InputManager::fireHotkey(InputMapping* trigger) -> void {
             if (audioManager) {
                 audioManager->statistics.enable ^= 1;
                 if (!audioManager->statistics.enable)
-                    videoDriver->showScreenText( "", 0 );
+                    showScreenText("", 0 );
                 else
                     statusHandler->setDrcBufferUpdate();
             }

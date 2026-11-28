@@ -38,22 +38,6 @@ struct DiskFile {
     unsigned height = 0;
 };
 
-struct ScreenTextDescription {
-	enum Position { POSITION_BOTTOM_RIGHT, POSITION_BOTTOM_CENTER, POSITION_BOTTOM_LEFT, POSITION_TOP_RIGHT, POSITION_TOP_CENTER, POSITION_TOP_LEFT };
-	Position position = POSITION_BOTTOM_RIGHT;
-	std::string fontPath;
-	unsigned fontIndex;
-	unsigned fontSize;
-	unsigned fontColor;
-	unsigned backgroundColor;
-	unsigned warnColor;
-	unsigned warnBackgroundColor;
-	unsigned paddingHorizontal;
-	int paddingVertical;
-	unsigned marginHorizontal;
-	int marginVertical;
-};
-
 struct AppData {
     float ledDriveState = 0.0;
     float cropTop = 0.0;
@@ -76,6 +60,7 @@ struct OverlayFrame {
     std::vector<float> vertices;
     unsigned width = 0; // window pixel size the vertices were built for
     unsigned height = 0;
+    bool fullWindow = false; // menu or drop tiles: screenshots capture the whole window
 };
 
 // one present of the pacing-capable renderer (Vulkan), see bvk.h BvkPresent
@@ -132,11 +117,8 @@ struct Video {
     virtual auto setThreaded(bool state) -> void {}
     virtual auto hasThreaded() -> bool { return false; }
     virtual auto waitRenderThread() -> void {}
-    virtual auto setProgressAnimation(uint8_t* _data, unsigned _width, unsigned _height) -> void {}
-
-	virtual auto showScreenText(const std::string text, unsigned duration, bool warn = false) -> void {}
-	virtual auto setScreenTextDescription(ScreenTextDescription& desc) -> void {}
-	virtual auto freeFont() -> void {}
+    // shader compilation in progress (any thread): drives the overlay busy spinner
+    virtual auto setBusyCallback(std::function<void (bool busy)> onCallback) -> void {}
     virtual auto forceResize() -> void {}
     virtual auto freeContext() -> void {}
     virtual auto lockResize() -> void {}
@@ -198,8 +180,6 @@ struct Video {
     static auto create(const std::string& driver) -> Video*;
 	static auto available() -> std::vector<std::string>;
 	static auto preferred() -> std::string;
-
-	static auto getFontNames(const std::string& fontPath) -> std::vector<std::string>;
 };
 
 struct Audio {

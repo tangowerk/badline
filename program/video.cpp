@@ -117,9 +117,12 @@ auto Program::initVideo(bool driverChange) -> bool {
 
     videoDriver->useShaderCache(true );
 
-    updateOnScreenText();
+    videoDriver->setBusyCallback([](bool on) {
+        if (overlay)
+            overlay->busy("shader", on);
+    });
 
-    loadProgress();
+    updateOnScreenText();
     return ok;
 }
 
@@ -200,31 +203,6 @@ auto Program::takeScreenshot(uint8_t* _data, unsigned _width, unsigned _height) 
     }
 
     screenShot.sharedMutex.unlock();
-}
-
-auto Program::loadProgress() -> void {
-    static GUIKIT::Image* mediaImage = nullptr;
-    static bool initialized = false;
-
-    if (!initialized) {
-        initialized = true;
-        GUIKIT::File file(program->imgFolder() + "progress.png");
-
-        if (!file.open())
-            return;
-
-        uint8_t* data = file.read();
-
-        if (!data)
-            return;
-
-        mediaImage = new GUIKIT::Image;
-        if (!mediaImage->loadPng(data, file.getSize()))
-            return;
-    }
-
-    if (mediaImage && mediaImage->data)
-        videoDriver->setProgressAnimation(mediaImage->data, mediaImage->width, mediaImage->height);
 }
 
 auto Program::setVideoDimension(Emulator::Interface* emulator) -> void {
@@ -573,68 +551,11 @@ auto Program::checkShaderSupport(Emulator::Interface* emulator) -> void {
         vManager->clearPreset();
 }
 
-auto Program::updateOnScreenText(bool keepFontPath) -> void {
-
-    if (!activeEmulator)
+// screen text is drawn by the overlay (C64 Pro, M-VK2); only the corner is configurable
+auto Program::updateOnScreenText() -> void {
+    if (!activeEmulator || !overlay)
         return;
-
-    auto _settings = Program::getSettings(activeEmulator);
-    unsigned screenTextColor = _settings->get<unsigned>("screen_text_color", ~0);
-    unsigned screenTextBgColor = _settings->get<unsigned>("screen_text_bgcolor", (255 << 24) | (69 << 16) | (128 << 8) | (116 << 0));
-    unsigned screenWarnColor = _settings->get<unsigned>("screen_warn_color", (255 << 24) | (177 << 16) | (3 << 8) | (23 << 0));
-    unsigned screenWarnBgColor = _settings->get<unsigned>("screen_warn_bgcolor", (255 << 24) | (95 << 16) | (169 << 8) | (132 << 0));
-    unsigned screenTextFontSize = _settings->get<unsigned>("screen_text_fontsize", 18, {8, 36});
-    unsigned screenTextPosition = _settings->get<unsigned>("screen_text_position", 0);
-    unsigned screenTextPaddingHorizontal = _settings->get<unsigned>("screen_text_padding_horizontal", 10, {0, 60});
-    unsigned screenTextPaddingVertical = _settings->get<unsigned>("screen_text_padding_vertical", 8, {0, 30});
-    unsigned screenTextMarginHorizontal = _settings->get<unsigned>("screen_text_margin_horizontal", 10, {0, 100});
-    unsigned screenTextMarginVertical = _settings->get<unsigned>("screen_text_margin_vertical", 12, {0, 100});
-    bool paddingSeparate = _settings->get<bool>("screen_text_padding_separate", true);
-    bool marginSeparate = _settings->get<bool>("screen_text_margin_separate", false);
-
-    std::string screenTextFontPath = "";
-    unsigned fIndex = 0;
-
-    if (!keepFontPath) {
-        std::string _fontFile = _settings->get<std::string>("screen_text_font", "");
-        fIndex = _settings->get<unsigned>("screen_text_findex", 0);
-        bool found = false;
-
-        if (!_fontFile.empty()) {
-            screenTextFontPath = fontFolder() + _fontFile;
-            GUIKIT::File file(screenTextFontPath);
-            found = file.exists();
-            file.unload();
-
-            if (!found) {
-                screenTextFontPath = FileHelper::generatedFolder("fonts") + _fontFile;
-                file.setFile(screenTextFontPath);
-                found = file.exists();
-                file.unload();
-            }
-        }
-
-        if (!found) {
-            fIndex = 0;
-            screenTextFontPath = fontFolder() + "/SourceCodePro-Regular.ttf";
-        }
-    }
-
-    DRIVER::ScreenTextDescription desc;
-    desc.position = static_cast<DRIVER::ScreenTextDescription::Position>(screenTextPosition);
-    desc.fontSize = screenTextFontSize;
-    desc.fontColor = screenTextColor;
-    desc.backgroundColor = screenTextBgColor;
-    desc.warnColor = screenWarnColor;
-    desc.warnBackgroundColor = screenWarnBgColor;
-    desc.fontPath = screenTextFontPath;
-    desc.fontIndex = fIndex;
-    desc.paddingHorizontal = screenTextPaddingHorizontal;
-    desc.paddingVertical = paddingSeparate ? (int)screenTextPaddingVertical : -1;
-    desc.marginHorizontal = screenTextMarginHorizontal;
-    desc.marginVertical = marginSeparate ? (int)screenTextMarginVertical : -1;
-
-    videoDriver->setScreenTextDescription(desc);
+    overlay->setScreenTextPosition(Program::getSettings(activeEmulator)->get<unsigned>("screen_text_position", 0, {0u, 5u}));
 }
 
 auto Program::updateHDR() -> void {

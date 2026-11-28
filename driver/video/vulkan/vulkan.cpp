@@ -1,5 +1,5 @@
 // Vulkan output into an SDL3 window (M-VK1). The renderer itself is Rust (crates/vk, C API in
-// bvk.h); this adapter keeps the picture buffer, geometry, overlay frame and screen text state.
+// bvk.h); this adapter keeps the picture buffer, geometry and overlay frame (incl. screen text).
 // The window is created by the program layer with SDL_WINDOW_VULKAN; init() receives it.
 
 #include <SDL3/SDL.h>
@@ -10,7 +10,6 @@
 #include <vector>
 #include "bvk.h"
 #include "../viewport.h"
-#include "../freetype.h"
 #include "../../tools/tools.h"
 
 namespace DRIVER {
@@ -22,7 +21,7 @@ static_assert((int)BVK_FEEDBACK_TIMING == (int)PACING_FEEDBACK_TIMING && (int)BV
 static_assert((int)BVK_PRESENT_FIFO == (int)PRESENT_FIFO && (int)BVK_PRESENT_MAILBOX == (int)PRESENT_MAILBOX
     && (int)BVK_PRESENT_IMMEDIATE == (int)PRESENT_IMMEDIATE, "present modes");
 
-struct SDLVK : public Video, Freetype {
+struct SDLVK : public Video {
 
     SDL_Window* window = nullptr;
     BvkRenderer* vk = nullptr;
@@ -62,8 +61,6 @@ struct SDLVK : public Video, Freetype {
     unsigned atlasId = 0;
     bool atlasUploaded = false;
 
-    FtColNorm textColor = {1, 1, 1, 1};
-    FtColNorm textBgColor = {0, 0, 0, 0};
 
     ScreenshotCallback screenshotCallback;
 
@@ -112,7 +109,6 @@ struct SDLVK : public Video, Freetype {
         bvk_set_present_mode(vk, presentMode);
         bvk_set_pacing(vk, repeat, queueDepth, gridNs, refreshNs);
         samples.clear();
-        ftInitialized = true;
         reportedError = false;
         return true;
     }
@@ -123,7 +119,6 @@ struct SDLVK : public Video, Freetype {
             bvk_destroy(vk);
         vk = nullptr;
         atlasUploaded = false;
-        ftInitialized = false;
     }
 
     auto lastError() -> std::string { return error; }
@@ -244,7 +239,6 @@ struct SDLVK : public Video, Freetype {
         if (!force && (unsigned)w == viewScreen.windowWidth && (unsigned)h == viewScreen.windowHeight)
             return;
         viewScreen.update(viewport, w, h);
-        ftUpdateCoords();
     }
 
     // seq: emulator frame sequence of a new picture (0 = redraw, presented once)
@@ -289,22 +283,10 @@ struct SDLVK : public Video, Freetype {
             f.overlay_height = overlay->height;
         }
 
-        if (decorations && ftUpdated)
-            ftProcessUpdates(viewport);
-        bool textVisible = decorations && ftTextBuffer && ftTotalWidth && ftTotalHeight;
-        if (textVisible && ftTs && ftHandleAnimation(viewport))
-            textVisible = false;
-        f.text_visible = textVisible;
-        if (textVisible) {
-            std::memcpy(f.text_quad, ftPosCoords, sizeof f.text_quad);
-            f.text_color[0] = textColor.r, f.text_color[1] = textColor.g, f.text_color[2] = textColor.b, f.text_color[3] = textColor.a;
-            f.text_bg_color[0] = textBgColor.r, f.text_bg_color[1] = textBgColor.g, f.text_bg_color[2] = textBgColor.b, f.text_bg_color[3] = textBgColor.a;
-        }
-
         std::vector<uint8_t> shot;
         if (screenshot && screenshotCallback) {
-            // with a visible overlay the whole window is captured, otherwise the picture area
-            if (f.overlay_vertex_count) {
+            // with the menu or drop tiles the whole window is captured, otherwise the picture area
+            if (f.overlay_vertex_count && overlay->fullWindow) {
                 f.shot_x = 0, f.shot_y = 0, f.shot_width = f.window_width, f.shot_height = f.window_height;
             } else {
                 f.shot_x = f.vp_x, f.shot_y = f.vp_y, f.shot_width = f.vp_width, f.shot_height = f.vp_height;
@@ -363,32 +345,6 @@ struct SDLVK : public Video, Freetype {
 
     auto hasOverlay() -> bool { return vk != nullptr; }
 
-    // ------------------------------------------------------------ screen text (Freetype base)
-
-    auto ftSetColor(FtColNorm& col, FtColNorm& bg) -> void {
-        textColor = col;
-        textBgColor = bg;
-    }
-
-    auto ftBuildTexture(std::string text, bool keepOldSize = false) -> void {
-        if (!ftBuildText(text, keepOldSize))
-            return;
-        setTexture(BVK_TEX_TEXT, BVK_FMT_R8, ftTotalWidth, ftTotalHeight, ftTextBuffer);
-    }
-
-    auto showScreenText(const std::string text, unsigned duration, bool warn = false) -> void {
-        ftUpdateMessage(text, duration, warn);
-    }
-
-    auto setScreenTextDescription(ScreenTextDescription& desc) -> void {
-        ftSetScreenTextDescription(desc);
-    }
-
-    auto freeFont() -> void {
-        std::lock_guard<std::recursive_mutex> lock(mutex);
-        ftUnload();
-    }
-
     // ------------------------------------------------------------ geometry
 
     auto updateMvp() -> void {
@@ -428,7 +384,6 @@ struct SDLVK : public Video, Freetype {
         viewScreen.mode = (ViewScreen::Mode)mode;
         viewScreen.hasIntegerScaling = _integerScaling;
         viewScreen.update(viewport);
-        ftUpdateCoords();
     }
 
     auto getAspectRatio() -> int { return (int)viewScreen.mode; }

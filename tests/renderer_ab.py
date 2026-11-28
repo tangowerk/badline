@@ -224,8 +224,8 @@ def run_variant(args, name, config, exact, base):
             check("GL picture unchanged after the round trip", same and diff == 0, f"{diff} pixels differ")
 
         if exact:
-            # screen text: "CPU Jam" message (bottom right), messages do not survive a switch
-            jams = {}
+            # screen text: the "CPU Jam" message is drawn by the overlay painter in the window
+            # corner (M-VK2), outside the rendered screenshot area: check the overlay state
             for renderer in ("gl", "vulkan"):
                 if renderer == "vulkan":
                     switch(client, "vulkan")
@@ -234,28 +234,14 @@ def run_variant(args, name, config, exact, base):
                 client.call("wait_for_text", text="READY.", timeout=10, warp=True)
                 client.call("memory_write", address="$c000", bytes=[2])
                 client.call("type_text", text="SYS 49152\n")
-                # the fade-in (400 ms) is time based and the renderers present with different
-                # latency (Vulkan pacing): take the shot once two in a row agree (message shown 3 s)
-                prev = None
-                for _ in range(8):
+                text = {}
+                for _ in range(20):
                     client.call("run_frames", frames=5)
-                    cur = shot(client, "jam_" + renderer, cfgdir)
-                    if cur and prev and cur[3] == prev[3]:
+                    r = client.call("overlay")
+                    text = json.loads(text_of(r).split("\n", 1)[0]).get("screen_text", {}) if not r["isError"] else {}
+                    if text.get("timed"):
                         break
-                    prev = cur
-                jams[renderer] = cur
-            a, b = jams["gl"], jams["vulkan"]
-            if a and b and a[:3] == b[:3]:
-                w, h, ch = a[:3]
-                rows = h // 6  # message area: bottom of the picture
-                ra = (w, rows, ch, a[3][(h - rows) * w * ch:])
-                rb = (w, rows, ch, b[3][(h - rows) * w * ch:])
-                same, diff, maxd = compare(ra, rb)
-                has_text = len(set(ra[3][i:i + 3] for i in range(0, len(ra[3]), ch))) > 2
-                check("screen text shown (GL)", has_text)
-                check("screen text bit-identical", same and diff == 0, f"{diff} pixels differ, max {maxd}")
-            else:
-                check("screen text screenshots", False, "missing or different size")
+                check(f"screen text shown ({renderer})", text.get("timed") and text.get("visible") and text.get("text"), str(text))
 
         client.call("quit")
         proc.wait(10)

@@ -1123,10 +1123,15 @@ auto McpServer::registerTools() -> void {
         "'page' selects a sidebar page by id. "
         "Drag & drop tiles (also with the menu closed): 'drag' starts a file drag over the window, 'drag_move' hovers logical x/y, "
         "'drop' releases 'files' (paths) at the last position (or x/y if given), 'drag_leave' cancels; tiles and hover are in state.drag. "
+        "'busy' turns the busy spinner id 'id' (default 'mcp') on or off ('on', default true), e.g. to test it without shader compilation. "
+        "'screen_text' shows 'text' like a program message for 'duration' seconds (default 3, 0 = permanent like FPS; 'warn' highlights), for tests. "
+        "state.screen_text is the current screen text (messages, FPS, DRC; hidden while the menu is open), state.busy the active spinner ids. "
         "Every call returns the overlay state. "
         "Visible in screenshot rendered=true only; also works headless (no drawing).",
         R"({"type":"object","properties":{)"
-        R"("action":{"type":"string","enum":["state","open","close","toggle","nav","text","click","rightclick","move","wheel","page","drag","drag_move","drop","drag_leave"],"default":"state"},)"
+        R"("action":{"type":"string","enum":["state","open","close","toggle","nav","text","click","rightclick","move","wheel","page","drag","drag_move","drop","drag_leave","busy","screen_text"],"default":"state"},)"
+        R"("id":{"type":"string","description":"busy spinner id for 'busy'"},"on":{"type":"boolean","default":true},)"
+        R"("duration":{"type":"integer","minimum":0,"default":3},"warn":{"type":"boolean","default":false},)"
         R"("files":{"type":"array","items":{"type":"string"},"description":"absolute paths for 'drop'"},)"
         R"("keys":{"type":"array","items":{"type":"string"}},)"
         R"("text":{"type":"string"},"page":{"type":"string"},)"
@@ -1149,6 +1154,8 @@ auto McpServer::registerTools() -> void {
                 return job.fail("'text' required");
             else if ((action == "click" || action == "rightclick" || action == "move" || action == "wheel") && (!job.args["x"].isNumber() || !job.args["y"].isNumber()))
                 return job.fail("'x' and 'y' (logical coordinates) required");
+            else if (action == "screen_text" && !job.args["text"].isString())
+                return job.fail("'text' required");
             else if (action == "page" && !job.args["page"].isString())
                 return job.fail("'page' (sidebar id) required");
             else if (action == "drag_move" && (!job.args["x"].isNumber() || !job.args["y"].isNumber()))
@@ -1157,14 +1164,14 @@ auto McpServer::registerTools() -> void {
                 return job.fail("'files' (array of paths) required");
             else if (action != "state" && action != "open" && action != "close" && action != "toggle" && action != "nav"
                 && action != "text" && action != "click" && action != "rightclick" && action != "move" && action != "wheel" && action != "page"
-                && action != "drag" && action != "drag_move" && action != "drop" && action != "drag_leave")
+                && action != "drag" && action != "drag_move" && action != "drop" && action != "drag_leave" && action != "busy" && action != "screen_text")
                 return job.fail("unknown action '" + action + "'");
 
             job.phase = Job::Ui;
             job.onUi = [action, navs](Job& job) {
                 if (!overlay) return job.fail("Overlay not available (fonts missing?)");
                 bool dragAction = action == "drag" || action == "drag_move" || action == "drop" || action == "drag_leave";
-                if (action != "state" && action != "open" && action != "toggle" && !dragAction && !overlay->isOpen())
+                if (action != "state" && action != "open" && action != "toggle" && action != "busy" && action != "screen_text" && !dragAction && !overlay->isOpen())
                     return job.fail("Overlay is closed (use action 'open')");
                 if (action != "drag" && action != "state" && dragAction && !overlay->isDragging())
                     return job.fail("No drag in progress (use action 'drag')");
@@ -1184,6 +1191,9 @@ auto McpServer::registerTools() -> void {
                 else if (action == "drag") { overlay->dragBegin(); if (hasPos) overlay->dragMove(x, y); }
                 else if (action == "drag_move") overlay->dragMove(x, y);
                 else if (action == "drag_leave") overlay->dragEnd({});
+                else if (action == "busy") overlay->busy(job.args.getString("id", "mcp"), job.args.getBool("on", true));
+                else if (action == "screen_text")
+                    overlay->screenText(job.args.getString("text"), (unsigned)std::clamp<int64_t>(job.args.getInt("duration", 3), 0, 60), job.args.getBool("warn"));
                 else if (action == "drop") {
                     std::vector<std::string> files;
                     for (auto& f : job.args["files"].items)

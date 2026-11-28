@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 const WATCHED_DIRS: &[&str] = &["program", "driver", "guikit", "emulation", "deps"];
-const DEV_SHARE_FOLDERS: &[&str] = &["data", "fonts", "presets", "images", "sounds"];
+const DEV_SHARE_FOLDERS: &[&str] = &["data", "fonts", "presets", "sounds"];
 
 struct Unit {
     src: PathBuf,
@@ -85,10 +85,6 @@ fn main() {
     pkgs.insert(
         "sdl3",
         Some(Pkg::probe("sdl3").expect("pkg-config: sdl3 not found")),
-    );
-    pkgs.insert(
-        "freetype2",
-        Some(Pkg::probe("freetype2").expect("pkg-config: freetype2 not found (overlay UI)")),
     );
     pkgs.insert("openal", Pkg::probe("openal"));
     let curl = Pkg::probe("libcurl").expect("pkg-config: libcurl not found");
@@ -171,7 +167,7 @@ fn main() {
     println!("cargo:rustc-link-lib=static:+whole-archive=badline_program");
     println!("cargo:rustc-link-lib=static=badline_libs");
     let mut link_pkgs: Vec<&Pkg> = vec![&curl];
-    for name in ["freetype2", "sdl3", "openal"] {
+    for name in ["sdl3", "openal"] {
         if let Some(Some(p)) = pkgs.get(name) {
             link_pkgs.push(p);
         }

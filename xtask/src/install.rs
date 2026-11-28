@@ -59,7 +59,7 @@ pub fn install(binary: &Path, prefix: &Path, mime: bool) -> Result {
     copy_tree(&data.join("fonts"), &res.join("fonts"), &|name| {
         name.ends_with(".ttf") || name.contains("LICENSE")
     })?;
-    for folder in ["sounds", "presets", "images"] {
+    for folder in ["sounds", "presets"] {
         copy_tree(&data.join(folder), &res.join(folder), &|_| true)?;
     }
     for doc in ["LICENSE", "NOTICE.md", "README.md", "CHANGELOG.md"] {

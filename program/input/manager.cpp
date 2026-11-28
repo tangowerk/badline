@@ -1,6 +1,7 @@
 
 #include "manager.h"
 #include "../window/sdlWindow.h"
+#include "../overlay/overlay.h"
 #include "../program.h"
 #include "../tools/filepool.h"
 #include "../tools/filesetting.h"

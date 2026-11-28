@@ -1,0 +1,14 @@
+[package]
+name = "badline-glyphs"
+version.workspace = true
+description = "Glyph atlas of the Badline overlay (C64 Pro, pixel exact)"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+ttf-parser = "0.25"

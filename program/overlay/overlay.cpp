@@ -20,6 +20,8 @@ namespace {
 
 const unsigned PauseBit = 4; // Program::isPause: 1 user, 2 focus loss, 4 overlay
 const auto FadeTime = std::chrono::milliseconds(120);
+const auto TextFadeTime = std::chrono::milliseconds(250); // timed screen text in/out
+const auto BusyStepTime = std::chrono::milliseconds(100);
 const int SidebarWidth = 112;
 const int EntryHeight = 16;
 const int MinLogicalHeight = 360;
@@ -723,6 +725,14 @@ auto Overlay::draw(float alpha) -> std::shared_ptr<DRIVER::OverlayFrame> {
     frame->vertices.reserve(6 * 8 * 1500);
 
     layout();
+    // menu and drop tiles cover the window: screenshots take the whole window then
+    frame->fullWindow = alpha > 0.0f || dragActive;
+    if (!visible && screenTextAlpha() > 0.0f) {
+        // window corners, not the centred logical area
+        bool timed = !msgText.empty();
+        Painter p(font, *frame, scaleFactor, 0, 0, timed ? messageAlpha() : 1.0f);
+        drawScreenText(p, timed ? msgText : permText, timed ? msgWarn : permWarn, timed);
+    }
     if (alpha > 0.0f) {
         Painter p(font, *frame, scaleFactor, offsetX, offsetY, alpha);
         drawMenu(p);
@@ -731,7 +741,138 @@ auto Overlay::draw(float alpha) -> std::shared_ptr<DRIVER::OverlayFrame> {
         Painter p(font, *frame, scaleFactor, offsetX, offsetY, 1.0f);
         drawDrop(p);
     }
+    if (!busyIds.empty()) {
+        Painter p(font, *frame, scaleFactor, 0, 0, 1.0f);
+        drawBusy(p);
+    }
     return frame;
+}
+
+// ------------------------------------------------------------ screen text + busy spinner
+
+auto Overlay::screenText(const std::string& text, unsigned duration, bool warn) -> void {
+    std::lock_guard<std::mutex> lock(statusMutex);
+    if (duration && !text.empty()) {
+        status.msgText = text;
+        status.msgWarn = warn;
+        status.msgDuration = duration;
+        status.msgSerial++;
+    } else {
+        // like Denise: an empty text clears the permanent text, a running message stays
+        status.permText = text;
+        status.permWarn = warn;
+    }
+}
+
+auto Overlay::setScreenTextPosition(unsigned position) -> void {
+    std::lock_guard<std::mutex> lock(statusMutex);
+    status.position = std::min(position, 5u);
+}
+
+auto Overlay::busy(const std::string& id, bool on) -> void {
+    std::lock_guard<std::mutex> lock(statusMutex);
+    if (on) status.busy.insert(id);
+    else status.busy.erase(id);
+}
+
+auto Overlay::pollStatus() -> bool {
+    auto now = std::chrono::steady_clock::now();
+    bool changed = false;
+    std::lock_guard<std::mutex> lock(statusMutex);
+    if (status.position != textPosition) {
+        textPosition = status.position;
+        permBoxWidth = 0;
+        changed = true;
+    }
+    if (status.busy != busyIds) {
+        if (busyIds.empty())
+            busyStart = now;
+        busyIds = status.busy;
+        changed = true;
+    }
+    if (status.permText != permText || status.permWarn != permWarn) {
+        if (status.permText.empty())
+            permBoxWidth = 0;
+        permText = status.permText;
+        permWarn = status.permWarn;
+        changed = true;
+    }
+    if (status.msgSerial != msgSerial) {
+        msgSerial = status.msgSerial;
+        if (opened) {
+            // the menu has its own message line
+            notify(status.msgText);
+        } else {
+            // a message replacing a visible one does not fade in again
+            if (msgText.empty())
+                msgStart = now;
+            msgText = status.msgText;
+            msgWarn = status.msgWarn;
+            msgUntil = now + std::chrono::seconds(status.msgDuration);
+            changed = true;
+        }
+    }
+    // the message has faded out: the permanent text shows again
+    if (!msgText.empty() && now >= msgUntil + TextFadeTime) {
+        msgText.clear();
+        changed = true;
+    }
+    return changed;
+}
+
+auto Overlay::messageAlpha() const -> float {
+    if (msgText.empty())
+        return 0.0f;
+    using fsec = std::chrono::duration<float>;
+    auto now = std::chrono::steady_clock::now();
+    float in = fsec(now - msgStart) / fsec(TextFadeTime);
+    float out = fsec(msgUntil + TextFadeTime - now) / fsec(TextFadeTime);
+    return std::clamp(std::min(in, out), 0.0f, 1.0f);
+}
+
+auto Overlay::screenTextAlpha() const -> float {
+    if (!msgText.empty())
+        return messageAlpha();
+    return permText.empty() ? 0.0f : 1.0f;
+}
+
+auto Overlay::drawScreenText(Painter& p, const std::string& text, bool warn, bool timed) -> void {
+    const int Margin = 8, PadX = 4, PadY = 3, Height = OverlayFont::Size + 2 * PadY;
+    int lw = pixelWidth / scaleFactor, lh = pixelHeight / scaleFactor;
+    int maxText = lw - 2 * Margin - 2 * PadX;
+    if (maxText <= 0)
+        return;
+    int tw = std::min(font.textWidth(OverlayFont::Pro, text), maxText);
+    if (!timed)
+        permBoxWidth = std::min(std::max(permBoxWidth, tw), maxText);
+    int bw = std::max(tw, timed ? 0 : permBoxWidth) + 2 * PadX;
+
+    // screen_text_position: 0 bottom right, 1 bottom centre, 2 bottom left, 3 top right, 4 top centre, 5 top left
+    int column = textPosition % 3; // 0 right, 1 centre, 2 left
+    bool bottom = textPosition < 3;
+    int x = column == 0 ? lw - Margin - bw : column == 1 ? (lw - bw) / 2 : Margin;
+    int y = bottom ? lh - Margin - Height : Margin;
+    if (!bottom && column == 2 && !busyIds.empty())
+        y += 24; // below the busy spinner
+
+    Color bg = warn ? Color::hex(0x68372b, 0.94f) : Theme::Panel;
+    Color fg = warn ? Theme::TextBright : Theme::Text;
+    p.rect(x, y, bw, Height, bg);
+    int tx = column == 0 ? x + bw - PadX - tw : x + PadX;
+    p.textClip(tx, y + PadY, text, maxText, fg);
+}
+
+auto Overlay::drawBusy(Painter& p) -> void {
+    // eight blocks on a 3x3 ring, the bright one runs clockwise with a fading tail
+    static const int Ring[8][2] = { {0, 0}, {6, 0}, {12, 0}, {12, 6}, {12, 12}, {6, 12}, {0, 12}, {0, 6} };
+    const int X = 8, Y = 8;
+    p.rect(X, Y, 20, 20, Theme::Panel);
+    int head = std::max(busyStep, 0) % 8;
+    for (int i = 0; i < 8; i++) {
+        int age = (head - i + 8) % 8;
+        Color c = age == 0 ? Theme::TextBright : age == 1 ? Theme::Text : age == 2 ? Theme::TextDim : Theme::Track;
+        p.rect(X + 2 + Ring[i][0], Y + 2 + Ring[i][1], 4, 4, c);
+    }
 }
 
 auto Overlay::drawMenu(Painter& p) -> void {
@@ -833,18 +974,27 @@ auto Overlay::tick() -> void {
         }
     }
 
-    if (!visible && !dragActive) {
+    bool statusChanged = pollStatus();
+    float textAlpha = visible ? 0.0f : screenTextAlpha();
+    int step = busyIds.empty() ? -1
+        : (int)((std::chrono::steady_clock::now() - busyStart) / BusyStepTime);
+
+    if (!visible && !dragActive && textAlpha <= 0.0f && busyIds.empty()) {
         if (frameShown)
             videoDriver->setOverlay(nullptr);
         frameShown = false;
+        lastTextAlpha = 0.0f;
+        busyStep = -1;
         return;
     }
-    if (!dirty && alpha == lastAlpha)
+    if (!dirty && !statusChanged && alpha == lastAlpha && textAlpha == lastTextAlpha && step == busyStep && frameShown)
         return;
 
     dirty = false;
     if (visible)
         lastAlpha = alpha;
+    lastTextAlpha = textAlpha;
+    busyStep = step;
     frameShown = true;
     videoDriver->setOverlay(draw(alpha));
 }
@@ -852,6 +1002,7 @@ auto Overlay::tick() -> void {
 // ------------------------------------------------------------ MCP
 
 auto Overlay::describe(Json& out) -> void {
+    pollStatus(); // screen text/busy changes from other threads, menu message line
     layout();
     out = Json::object();
     out.set("open", opened);
@@ -911,4 +1062,16 @@ auto Overlay::describe(Json& out) -> void {
     Json drag;
     describeDrop(drag);
     out.set("drag", drag);
+
+    Json text = Json::object();
+    bool timed = !msgText.empty();
+    text.set("text", timed ? msgText : permText);
+    text.set("warn", timed ? msgWarn : permWarn);
+    text.set("timed", timed);
+    // drawn: menu closed and not faded out (headless: never drawn)
+    text.set("visible", !visible && screenTextAlpha() > 0.0f && videoDriver && sdlWindow);
+    out.set("screen_text", text);
+    Json busyList = Json::array();
+    for (auto& id : busyIds) busyList.push(id);
+    out.set("busy", busyList);
 }
