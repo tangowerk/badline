@@ -36,6 +36,7 @@ const PACMAN_DEPS: &[&str] = &[
     "libxkbcommon",
     "libdecor",
     "libglvnd",
+    "glslang",
     "mesa",
     "libdrm",
     "pipewire",

@@ -61,6 +61,7 @@ auto VideoManager::setPacing() -> void {
             (int)pacing.state, (int)p.state, p.repeat, p.refresh, (int)p.stalled);
     pacing = p;
     uint64_t refreshNs = p.refresh > 0.0 ? (uint64_t)std::llround(1e9 / p.refresh) : 0;
+    videoDriver->setContentFps(p.fps * p.clock);
     videoDriver->setPacing(p.repeat, p.queueDepth, presentMode, p.gridNs, refreshNs);
     setFrameRender(1);
 

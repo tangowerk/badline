@@ -27,20 +27,19 @@ released under the same license.
 | Cosine and sinc resamplers from RetroArch (https://github.com/libretro/RetroArch) | `program/audio` | GPL-3.0 |
 | Chamberlin filter from Hoxs64 (https://www.hoxs64.net) | `emulation/libc64/sid` | see source |
 | P64 by BeRo, fpaq0 by Matt Mahoney | `emulation/libc64/disk` | see source |
-| glslang (Khronos) | `deps/glslang` | BSD-3-Clause and others, see `deps/glslang/LICENSE.txt` |
 | SPIRV-Cross (Khronos) | `deps/SPIRV-Cross` | Apache-2.0, see `deps/SPIRV-Cross/LICENSE` |
 | cpp-httplib by Yuji Hirose | `deps/httplib.h` | MIT |
 | lhasa (LHA decoder) by Simon Howard | `deps/lha` | ISC |
 | stb_image_write / stb_image_resize2 by Sean Barrett | `deps/stb` | MIT or public domain |
 | C64 Pro / C64 Pro Mono fonts, C64 TrueType v1.2.1 by Style (https://style64.org/c64-truetype) | `data/fonts` | Style license, not GPL – see `data/fonts/C64_TrueType-LICENSE.txt` |
 | Floppy sounds by Trackers-World.NET | `data/sounds` | CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/) |
-| Rust crates from crates.io (ash, naga, wayland-rs, ttf-parser and their dependencies) | `crates/*` (Cargo) | MIT and/or Apache-2.0, see `Cargo.lock` |
+| Rust crates from crates.io (ash, wayland-rs, ttf-parser, png, zune-jpeg and their dependencies) | `crates/*` (Cargo) | MIT and/or Apache-2.0, see `Cargo.lock` |
 
 ## Libraries linked from the system
 
 SDL3 (zlib), libcurl (curl license), PulseAudio (LGPL-2.1-or-later),
 OpenAL Soft (LGPL-2.0-or-later, optional), libwayland-client (MIT),
-libGL/libglvnd and the Vulkan loader (MIT/Apache-2.0).
+libGL/libglvnd and the Vulkan loader (MIT/Apache-2.0), glslang (BSD-3-Clause and others).
 
 ## Commodore ROMs
 

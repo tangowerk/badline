@@ -538,6 +538,43 @@ auto McpServer::registerTools() -> void {
             };
         });
 
+    // ------------------------------------------------------------ shader
+    addTool("shader",
+        "RetroArch slang shader preset of the Vulkan renderer (window mode). Without arguments it reports "
+        "the active preset (path, passes, parameters with values; null = none). 'load' parses, compiles "
+        "(disk cache ~/.cache/badline/shaders) and activates a .slangp file and returns its summary "
+        "(passes, LUTs, history depth, compile statistics, warnings); 'clear' removes it; 'set_param' "
+        "with 'value' changes a parameter of the active preset. Not saved in the settings yet.",
+        R"({"type":"object","properties":{)"
+        R"("load":{"type":"string","description":"Absolute path of a .slangp preset"},)"
+        R"("clear":{"type":"boolean"},)"
+        R"("set_param":{"type":"string","description":"Parameter id"},)"
+        R"("value":{"type":"number"}}})",
+        [](Job& job) {
+            std::string load = job.args.getString("load");
+            bool clear = job.args.getBool("clear");
+            std::string param = job.args.getString("set_param");
+            if (!param.empty() && !job.args["value"].isNumber())
+                return job.fail("'value' (number) required with set_param");
+            double value = job.args.getNumber("value");
+            job.phase = Job::Ui;
+            job.onUi = [load, clear, param, value](Job& job) {
+                if (!videoDriver || program->getVideoDriver() != "Vulkan" || cmd->noGui || cmd->noDriver)
+                    return job.fail("Shader presets need the Vulkan renderer in window mode");
+                if (!load.empty() || clear) {
+                    std::string result;
+                    if (!videoDriver->setSlangPreset(clear ? "" : load, "", result))
+                        return job.fail("Preset failed: " + result);
+                    job.addText(result);
+                    return job.finish();
+                }
+                if (!param.empty() && !videoDriver->setSlangParam(param, (float)value))
+                    return job.fail("No such parameter in the active preset: " + param);
+                job.addText(videoDriver->slangState());
+                job.finish();
+            };
+        });
+
     // ------------------------------------------------------------ pacing
     addTool("pacing",
         "Frame pacing of the Vulkan renderer. 'status' (default): pacing decision (video_master = display "

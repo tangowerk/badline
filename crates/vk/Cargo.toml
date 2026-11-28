@@ -16,6 +16,6 @@ ash = "0.38"
 wayland-backend = { version = "0.3", features = ["client_system"] }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
-
-[build-dependencies]
-naga = { version = "30", features = ["glsl-in", "spv-out"] }
+# LUT textures of slang presets
+png = "0.18"
+zune-jpeg = "0.5"

@@ -8,6 +8,7 @@
 extern "C" {
 
 struct BvkRenderer;
+struct BvkPreset;
 
 enum { BVK_SURFACE_WAYLAND = 1, BVK_SURFACE_XLIB = 2 };
 enum { BVK_TEX_ATLAS = 0 };
@@ -47,6 +48,10 @@ struct BvkFrame {
     int shot_x, shot_y, shot_width, shot_height;
 
     uint64_t frame_seq;     // changed value = new emulator picture (presented `repeat` times)
+
+    int shader_off;         // 1: plain picture even with a preset (hotkey, warp, screenshot without effects)
+    int rotation;           // 0..3 (90 degree steps, already in mvp; slang Rotation)
+    float fps;              // emulated frame rate (slang OriginalFPS)
 };
 
 struct BvkPresent {
@@ -79,5 +84,13 @@ void bvk_set_pacing(BvkRenderer* r, unsigned repeat, unsigned queue_depth, uint6
 void bvk_pacing_caps(const BvkRenderer* r, BvkPacingCaps* caps);
 unsigned bvk_take_presents(BvkRenderer* r, BvkPresent* out, unsigned max);
 const char* bvk_device_name(const BvkRenderer* r);
+
+// slang presets (M-VK3a): load = parse + compile (any thread, no renderer), set takes ownership
+BvkPreset* bvk_preset_load(const char* path, const char* overrides, char* error, size_t errorLen);
+const char* bvk_preset_summary(const BvkPreset* p);
+void bvk_preset_free(BvkPreset* p);
+int bvk_set_preset(BvkRenderer* r, BvkPreset* p, char* error, size_t errorLen);
+int bvk_set_param(BvkRenderer* r, const char* id, float value);
+size_t bvk_preset_state(const BvkRenderer* r, char* buf, size_t len);
 
 }

@@ -2,7 +2,10 @@
 //! (incl. screen text) into the SDL window. The C++ side (driver/video/vulkan/) passes the raw
 //! window handles and per-frame data through the C API below (header driver/video/vulkan/bvk.h).
 
+mod chain;
+mod gpu;
 mod renderer;
+pub mod slang;
 mod timing;
 mod wl;
 
@@ -84,6 +87,13 @@ pub struct BvkFrame {
     /// emulator frame sequence number: a changed value marks a new picture (presented
     /// `repeat` times), 0 or the same value a redraw
     pub frame_seq: u64,
+
+    /// 1: draw the plain picture even with a preset (hotkey, warp, screenshot without effects)
+    pub shader_off: c_int,
+    /// picture rotation in 90 degree steps (0..3, part of `mvp`; slang `Rotation`)
+    pub rotation: c_int,
+    /// emulated frame rate (slang `OriginalFPS`; the pacing grid wins when active)
+    pub fps: f32,
 }
 
 pub use timing::Record as BvkPresent;
@@ -260,4 +270,175 @@ pub unsafe extern "C" fn bvk_take_presents(r: *mut Renderer, out: *mut BvkPresen
     }
     let out = unsafe { std::slice::from_raw_parts_mut(out, max as usize) };
     r.take_presents(out) as c_uint
+}
+
+// ------------------------------------------------------------ slang presets (M-VK3a)
+
+/// A parsed and compiled preset (CPU work only), handed to `bvk_set_preset`.
+pub struct BvkPreset {
+    compiled: slang::Compiled,
+    summary: std::ffi::CString,
+}
+
+fn json_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn json_params(params: &[slang::Param]) -> String {
+    let items: Vec<String> = params
+        .iter()
+        .map(|p| {
+            format!(
+                "{{\"id\":{},\"description\":{},\"value\":{},\"default\":{},\"min\":{},\"max\":{},\"step\":{}}}",
+                json_str(&p.id),
+                json_str(p.description.trim()),
+                p.value,
+                p.initial,
+                p.minimum,
+                p.maximum,
+                p.step
+            )
+        })
+        .collect();
+    format!("[{}]", items.join(","))
+}
+
+/// Parses and compiles a preset (`.slangp`) without a renderer (any thread). `overrides`:
+/// saved parameter values "id=value;id=value" (null or empty = none). Null on error.
+///
+/// # Safety
+/// `path` must be a NUL terminated string, `overrides` too or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bvk_preset_load(
+    path: *const c_char,
+    overrides: *const c_char,
+    error: *mut c_char,
+    error_len: usize,
+) -> *mut BvkPreset {
+    let path = unsafe { std::ffi::CStr::from_ptr(path) }.to_string_lossy().into_owned();
+    let overrides: Vec<(String, f32)> = if overrides.is_null() {
+        Vec::new()
+    } else {
+        unsafe { std::ffi::CStr::from_ptr(overrides) }
+            .to_string_lossy()
+            .split(';')
+            .filter_map(|kv| {
+                let (k, v) = kv.split_once('=')?;
+                Some((k.trim().to_string(), v.trim().parse().ok()?))
+            })
+            .collect()
+    };
+    let t0 = std::time::Instant::now();
+    match slang::compile(std::path::Path::new(&path), &overrides) {
+        Ok(compiled) => {
+            let millis = t0.elapsed().as_millis();
+            let warnings: Vec<String> = compiled.warnings.iter().map(|w| json_str(w)).collect();
+            let summary = format!(
+                "{{\"path\":{},\"passes\":{},\"luts\":{},\"history\":{},\"feedback_passes\":{},\"compiled_stages\":{},\
+                 \"cached_stages\":{},\"load_ms\":{},\"warnings\":[{}],\"parameters\":{}}}",
+                json_str(&path),
+                compiled.passes.len(),
+                compiled.luts.len(),
+                compiled.history,
+                compiled.feedback.iter().filter(|f| **f).count(),
+                compiled.compiled,
+                compiled.cached,
+                millis,
+                warnings.join(","),
+                json_params(&compiled.params)
+            );
+            Box::into_raw(Box::new(BvkPreset {
+                compiled,
+                summary: std::ffi::CString::new(summary).unwrap_or_default(),
+            }))
+        }
+        Err(e) => {
+            write_error(&e, error, error_len);
+            ptr::null_mut()
+        }
+    }
+}
+
+/// JSON summary of a loaded preset (passes, parameters, compile statistics), valid until the
+/// preset is freed or handed to `bvk_set_preset`.
+///
+/// # Safety
+/// `p` must come from `bvk_preset_load`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bvk_preset_summary(p: *const BvkPreset) -> *const c_char {
+    unsafe { (*p).summary.as_ptr() }
+}
+
+/// # Safety
+/// `p` must come from `bvk_preset_load` (or be null) and not have been handed to `bvk_set_preset`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bvk_preset_free(p: *mut BvkPreset) {
+    if !p.is_null() {
+        drop(unsafe { Box::from_raw(p) });
+    }
+}
+
+/// Activates a preset (takes ownership, also on error); null removes it. Builds pipelines and
+/// LUT textures (waits for the device).
+///
+/// # Safety
+/// `r` must come from `bvk_create`, `p` from `bvk_preset_load` or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bvk_set_preset(r: *mut Renderer, p: *mut BvkPreset, error: *mut c_char, error_len: usize) -> c_int {
+    let r = unsafe { &mut *r };
+    let compiled = if p.is_null() {
+        None
+    } else {
+        Some(unsafe { Box::from_raw(p) }.compiled)
+    };
+    match r.set_preset(compiled) {
+        Ok(()) => BVK_OK,
+        Err(e) => {
+            write_error(&e, error, error_len);
+            BVK_ERROR
+        }
+    }
+}
+
+/// Sets a parameter of the active preset; BVK_ERROR when there is no such parameter.
+///
+/// # Safety
+/// `r` must come from `bvk_create`, `id` must be a NUL terminated string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bvk_set_param(r: *mut Renderer, id: *const c_char, value: f32) -> c_int {
+    let r = unsafe { &mut *r };
+    let id = unsafe { std::ffi::CStr::from_ptr(id) }.to_string_lossy();
+    if r.set_param(&id, value) { BVK_OK } else { BVK_ERROR }
+}
+
+/// JSON of the active preset (`null` without one): path, passes, parameters with values.
+/// Writes at most `len` bytes (NUL terminated) and returns the full length.
+///
+/// # Safety
+/// `r` must come from `bvk_create`, `buf` must hold `len` bytes (or be null with len 0).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bvk_preset_state(r: *const Renderer, buf: *mut c_char, len: usize) -> usize {
+    let r = unsafe { &*r };
+    let text = match r.chain() {
+        None => "null".to_string(),
+        Some(c) => format!(
+            "{{\"path\":{},\"passes\":{},\"parameters\":{}}}",
+            json_str(&c.path.display().to_string()),
+            c.pass_count(),
+            json_params(&c.params)
+        ),
+    };
+    write_error(&text, buf, len);
+    text.len()
 }

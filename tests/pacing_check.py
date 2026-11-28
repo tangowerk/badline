@@ -71,6 +71,7 @@ def main():
     ap.add_argument("--toggle-fullscreen", action="store_true",
                     help="Hyprland: leave fullscreen after 1/3 of --seconds, enter again after 2/3")
     ap.add_argument("--log", help="write stderr of the instance to this file")
+    ap.add_argument("--shader", help="slang preset (.slangp) to activate before the measurement")
     ap.add_argument("--json", action="store_true", help="print the raw stats")
     ap.add_argument("--save", help="write the raw stats to this file")
     args = ap.parse_args()
@@ -94,6 +95,10 @@ def main():
             move_to_monitor(proc.pid, args.monitor)
         if args.mode:
             client.call("pacing", set_mode=args.mode)
+        if args.shader:
+            r = client.call("shader", load=os.path.abspath(args.shader))
+            if r.get("isError"):
+                raise RuntimeError(text_of(r))
         if args.prg and os.path.exists(args.prg):
             client.call("load_media", path=os.path.abspath(args.prg))
         time.sleep(args.settle)

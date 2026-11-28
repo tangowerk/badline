@@ -5,6 +5,7 @@
     #define glGetProcAddress(name) SDL_GL_GetProcAddress(name)
 
 #include <unistd.h>
+#include <cstring>
 
 #include <thread>
 #include <atomic>

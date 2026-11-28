@@ -4,6 +4,7 @@
 
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <cstring>
 #include <atomic>
 #include <deque>
 #include <mutex>
@@ -41,6 +42,7 @@ struct SDLVK : public Video {
     uint64_t gridNs = 0;     // target time grid period (0 = off)
     uint64_t refreshNs = 0;  // display refresh period from SDL (0 = unknown)
     uint64_t frameSeq = 0;
+    float contentFps = 50.0f;
     // presents for the MCP `pacing` tool (~2 min at 100 Hz x 2 copies)
     std::deque<PacingSample> samples;
     static constexpr size_t MaxSamples = 24000;
@@ -171,6 +173,55 @@ struct SDLVK : public Video {
 
     auto pacingChanged() -> bool { return capsChanged.exchange(false); }
 
+    auto setContentFps(double fps) -> void {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        if (fps > 0.0)
+            contentFps = (float)fps;
+    }
+
+    // ------------------------------------------------------------ slang presets
+
+    auto setSlangPreset(const std::string& path, const std::string& overrides, std::string& result) -> bool {
+        char err[2048] = {0};
+        BvkPreset* preset = nullptr;
+        if (!path.empty()) {
+            // parse + compile without the render lock (the emulation keeps presenting)
+            preset = bvk_preset_load(path.c_str(), overrides.c_str(), err, sizeof err);
+            if (!preset) {
+                result = err;
+                return false;
+            }
+            result = bvk_preset_summary(preset);
+        } else
+            result = "null";
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        if (!vk) {
+            bvk_preset_free(preset);
+            result = "no Vulkan renderer";
+            return false;
+        }
+        if (bvk_set_preset(vk, preset, err, sizeof err) != BVK_OK) {
+            result = err;
+            return false;
+        }
+        return true;
+    }
+
+    auto setSlangParam(const std::string& id, float value) -> bool {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        return vk && bvk_set_param(vk, id.c_str(), value) == BVK_OK;
+    }
+
+    auto slangState() -> std::string {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        if (!vk)
+            return "null";
+        std::string s(bvk_preset_state(vk, nullptr, 0) + 1, '\0');
+        bvk_preset_state(vk, s.data(), s.size());
+        s.resize(s.size() - 1);
+        return s;
+    }
+
     auto pacingSamples(std::vector<PacingSample>& out, bool clear) -> void {
         std::lock_guard<std::recursive_mutex> lock(mutex);
         collectSamples();
@@ -265,6 +316,9 @@ struct SDLVK : public Video {
         f.vp_height = viewport.height;
         std::memcpy(f.mvp, mvp, sizeof mvp);
         f.linear = linearFilter && !(options & OPT_DisallowFilter);
+        f.shader_off = (options & OPT_DisallowShader) != 0;
+        f.rotation = (int)rotation;
+        f.fps = contentFps;
 
         std::shared_ptr<const OverlayFrame> overlay;
         {

@@ -139,6 +139,16 @@ struct Video {
     // queueDepth d > 0 present N waits until present N-d is on screen (video master)
     virtual auto supportsPacing() -> bool { return false; }
     virtual auto setPacing(unsigned repeat, unsigned queueDepth, int presentMode, uint64_t gridNs = 0, uint64_t refreshNs = 0) -> void {}
+    // emulated frame rate as presented (slang OriginalFPS)
+    virtual auto setContentFps(double fps) -> void {}
+    // slang presets (Vulkan, M-VK3a): `result` gets a JSON summary or the error text; an empty
+    // path removes the preset. `overrides`: saved parameter values "id=value;id=value"
+    virtual auto setSlangPreset(const std::string& path, const std::string& overrides, std::string& result) -> bool {
+        result = "shader presets need the Vulkan renderer";
+        return false;
+    }
+    virtual auto setSlangParam(const std::string& id, float value) -> bool { return false; }
+    virtual auto slangState() -> std::string { return "null"; }
     virtual auto pacingCaps() -> PacingCaps { return {}; }
     // copies the collected presents (oldest first); `clear` drops them afterwards
     virtual auto pacingSamples(std::vector<PacingSample>& out, bool clear) -> void {}

@@ -121,7 +121,7 @@ Arch Linux with the patched SDL3 included. Only current rolling distributions
 other libraries come from the system:
 
 ```
-sudo pacman -S --needed libpulse curl openal libglvnd vulkan-icd-loader
+sudo pacman -S --needed libpulse curl openal libglvnd vulkan-icd-loader glslang
 ```
 
 `cargo xtask dist` builds the same tarball (used by the GitHub Actions
@@ -134,7 +134,7 @@ workflow).
 Requirements (Arch Linux package names; only current rolling distributions are supported):
 
 ```
-rust (or rustup) gcc pkgconf git curl libpulse vulkan-icd-loader
+rust (or rustup) gcc pkgconf git curl libpulse vulkan-icd-loader glslang
 for the patched SDL3: cmake ninja
 optional: openal
 ```

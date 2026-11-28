@@ -8,6 +8,25 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
 
 ### Added
 
+- **RetroArch slang shader presets on Vulkan (M-VK3a, pipeline core).** The
+  Vulkan renderer runs `.slangp` presets of the libretro slang-shaders
+  collection: full preset format (`#reference` chains with overrides, aliases,
+  LUT textures as PNG/JPEG, parameters, scale types, wrap modes, mipmapped
+  inputs, float/sRGB framebuffers, `frame_count_mod`, `#pragma name/format`,
+  `#include` and `#pragma include_optional`), multipass with OriginalHistory,
+  PassFeedback and PassOutput, all RetroArch uniform semantics (HDR ones get
+  SDR values). Shaders compile through the system glslang (C API) in
+  parallel; SPIR-V is cached in `~/.cache/badline/shaders` (key: source +
+  glslang version), pipelines in a `VkPipelineCache` there. Of the 2662
+  presets of slang-shaders (2026-11-20) 2642 load; the rest are broken in the
+  collection itself (missing textures/aliases/files, reference fragments, a
+  deliberately invalid test). Frame blending happens before the preset. For
+  now presets are chosen through the new MCP tool `shader` (load, clear,
+  parameters); setting, `-shader` and the overlay Video page follow in M-VK3c.
+  `tests/slang_presets.py` checks 13 reference presets (screenshots,
+  validation); `crates/vk/examples/slang_corpus.rs` compiles a whole
+  collection without a GPU.
+
 - **Frame blending on Vulkan (M-Pacing3).** Without VRR and without an integer
   multiple (e.g. PAL in a window on a 60 Hz display) every vblank now shows a
   phase-weighted mix of the two C64 frames around its display time, mixed in
@@ -35,6 +54,13 @@ is preserved in [docs/DENISE-HISTORY.md](docs/DENISE-HISTORY.md).
   text, warn, timed, visible); action `screen_text` shows a test message.
 
 ### Changed
+
+- The own Vulkan shaders (picture, blend, overlay) are compiled at runtime by
+  glslang (disk cached) instead of naga at build time; naga is gone.
+- glslang is no longer vendored: both renderers use the system library
+  (Arch package `glslang`, now a runtime dependency) through its C API;
+  `deps/glslang` is removed. (A second, static copy would have interposed the
+  C++ symbols of the shared library.)
 
 - The Vulkan FIFO swapchain uses one image more (minimum + 2) so a compositor
   hiccup does not block the emulation thread in the acquire.

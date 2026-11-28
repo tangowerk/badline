@@ -12,34 +12,28 @@
 //! display time (present timing, else the present-wait completion) for the MCP `pacing` tool.
 
 use std::ffi::{CStr, CString, c_void};
-use std::io::Cursor;
 
 use ash::ext::debug_utils;
 use ash::khr::{get_surface_capabilities2, present_id, present_wait, surface, swapchain, wayland_surface, xlib_surface};
 use ash::{Device, Entry, Instance, vk};
 
+use crate::chain::{Chain, RunInfo};
+use crate::gpu::{Buffer, Gpu, as_bytes};
+use crate::slang::{self, Stage};
 use crate::timing::{self, Feedback, Record};
 use crate::{
     BVK_FMT_R8, BVK_PRESENT_FIFO, BVK_PRESENT_IMMEDIATE, BVK_SURFACE_WAYLAND, BVK_SURFACE_XLIB, BVK_TEX_ATLAS,
     BvkCreateInfo, BvkFrame,
 };
 
-const FRAMES: usize = 2;
+const FRAMES: usize = crate::chain::FRAMES;
+
+/// unit quad -> clip space with the y flip of image.vert undone (texture row 0 at the top)
+const MVP_FLAT: [f32; 16] = [2.0, 0.0, 0.0, 0.0, 0.0, -2.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 1.0, 0.0, 1.0];
 const PUSH_SIZE: u32 = 128;
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
 
-type Result<T> = std::result::Result<T, String>;
-
-fn vkerr(what: &str) -> impl Fn(vk::Result) -> String + '_ {
-    move |e| format!("{what}: {e:?}")
-}
-
-struct Buffer {
-    buffer: vk::Buffer,
-    memory: vk::DeviceMemory,
-    size: u64,
-    ptr: *mut u8,
-}
+use crate::gpu::{Result, vkerr};
 
 struct Texture {
     image: vk::Image,
@@ -63,6 +57,10 @@ struct PendingTexture {
 
 struct Prepared {
     upload: bool,
+    /// run the slang passes (Some(advance)) before drawing the chain output
+    chain_run: Option<bool>,
+    /// the picture comes from the chain output
+    chain_draw: bool,
     overlay_count: u32,
     /// the atlas has data in the frame's upload buffer
     atlas_upload: bool,
@@ -121,8 +119,13 @@ pub struct Renderer {
     surface_fn: surface::Instance,
     surface: vk::SurfaceKHR,
     physical: vk::PhysicalDevice,
-    memory_props: vk::PhysicalDeviceMemoryProperties,
     device: Device,
+    gpu: Gpu,
+    pipeline_cache: vk::PipelineCache,
+    /// slang preset (M-VK3a)
+    chain: Option<Chain>,
+    /// image pipeline descriptor sets for the chain output (one per frame in flight)
+    chain_sets: [vk::DescriptorSet; FRAMES],
     queue: vk::Queue,
     swapchain_fn: swapchain::Device,
     swapchain: vk::SwapchainKHR,
@@ -216,10 +219,6 @@ fn validation_wanted() -> bool {
         Ok("0") => false,
         _ => cfg!(debug_assertions),
     }
-}
-
-fn spv(bytes: &[u8]) -> Vec<u32> {
-    ash::util::read_spv(&mut Cursor::new(bytes)).expect("invalid SPIR-V")
 }
 
 impl Renderer {
@@ -486,6 +485,12 @@ impl Renderer {
         };
         let can_read_back = caps.supported_usage_flags.contains(vk::ImageUsageFlags::TRANSFER_SRC);
 
+        let gpu = Gpu {
+            instance: instance.clone(),
+            physical,
+            device: device.clone(),
+            memory_props,
+        };
         let mut r = Renderer {
             _entry: entry,
             instance,
@@ -493,8 +498,11 @@ impl Renderer {
             surface_fn,
             surface,
             physical,
-            memory_props,
+            gpu,
             device,
+            pipeline_cache: vk::PipelineCache::null(),
+            chain: None,
+            chain_sets: [vk::DescriptorSet::null(); FRAMES],
             queue,
             swapchain_fn,
             swapchain: vk::SwapchainKHR::null(),
@@ -699,6 +707,19 @@ impl Renderer {
                 .create_descriptor_set_layout(&vk::DescriptorSetLayoutCreateInfo::default().bindings(&bindings), None)
                 .map_err(vkerr("descriptor set layout"))?;
 
+            let layouts = [self.set_layout; FRAMES];
+            let sets = d
+                .allocate_descriptor_sets(
+                    &vk::DescriptorSetAllocateInfo::default().descriptor_pool(self.desc_pool).set_layouts(&layouts),
+                )
+                .map_err(vkerr("descriptor sets"))?;
+            self.chain_sets.copy_from_slice(&sets);
+            let data = self.load_pipeline_cache();
+            self.pipeline_cache = d
+                .create_pipeline_cache(&vk::PipelineCacheCreateInfo::default().initial_data(&data), None)
+                .or_else(|_| d.create_pipeline_cache(&vk::PipelineCacheCreateInfo::default(), None))
+                .map_err(vkerr("pipeline cache"))?;
+
             for (i, filter) in [vk::Filter::NEAREST, vk::Filter::LINEAR].into_iter().enumerate() {
                 let ci = vk::SamplerCreateInfo::default()
                     .mag_filter(filter)
@@ -756,16 +777,17 @@ impl Renderer {
 
     fn create_pipelines(&mut self) -> Result<()> {
         let d = &self.device;
-        let module = |bytes: &[u8]| -> Result<vk::ShaderModule> {
-            let code = spv(bytes);
+        // own shaders go through glslang + the disk cache like the slang presets
+        let module = |src: &str, stage: Stage| -> Result<vk::ShaderModule> {
+            let (code, _) = slang::spirv(src, stage)?;
             unsafe { d.create_shader_module(&vk::ShaderModuleCreateInfo::default().code(&code), None) }
                 .map_err(vkerr("shader module"))
         };
-        let image_vs = module(include_bytes!(concat!(env!("OUT_DIR"), "/image.vert.spv")))?;
-        let image_fs = module(include_bytes!(concat!(env!("OUT_DIR"), "/image.frag.spv")))?;
-        let blend_fs = module(include_bytes!(concat!(env!("OUT_DIR"), "/blend.frag.spv")))?;
-        let overlay_vs = module(include_bytes!(concat!(env!("OUT_DIR"), "/overlay.vert.spv")))?;
-        let overlay_fs = module(include_bytes!(concat!(env!("OUT_DIR"), "/overlay.frag.spv")))?;
+        let image_vs = module(include_str!("../shaders/image.vert"), Stage::Vertex)?;
+        let image_fs = module(include_str!("../shaders/image.frag"), Stage::Fragment)?;
+        let blend_fs = module(include_str!("../shaders/blend.frag"), Stage::Fragment)?;
+        let overlay_vs = module(include_str!("../shaders/overlay.vert"), Stage::Vertex)?;
+        let overlay_fs = module(include_str!("../shaders/overlay.frag"), Stage::Fragment)?;
 
         let overlay_bindings = [vk::VertexInputBindingDescription::default()
             .binding(0)
@@ -831,7 +853,7 @@ impl Renderer {
                 .dynamic_state(&ds)
                 .layout(self.layout)
                 .push_next(&mut rendering);
-            unsafe { d.create_graphics_pipelines(vk::PipelineCache::null(), &[ci], None) }
+            unsafe { d.create_graphics_pipelines(self.pipeline_cache, &[ci], None) }
                 .map(|p| p[0])
                 .map_err(|(_, e)| format!("graphics pipeline: {e:?}"))
         };
@@ -859,70 +881,75 @@ impl Renderer {
     // ------------------------------------------------------------ memory helpers
 
     fn memory_type(&self, bits: u32, flags: vk::MemoryPropertyFlags) -> Result<u32> {
-        (0..self.memory_props.memory_type_count)
-            .find(|&i| {
-                bits & (1 << i) != 0 && self.memory_props.memory_types[i as usize].property_flags.contains(flags)
-            })
-            .ok_or_else(|| format!("no memory type {flags:?}"))
+        self.gpu.memory_type(bits, flags)
     }
 
     fn create_buffer(&self, size: u64, usage: vk::BufferUsageFlags) -> Result<Buffer> {
-        let d = &self.device;
-        unsafe {
-            let buffer = d
-                .create_buffer(
-                    &vk::BufferCreateInfo::default()
-                        .size(size)
-                        .usage(usage)
-                        .sharing_mode(vk::SharingMode::EXCLUSIVE),
-                    None,
-                )
-                .map_err(vkerr("buffer"))?;
-            let req = d.get_buffer_memory_requirements(buffer);
-            let ty = self.memory_type(
-                req.memory_type_bits,
-                vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-            );
-            let ty = match ty {
-                Ok(t) => t,
-                Err(e) => {
-                    d.destroy_buffer(buffer, None);
-                    return Err(e);
-                }
-            };
-            let memory = match d.allocate_memory(
-                &vk::MemoryAllocateInfo::default().allocation_size(req.size).memory_type_index(ty),
-                None,
-            ) {
-                Ok(m) => m,
-                Err(e) => {
-                    d.destroy_buffer(buffer, None);
-                    return Err(format!("buffer memory: {e:?}"));
-                }
-            };
-            let bound = d.bind_buffer_memory(buffer, memory, 0);
-            let ptr = bound.and_then(|_| d.map_memory(memory, 0, vk::WHOLE_SIZE, vk::MemoryMapFlags::empty()));
-            match ptr {
-                Ok(p) => Ok(Buffer {
-                    buffer,
-                    memory,
-                    size,
-                    ptr: p as *mut u8,
-                }),
-                Err(e) => {
-                    d.destroy_buffer(buffer, None);
-                    d.free_memory(memory, None);
-                    Err(format!("map buffer: {e:?}"))
-                }
-            }
-        }
+        self.gpu.create_buffer(size, usage)
     }
 
     fn destroy_buffer(&self, b: Buffer) {
-        unsafe {
-            self.device.destroy_buffer(b.buffer, None);
-            self.device.free_memory(b.memory, None);
+        self.gpu.destroy_buffer(b)
+    }
+
+    // ------------------------------------------------------------ pipeline cache
+
+    fn pipeline_cache_file() -> Option<std::path::PathBuf> {
+        slang::cache_dir().map(|d| d.join("pipelines.bin"))
+    }
+
+    /// cache data of an earlier run when its header matches this device (else empty)
+    fn load_pipeline_cache(&self) -> Vec<u8> {
+        let Some(data) = Self::pipeline_cache_file().and_then(|f| std::fs::read(f).ok()) else {
+            return Vec::new();
+        };
+        let props = unsafe { self.instance.get_physical_device_properties(self.physical) };
+        let u32_at = |o: usize| data.get(o..o + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+        let ok = u32_at(0) >= Some(32)
+            && u32_at(4) == Some(1)
+            && u32_at(8) == Some(props.vendor_id)
+            && u32_at(12) == Some(props.device_id)
+            && data.get(16..32) == Some(&props.pipeline_cache_uuid[..]);
+        if ok { data } else { Vec::new() }
+    }
+
+    fn save_pipeline_cache(&self) {
+        if self.pipeline_cache == vk::PipelineCache::null() {
+            return;
         }
+        let (Some(file), Ok(data)) = (Self::pipeline_cache_file(), unsafe {
+            self.device.get_pipeline_cache_data(self.pipeline_cache)
+        }) else {
+            return;
+        };
+        let tmp = file.with_extension(format!("tmp{}", std::process::id()));
+        if file.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok())
+            && std::fs::write(&tmp, &data).is_ok()
+            && std::fs::rename(&tmp, &file).is_err()
+        {
+            let _ = std::fs::remove_file(&tmp);
+        }
+    }
+
+    // ------------------------------------------------------------ slang preset
+
+    /// Replaces the preset (None: plain picture). Builds pipelines and LUTs (device idle).
+    pub fn set_preset(&mut self, compiled: Option<slang::Compiled>) -> Result<()> {
+        unsafe { self.device.device_wait_idle() }.map_err(vkerr("wait idle"))?;
+        self.chain = None;
+        if let Some(c) = compiled {
+            self.chain = Some(Chain::new(&self.gpu, c, self.pipeline_cache, self.format, self.queue, self.cmd_pool)?);
+            self.save_pipeline_cache();
+        }
+        Ok(())
+    }
+
+    pub fn chain(&self) -> Option<&Chain> {
+        self.chain.as_ref()
+    }
+
+    pub fn set_param(&mut self, id: &str, value: f32) -> bool {
+        self.chain.as_mut().is_some_and(|c| c.set_param(id, value))
     }
 
     /// makes sure `slot` holds a buffer of at least `size` bytes (frame fence already waited)
@@ -1490,6 +1517,26 @@ impl Renderer {
         }
         self.prepare_textures()?;
 
+        // slang chain: images for this input/viewport (may wait for the device, before the acquire)
+        let mut chain_run = None;
+        let mut chain_draw = false;
+        let picture = self.pictures[next].as_ref().filter(|t| upload || t.ready).map(|t| (t.width, t.height));
+        if let (Some(chain), Some(size)) = (self.chain.as_mut(), picture)
+            && f.shader_off == 0
+            && f.show_frame != 0
+            && f.vp_width > 0
+            && f.vp_height > 0
+        {
+            let viewport = (f.vp_width as u32, f.vp_height as u32);
+            // a new picture or a blend mix is a new input; repeats and redraws reuse the output
+            let advance = upload || self.weight < 1.0;
+            if advance || chain.needs_run(size, viewport) {
+                chain.prepare(size, viewport)?;
+                chain_run = Some(advance);
+            }
+            chain_draw = true;
+        }
+
         let mut frame = std::mem::replace(
             &mut self.frames[fi],
             PerFrame {
@@ -1504,7 +1551,11 @@ impl Renderer {
         );
         let res = unsafe { self.prepare(f, &mut frame, upload) };
         let prep = match res {
-            Ok(p) => p,
+            Ok(mut p) => {
+                p.chain_run = chain_run;
+                p.chain_draw = chain_draw;
+                p
+            }
             Err(e) => {
                 self.frames[fi] = frame;
                 return Err(e);
@@ -1627,6 +1678,8 @@ impl Renderer {
         }
         Ok(Prepared {
             upload,
+            chain_run: None,
+            chain_draw: false,
             overlay_count,
             atlas_upload,
             shot,
@@ -1667,6 +1720,10 @@ impl Renderer {
                 let buffer = frame.uploads.as_ref().unwrap().buffer;
                 let tex = self.atlas.as_mut().unwrap();
                 record_upload(&d, cmd, tex, buffer, 0, tex.width);
+            }
+
+            if let Some(advance) = prep.chain_run {
+                self.record_chain(f, cmd, self.current, advance)?;
             }
 
             image_barrier(
@@ -1714,7 +1771,40 @@ impl Renderer {
                 max_depth: 1.0,
             };
 
-            if let Some(tex) = self.pictures[self.cur].as_ref().filter(|t| t.ready && f.show_frame != 0) {
+            if prep.chain_draw
+                && let Some(view) = self.chain.as_ref().and_then(|c| c.output_view())
+            {
+                // chain output: 1:1 into the viewport (rotation is part of the last pass)
+                let set = self.chain_sets[self.current];
+                let img = [vk::DescriptorImageInfo::default()
+                    .image_view(view)
+                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)];
+                let smp = [vk::DescriptorImageInfo::default().sampler(self.samplers[0])];
+                let writes = [
+                    vk::WriteDescriptorSet::default()
+                        .dst_set(set)
+                        .dst_binding(0)
+                        .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                        .image_info(&img),
+                    vk::WriteDescriptorSet::default()
+                        .dst_set(set)
+                        .dst_binding(1)
+                        .descriptor_type(vk::DescriptorType::SAMPLER)
+                        .image_info(&smp),
+                ];
+                d.update_descriptor_sets(&writes, &[]);
+                d.cmd_set_viewport(cmd, 0, &[picture_vp]);
+                d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.image);
+                d.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.layout, 0, &[set], &[]);
+                d.cmd_push_constants(
+                    cmd,
+                    self.layout,
+                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                    0,
+                    as_bytes(&MVP_FLAT),
+                );
+                d.cmd_draw(cmd, 4, 1, 0, 0);
+            } else if let Some(tex) = self.pictures[self.cur].as_ref().filter(|t| t.ready && f.show_frame != 0) {
                 d.cmd_set_viewport(cmd, 0, &[picture_vp]);
                 let filter = (f.linear != 0) as usize;
                 let prev = self.pictures[self.cur ^ 1]
@@ -1924,6 +2014,77 @@ impl Renderer {
         Ok(())
     }
 
+    /// draws the picture (or the blend of the last two) 1:1 into the chain's original and records
+    /// the passes
+    unsafe fn record_chain(&mut self, f: &BvkFrame, cmd: vk::CommandBuffer, fi: usize, advance: bool) -> Result<()> {
+        let d = self.device.clone();
+        let Some(chain) = self.chain.as_mut() else { return Ok(()) };
+        let (view, w, h) = chain.begin_original(cmd, advance);
+        let tex = self.pictures[self.cur].as_ref().unwrap();
+        let prev = self.pictures[self.cur ^ 1]
+            .as_ref()
+            .filter(|p| self.weight < 1.0 && p.ready && p.width == tex.width && p.height == tex.height);
+        let attachments = [vk::RenderingAttachmentInfo::default()
+            .image_view(view)
+            .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .load_op(vk::AttachmentLoadOp::DONT_CARE)
+            .store_op(vk::AttachmentStoreOp::STORE)];
+        let area = vk::Rect2D {
+            offset: vk::Offset2D::default(),
+            extent: vk::Extent2D { width: w, height: h },
+        };
+        let mut push = [0f32; 17];
+        push[..16].copy_from_slice(&MVP_FLAT);
+        push[16] = self.weight;
+        unsafe {
+            d.cmd_begin_rendering(cmd, &vk::RenderingInfo::default().render_area(area).layer_count(1).color_attachments(&attachments));
+            d.cmd_set_viewport(
+                cmd,
+                0,
+                &[vk::Viewport {
+                    x: 0.0,
+                    y: 0.0,
+                    width: w as f32,
+                    height: h as f32,
+                    min_depth: 0.0,
+                    max_depth: 1.0,
+                }],
+            );
+            d.cmd_set_scissor(cmd, 0, &[area]);
+            if let Some(prev) = prev {
+                d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.blend);
+                let sets = [tex.sets[0], prev.sets[0]];
+                d.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.layout, 0, &sets, &[]);
+            } else {
+                d.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::GRAPHICS, self.pipelines.image);
+                d.cmd_bind_descriptor_sets(cmd, vk::PipelineBindPoint::GRAPHICS, self.layout, 0, &[tex.sets[0]], &[]);
+            }
+            d.cmd_push_constants(
+                cmd,
+                self.layout,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                0,
+                as_bytes(&push),
+            );
+            d.cmd_draw(cmd, 4, 1, 0, 0);
+            d.cmd_end_rendering(cmd);
+        }
+        // last pass MVP: the program's GL style matrix without the y flip of image.vert
+        let mut mvp = f.mvp;
+        for i in [1, 5, 9, 13] {
+            mvp[i] = -mvp[i];
+        }
+        let fps = f.fps;
+        let info = RunInfo {
+            mvp,
+            linear: f.linear != 0,
+            advance,
+            rotation: f.rotation.clamp(0, 3) as u32,
+            fps,
+        };
+        self.chain.as_mut().unwrap().record(cmd, fi, &info)
+    }
+
     fn set_stalled(&mut self) {
         if !self.stalled {
             self.stalled = true;
@@ -1956,6 +2117,9 @@ impl Renderer {
         let d = &self.device;
         unsafe {
             let _ = d.device_wait_idle();
+            self.chain = None;
+            self.save_pipeline_cache();
+            d.destroy_pipeline_cache(self.pipeline_cache, None);
             let [p0, p1] = std::mem::take(&mut self.pictures);
             for t in [p0, p1, self.atlas.take()].into_iter().flatten() {
                 self.destroy_texture(t);
@@ -2020,10 +2184,6 @@ fn color_layers() -> vk::ImageSubresourceLayers {
         base_array_layer: 0,
         layer_count: 1,
     }
-}
-
-fn as_bytes<T>(v: &[T]) -> &[u8] {
-    unsafe { std::slice::from_raw_parts(v.as_ptr() as *const u8, std::mem::size_of_val(v)) }
 }
 
 fn image_barrier(
